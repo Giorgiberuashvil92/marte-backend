@@ -2,12 +2,14 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import { Request, RequestDocument } from '../schemas/request.schema';
+import { NotificationsService } from '../notifications/notifications.service';
 
 @Injectable()
 export class RequestsService {
   constructor(
     @InjectModel(Request.name)
     private readonly requestModel: Model<RequestDocument>,
+    private readonly notificationsService: NotificationsService,
   ) {}
 
   async create(dto: any) {
@@ -26,7 +28,31 @@ export class RequestsService {
       updatedAt: now,
       status: 'active',
     });
-    return doc.save();
+
+    const savedRequest = await doc.save();
+
+    // Send push notifications to relevant stores/dismantlers
+    if ((dto as any).vehicle && (dto as any).partName && (dto as any).userId) {
+      try {
+        await this.notificationsService.sendRequestNotificationToRelevantStores(
+          {
+            partName: (dto as any).partName,
+            vehicle: (dto as any).vehicle,
+            location: (dto as any).location,
+            userId: (dto as any).userId,
+          },
+        );
+        console.log(
+          '📱 Push notifications sent for request:',
+          savedRequest._id,
+        );
+      } catch (error) {
+        console.error('❌ Failed to send push notifications:', error);
+        // Don't fail the request creation if notifications fail
+      }
+    }
+
+    return savedRequest;
   }
 
   async findAll(userId?: string) {

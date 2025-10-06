@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-unsafe-return */
 import {
   Controller,
   Get,
@@ -97,7 +98,10 @@ export class CarwashController {
   }
 
   @Get('locations')
-  async findAllLocations() {
+  async findAllLocations(@Query('ownerId') ownerId?: string) {
+    if (ownerId) {
+      return this.carwashService.findLocationsByOwner(ownerId);
+    }
     return this.carwashService.findAllLocations();
   }
 

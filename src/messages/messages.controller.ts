@@ -5,33 +5,92 @@ import {
   Get,
   Post,
   Query,
+  Param,
+  Patch,
 } from '@nestjs/common';
-import * as messagesService from './messages.service';
+import { MessagesService } from './messages.service';
+import type { MessageCreateDto } from './messages.service';
 
 @Controller('messages')
 export class MessagesController {
-  constructor(private readonly service: messagesService.MessagesService) {}
+  constructor(private readonly messagesService: MessagesService) {}
 
   @Post()
-  async create(@Body() body: messagesService.MessageCreateDto) {
-    const hasOffer =
-      typeof body?.offerId === 'string' && body.offerId.length > 0;
-    const hasAuthor = body?.author === 'user' || body?.author === 'partner';
-    const hasText =
-      typeof body?.text === 'string' && body.text.trim().length > 0;
-    if (!hasOffer || !hasAuthor || !hasText) {
+  async create(@Body() body: MessageCreateDto) {
+    const hasRequestId =
+      typeof body?.requestId === 'string' && body.requestId.length > 0;
+    const hasUserId =
+      typeof body?.userId === 'string' && body.userId.length > 0;
+    const hasPartnerId =
+      typeof body?.partnerId === 'string' && body.partnerId.length > 0;
+    const hasSender = body?.sender === 'user' || body?.sender === 'partner';
+    const hasMessage =
+      typeof body?.message === 'string' && body.message.trim().length > 0;
+
+    if (
+      !hasRequestId ||
+      !hasUserId ||
+      !hasPartnerId ||
+      !hasSender ||
+      !hasMessage
+    ) {
       throw new BadRequestException('Invalid message payload');
     }
-    return this.service.create({
-      offerId: body.offerId,
-      author: body.author,
-      text: body.text.trim(),
+
+    return this.messagesService.create({
+      requestId: body.requestId,
+      userId: body.userId,
+      partnerId: body.partnerId,
+      sender: body.sender,
+      message: body.message.trim(),
     });
   }
 
-  @Get()
-  list(@Query('offerId') offerId?: string) {
-    if (!offerId) return [];
-    return this.service.listByOffer(offerId);
+  @Get('chat/:requestId')
+  async getChatHistory(@Param('requestId') requestId: string) {
+    if (!requestId) {
+      throw new BadRequestException('Request ID is required');
+    }
+    return this.messagesService.getChatHistory(requestId);
+  }
+
+  @Get('recent')
+  async getRecentChats(
+    @Query('userId') userId?: string,
+    @Query('partnerId') partnerId?: string,
+  ) {
+    if (!userId && !partnerId) {
+      throw new BadRequestException('Either userId or partnerId is required');
+    }
+    return this.messagesService.getRecentChats(userId || '', partnerId);
+  }
+
+  @Get('unread/:requestId')
+  async getUnreadCount(
+    @Param('requestId') requestId: string,
+    @Query('userId') userId?: string,
+    @Query('partnerId') partnerId?: string,
+  ) {
+    if (!requestId || (!userId && !partnerId)) {
+      throw new BadRequestException(
+        'Request ID and either userId or partnerId is required',
+      );
+    }
+    // Service ითხოვს მხოლოდ userId-ს; partnerId-ს არსებობა ნიშნავს რომ ვთვლით როგორც partner-სადმი წასაკითხს
+    return this.messagesService.getUnreadCount(requestId, userId || '');
+  }
+
+  @Patch('read/:requestId')
+  async markAsRead(
+    @Param('requestId') requestId: string,
+    @Body() body: { userId?: string; partnerId?: string },
+  ) {
+    if (!requestId || (!body.userId && !body.partnerId)) {
+      throw new BadRequestException(
+        'Request ID and either userId or partnerId is required',
+      );
+    }
+    // Service ითხოვს მხოლოდ userId-ს; თუ partner კითხულობს, გადავცემთ ცარიელს, რომ მოხდეს სწორი მხარის აღნიშვნა
+    return this.messagesService.markAsRead(requestId, body.userId || '');
   }
 }

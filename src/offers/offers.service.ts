@@ -13,11 +13,19 @@ export class OffersService {
 
   async create(dto: any) {
     const now = Date.now();
+    
+    // Auto-sync partnerId with userId if they're the same user
+    const finalDto = { ...dto };
+    if (dto.userId && !dto.partnerId) {
+      finalDto.partnerId = dto.userId; // Same user is both user and partner
+      console.log('🔄 [OFFERS] Auto-syncing partnerId with userId:', dto.userId);
+    }
+    
     const doc = new this.offerModel({
-      ...dto,
+      ...finalDto,
       createdAt: now,
       updatedAt: now,
-      status: dto?.status || 'pending',
+      status: finalDto?.status || 'pending',
     });
     const saved = await doc.save();
     if (this.gateway && saved?.reqId) {

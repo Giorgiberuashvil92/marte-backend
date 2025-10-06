@@ -60,6 +60,12 @@ export class User {
 
   @Prop({ type: [String], default: [] })
   ownedCarwashes: string[];
+
+  @Prop({ type: [String], default: [] })
+  ownedStores: string[];
+
+  @Prop({ type: [String], default: [] })
+  ownedDismantlers: string[];
 }
 
 export const UserSchema = SchemaFactory.createForClass(User);

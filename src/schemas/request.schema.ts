@@ -37,22 +37,29 @@ export class Request {
   @Prop()
   distanceKm?: number;
 
-  @Prop({ 
-    type: String, 
+  @Prop({
+    type: String,
     enum: ['active', 'fulfilled', 'cancelled'],
-    default: 'active'
+    default: 'active',
   })
   status: string;
 
   @Prop()
   description?: string;
 
-  @Prop({ 
-    type: String, 
+  @Prop({
+    type: String,
     enum: ['low', 'medium', 'high'],
-    default: 'medium'
+    default: 'medium',
   })
   urgency: string;
+
+  @Prop({
+    type: String,
+    enum: ['parts', 'mechanic', 'tow', 'rental'],
+    required: false,
+  })
+  service?: string;
 }
 
 export const RequestSchema = SchemaFactory.createForClass(Request);

@@ -1,34 +1,109 @@
-import { Controller, Get, Post, Body, Patch, Param, Delete, Query } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Post,
+  Body,
+  Patch,
+  Param,
+  Delete,
+  Query,
+  BadRequestException,
+  NotFoundException,
+} from '@nestjs/common';
 import { StoresService } from './stores.service';
+import { CreateStoreDto } from './dto/create-store.dto';
+import { UpdateStoreDto } from './dto/update-store.dto';
 
 @Controller('stores')
 export class StoresController {
   constructor(private readonly storesService: StoresService) {}
 
   @Post()
-  create(@Body() dto: any) {
-    return this.storesService.create(dto);
+  async create(@Body() createStoreDto: CreateStoreDto) {
+    try {
+      const data = await this.storesService.create(createStoreDto);
+      return {
+        success: true,
+        message: 'მაღაზია წარმატებით დაემატა',
+        data,
+      };
+    } catch (error) {
+      throw new BadRequestException({
+        success: false,
+        message: error instanceof Error ? error.message : 'Unknown error',
+      });
+    }
   }
 
   @Get()
-  findAll(@Query('ownerId') ownerId?: string) {
-    return this.storesService.findAll(ownerId);
+  async findAll(@Query('ownerId') ownerId?: string) {
+    const stores = await this.storesService.findAll(ownerId);
+    return {
+      success: true,
+      message: 'მაღაზიები წარმატებით ჩამოიტვირთა',
+      data: stores,
+      count: stores.length,
+    };
   }
 
   @Get(':id')
-  findOne(@Param('id') id: string) {
-    return this.storesService.findOne(id);
+  async findOne(@Param('id') id: string) {
+    try {
+      const data = await this.storesService.findOne(id);
+      return {
+        success: true,
+        message: 'მაღაზიის დეტალები',
+        data,
+      };
+    } catch (error) {
+      throw new NotFoundException({
+        success: false,
+        message: error instanceof Error ? error.message : 'Unknown error',
+      });
+    }
   }
 
   @Patch(':id')
-  update(@Param('id') id: string, @Body() dto: any) {
-    return this.storesService.update(id, dto);
+  async update(
+    @Param('id') id: string,
+    @Body() updateStoreDto: UpdateStoreDto,
+  ) {
+    try {
+      const data = await this.storesService.update(id, updateStoreDto);
+      return {
+        success: true,
+        message: 'მაღაზია წარმატებით განახლდა',
+        data,
+      };
+    } catch (error) {
+      const errorMessage =
+        error instanceof Error ? error.message : 'Unknown error';
+      if (errorMessage.includes('not found')) {
+        throw new NotFoundException({
+          success: false,
+          message: errorMessage,
+        });
+      }
+      throw new BadRequestException({
+        success: false,
+        message: errorMessage,
+      });
+    }
   }
 
   @Delete(':id')
-  remove(@Param('id') id: string) {
-    return this.storesService.remove(id);
+  async remove(@Param('id') id: string) {
+    try {
+      await this.storesService.remove(id);
+      return {
+        success: true,
+        message: 'მაღაზია წარმატებით წაიშალა',
+      };
+    } catch (error) {
+      throw new NotFoundException({
+        success: false,
+        message: error instanceof Error ? error.message : 'Unknown error',
+      });
+    }
   }
 }
-
-

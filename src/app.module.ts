@@ -11,6 +11,13 @@ import { OffersModule } from './offers/offers.module';
 import { CommunityModule } from './community/community.module';
 import { StoresModule } from './stores/stores.module';
 import { MessagesModule } from './messages/messages.module';
+import { DismantlersModule } from './dismantlers/dismantlers.module';
+import { PartsModule } from './parts/parts.module';
+import { CategoriesModule } from './categories/categories.module';
+import { AIModule } from './ai/ai.module';
+import { NotificationsModule } from './notifications/notifications.module';
+import { FinancingModule } from './financing/financing.module';
+import { MechanicsModule } from './mechanics/mechanics.module';
 import databaseConfig from './config/database.config';
 
 // Schemas
@@ -34,6 +41,14 @@ import {
   CommunityPostSchema,
 } from './schemas/community-post.schema';
 import { Comment, CommentSchema } from './schemas/comment.schema';
+import { Dismantler, DismantlerSchema } from './schemas/dismantler.schema';
+import { Part, PartSchema } from './schemas/part.schema';
+import { Category, CategorySchema } from './schemas/category.schema';
+import {
+  Notification,
+  NotificationSchema,
+} from './schemas/notification.schema';
+import { Mechanic, MechanicSchema } from './schemas/mechanic.schema';
 
 @Module({
   imports: [
@@ -60,6 +75,11 @@ import { Comment, CommentSchema } from './schemas/comment.schema';
       { name: Offer.name, schema: OfferSchema },
       { name: CommunityPost.name, schema: CommunityPostSchema },
       { name: Comment.name, schema: CommentSchema },
+      { name: Dismantler.name, schema: DismantlerSchema },
+      { name: Part.name, schema: PartSchema },
+      { name: Category.name, schema: CategorySchema },
+      { name: Notification.name, schema: NotificationSchema },
+      { name: Mechanic.name, schema: MechanicSchema },
     ]),
     GarageModule,
     AuthModule,
@@ -69,6 +89,13 @@ import { Comment, CommentSchema } from './schemas/comment.schema';
     CommunityModule,
     StoresModule,
     MessagesModule,
+    DismantlersModule,
+    PartsModule,
+    CategoriesModule,
+    AIModule,
+    NotificationsModule,
+    FinancingModule,
+    MechanicsModule,
   ],
   controllers: [AppController],
   providers: [AppService],
