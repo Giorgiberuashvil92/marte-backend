@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import { Message, MessageDocument } from '../schemas/message.schema';
+import { NotificationsService } from '../notifications/notifications.service';
 import {
   Conversation,
   ConversationDocument,
@@ -22,6 +23,7 @@ export class MessagesService {
     private readonly messageModel: Model<MessageDocument>,
     @InjectModel(Conversation.name)
     private readonly conversationModel: Model<ConversationDocument>,
+    private readonly notificationsService: NotificationsService,
   ) {}
 
   async create(dto: MessageCreateDto) {
@@ -47,6 +49,43 @@ export class MessagesService {
       },
       { upsert: true },
     );
+
+    // Push notify receiver
+    try {
+      const isFromUser = dto.sender === 'user';
+      let targetUserId = isFromUser ? dto.partnerId : dto.userId;
+      if (isFromUser && targetUserId) {
+        try {
+          const mapped = await (
+            this.notificationsService as any
+          )?.getUserIdFromOwnerId?.(String(targetUserId));
+          if (mapped) targetUserId = String(mapped);
+        } catch {}
+      }
+      if (targetUserId) {
+        await this.notificationsService.sendPushToTargets(
+          [{ userId: String(targetUserId) }],
+          {
+            title: '💬 ახალი მესიჯი',
+            body:
+              dto.message.length > 120
+                ? dto.message.slice(0, 117) + '…'
+                : dto.message,
+            data: {
+              type: 'chat_message',
+              screen: 'Chat',
+              chatId: dto.requestId,
+              requestId: dto.requestId,
+            },
+            sound: 'default',
+            badge: 1,
+          },
+          'message',
+        );
+      }
+    } catch (e) {
+      // do not block message creation on push failure
+    }
 
     return saved;
   }

@@ -7,6 +7,7 @@ import {
   Param,
   Delete,
   Request,
+  Query,
 } from '@nestjs/common';
 import type { Request as ExpressRequest } from 'express';
 import { GarageService } from './garage.service';
@@ -31,8 +32,12 @@ export class GarageController {
   }
 
   @Get('cars')
-  async findAllCars(@Request() req: ExpressRequest) {
-    const userId = (req.headers['x-user-id'] as string) || 'demo-user';
+  async findAllCars(
+    @Request() req: ExpressRequest,
+    @Query('userId') userIdQuery?: string,
+  ) {
+    const userId =
+      userIdQuery || (req.headers['x-user-id'] as string) || 'demo-user';
     return this.garageService.findAllCars(userId);
   }
 

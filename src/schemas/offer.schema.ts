@@ -35,6 +35,9 @@ export class Offer {
     default: 'pending',
   })
   status: string;
+
+  @Prop()
+  reminderType?: string; // reminder type: 'service', 'oil', 'tires', 'battery', 'insurance', 'inspection', etc.
 }
 
 export const OfferSchema = SchemaFactory.createForClass(Offer);

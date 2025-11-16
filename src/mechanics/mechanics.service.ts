@@ -78,6 +78,30 @@ export class MechanicsService {
     }));
   }
 
+  async findById(id: string): Promise<Mechanic | null> {
+    const d = await this.mechanicModel.findById(id).lean();
+    if (!d) return null;
+    return {
+      id: String((d as any)._id),
+      name: (d as any).name,
+      specialty: (d as any).specialty,
+      rating: (d as any).rating ?? 0,
+      reviews: (d as any).reviews ?? 0,
+      experience: (d as any).experience ?? '-',
+      location: (d as any).location ?? '-',
+      distanceKm: undefined,
+      priceGEL: undefined,
+      avatar: (d as any).avatar,
+      isAvailable: (d as any).isAvailable ?? true,
+      services: (d as any).services ?? [],
+      description: (d as any).description ?? '',
+      phone: (d as any).phone,
+      address: (d as any).address,
+      latitude: (d as any).latitude,
+      longitude: (d as any).longitude,
+    };
+  }
+
   async create(
     dto: Partial<Mechanic> & { firstName?: string; lastName?: string },
   ): Promise<Mechanic> {
@@ -117,5 +141,61 @@ export class MechanicsService {
       latitude: doc.latitude,
       longitude: doc.longitude,
     };
+  }
+
+  async update(
+    id: string,
+    dto: Partial<Mechanic> & { firstName?: string; lastName?: string },
+  ): Promise<Mechanic | null> {
+    const updates: Record<string, unknown> = {};
+    if (dto.name) updates.name = dto.name;
+    if (dto.firstName || dto.lastName) {
+      const current = await this.mechanicModel.findById(id).lean();
+      const currentName = (current as any)?.name ?? '';
+      const composed = `${dto.firstName ?? ''} ${dto.lastName ?? ''}`.trim();
+      updates.name = (composed || currentName).trim();
+    }
+    if (dto.specialty !== undefined) updates.specialty = dto.specialty;
+    if (dto.experience !== undefined) updates.experience = dto.experience;
+    if (dto.location !== undefined) updates.location = dto.location;
+    if ((dto as { latitude?: number }).latitude !== undefined)
+      updates.latitude = (dto as { latitude?: number }).latitude;
+    if ((dto as { longitude?: number }).longitude !== undefined)
+      updates.longitude = (dto as { longitude?: number }).longitude;
+    if (dto.avatar !== undefined) updates.avatar = dto.avatar;
+    if (dto.isAvailable !== undefined) updates.isAvailable = dto.isAvailable;
+    if (dto.services !== undefined) updates.services = dto.services;
+    if (dto.description !== undefined) updates.description = dto.description;
+    if (dto.phone !== undefined) updates.phone = dto.phone;
+    if (dto.address !== undefined) updates.address = dto.address;
+
+    const doc = await this.mechanicModel
+      .findByIdAndUpdate(id, updates, { new: true })
+      .lean();
+    if (!doc) return null;
+    return {
+      id: String((doc as any)._id),
+      name: (doc as any).name,
+      specialty: (doc as any).specialty,
+      rating: (doc as any).rating ?? 0,
+      reviews: (doc as any).reviews ?? 0,
+      experience: (doc as any).experience ?? '-',
+      location: (doc as any).location ?? '-',
+      distanceKm: undefined,
+      priceGEL: undefined,
+      avatar: (doc as any).avatar,
+      isAvailable: (doc as any).isAvailable ?? true,
+      services: (doc as any).services ?? [],
+      description: (doc as any).description ?? '',
+      phone: (doc as any).phone,
+      address: (doc as any).address,
+      latitude: (doc as any).latitude,
+      longitude: (doc as any).longitude,
+    };
+  }
+
+  async delete(id: string): Promise<{ deleted: boolean }> {
+    const res = await this.mechanicModel.findByIdAndDelete(id).lean();
+    return { deleted: !!res };
   }
 }

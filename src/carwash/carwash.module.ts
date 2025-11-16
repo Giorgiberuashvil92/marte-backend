@@ -11,6 +11,7 @@ import {
   CarwashBookingSchema,
 } from '../schemas/carwash-booking.schema';
 import { User, UserSchema } from '../schemas/user.schema';
+import { NotificationsModule } from '../notifications/notifications.module';
 
 @Module({
   imports: [
@@ -19,6 +20,7 @@ import { User, UserSchema } from '../schemas/user.schema';
       { name: CarwashBooking.name, schema: CarwashBookingSchema },
       { name: User.name, schema: UserSchema },
     ]),
+    NotificationsModule,
   ],
   controllers: [CarwashController],
   providers: [CarwashService],

@@ -92,6 +92,9 @@ export class CarwashBooking {
     default: 'pending',
   })
   status: string;
+
+  @Prop()
+  reminderSentAt?: number;
 }
 
 export const CarwashBookingSchema =

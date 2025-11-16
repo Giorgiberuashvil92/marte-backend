@@ -14,6 +14,30 @@ import { NotificationsService } from './notifications.service';
 export class NotificationsController {
   constructor(private readonly notificationsService: NotificationsService) {}
 
+  @Post('send-sms')
+  async sendSms(
+    @Body()
+    body: {
+      to: string;
+      message: string;
+      from?: string;
+    },
+  ) {
+    const res = await this.notificationsService.sendSms({
+      to: body.to,
+      body: body.message,
+      from: body.from,
+    });
+    if (!res.ok) {
+      throw new BadRequestException({
+        success: false,
+        message: 'SMS გაგზავნა ვერ მოხერხდა',
+        error: res.error,
+      });
+    }
+    return { success: true, sid: res.sid };
+  }
+
   @Post('send-request-notification')
   async sendRequestNotification(
     @Body()
@@ -168,7 +192,10 @@ export class NotificationsController {
       await this.notificationsService.registerDevice(body);
       return { success: true };
     } catch (error) {
-      throw new BadRequestException({ success: false });
+      throw new BadRequestException({
+        success: false,
+        error: error instanceof Error ? error.message : 'Unknown error',
+      });
     }
   }
 

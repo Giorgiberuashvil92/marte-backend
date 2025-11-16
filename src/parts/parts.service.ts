@@ -1,17 +1,32 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Inject, forwardRef } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import { Part, PartDocument } from '../schemas/part.schema';
 import { CreatePartDto } from './dto/create-part.dto';
 import { UpdatePartDto } from './dto/update-part.dto';
+import { AINotificationsService } from '../ai/ai-notifications.service';
 
 @Injectable()
 export class PartsService {
-  constructor(@InjectModel(Part.name) private partModel: Model<PartDocument>) {}
+  constructor(
+    @InjectModel(Part.name) private partModel: Model<PartDocument>,
+    @Inject(forwardRef(() => AINotificationsService))
+    private aiNotificationsService: AINotificationsService,
+  ) {}
 
   async create(createPartDto: CreatePartDto): Promise<Part> {
     const createdPart = new this.partModel(createPartDto);
-    return createdPart.save();
+    const savedPart = await createdPart.save();
+
+    try {
+      await this.aiNotificationsService.checkMatchingRequestsForNewPart(
+        savedPart,
+      );
+    } catch (error) {
+      console.error('❌ Error checking AI matches for new part:', error);
+    }
+
+    return savedPart;
   }
 
   async findAll(filters?: {

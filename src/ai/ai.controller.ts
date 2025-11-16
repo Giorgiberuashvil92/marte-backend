@@ -103,4 +103,30 @@ export class AIController {
       },
     };
   }
+
+  @Get('seller-status')
+  async getSellerStatus(
+    @Query('userId') userId: string,
+    @Query('phone') phone?: string,
+    @Query('make') make?: string,
+    @Query('model') model?: string,
+    @Query('year') year?: string,
+    @Query('debug') debug?: string,
+  ) {
+    if (!userId) {
+      throw new BadRequestException({
+        success: false,
+        message: 'userId აუცილებელია',
+      });
+    }
+    const data = await this.aiRecommendationsService.getSellerStatus({
+      userId,
+      phone,
+      make,
+      model,
+      year,
+      debug: debug === 'true',
+    });
+    return { success: true, data };
+  }
 }

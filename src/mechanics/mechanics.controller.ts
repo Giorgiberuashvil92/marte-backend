@@ -2,9 +2,13 @@ import {
   Controller,
   Get,
   Post,
+  Patch,
+  Delete,
   Body,
   Query,
+  Param,
   BadRequestException,
+  NotFoundException,
 } from '@nestjs/common';
 import { MechanicsService } from './mechanics.service';
 
@@ -38,11 +42,40 @@ export class MechanicsController {
   ) {
     // eslint-disable-next-line no-console
     console.log('[MECH_CTRL] POST /mechanics body', dto);
-    if (!dto || !dto.firstName || !dto.lastName || !dto.specialty) {
+    if (
+      !dto ||
+      (!dto.name && !(dto.firstName && dto.lastName)) ||
+      !dto.specialty
+    ) {
       throw new BadRequestException(
-        'firstName, lastName and specialty are required',
+        'name or (firstName & lastName) and specialty are required',
       );
     }
     return this.mechanicsService.create(dto);
+  }
+
+  @Get(':id')
+  async findOne(@Param('id') id: string) {
+    // eslint-disable-next-line no-console
+    console.log('[MECH_CTRL] GET /mechanics/:id', id);
+    const mech = await this.mechanicsService.findById(id);
+    if (!mech) throw new NotFoundException('mechanic not found');
+    return mech;
+  }
+
+  @Patch(':id')
+  async update(@Param('id') id: string, @Body() dto: Record<string, unknown>) {
+    // eslint-disable-next-line no-console
+    console.log('[MECH_CTRL] PATCH /mechanics/:id', id, dto);
+    const updated = await this.mechanicsService.update(id, dto as any);
+    if (!updated) throw new NotFoundException('mechanic not found');
+    return updated;
+  }
+
+  @Delete(':id')
+  async remove(@Param('id') id: string) {
+    // eslint-disable-next-line no-console
+    console.log('[MECH_CTRL] DELETE /mechanics/:id', id);
+    return this.mechanicsService.delete(id);
   }
 }

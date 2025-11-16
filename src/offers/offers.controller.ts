@@ -33,9 +33,15 @@ export class OffersController {
     @Query('requestId') requestId?: string,
     @Query('userId') userId?: string,
     @Query('partnerId') partnerId?: string,
+    @Query('reminderType') reminderType?: string,
   ) {
     const finalReqId = reqId || requestId; // support both reqId and requestId
-    return this.offersService.findAll(finalReqId, userId, partnerId);
+    return this.offersService.findAll(
+      finalReqId,
+      userId,
+      partnerId,
+      reminderType,
+    );
   }
 
   @Get(':id')

@@ -1,8 +1,10 @@
 import { Injectable, BadRequestException } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
-import { Model } from 'mongoose';
+import { Model, UpdateQuery } from 'mongoose';
 import { User, UserDocument } from '../schemas/user.schema';
 import { Otp, OtpDocument } from '../schemas/otp.schema';
+// Firebase phone auth support removed in favor of Twilio OTP
+import twilio, { Twilio } from 'twilio';
 
 @Injectable()
 export class AuthService {
@@ -46,7 +48,31 @@ export class AuthService {
 
     await otp.save();
 
-    // TODO: integrate real SMS provider later
+    // Development mode: just log the code instead of sending SMS
+    if (process.env.NODE_ENV === 'development') {
+      console.log(`📱 [DEV] SMS კოდი ${phone}-ზე: ${code}`);
+      return { id: otpId, intent, mockCode: code };
+    }
+
+    // Production: Send SMS via Twilio if configured
+    try {
+      const sid = process.env.TWILIO_ACCOUNT_SID;
+      const token = process.env.TWILIO_AUTH_TOKEN;
+      const from = process.env.TWILIO_FROM; // E.164, e.g. +15005550006
+      if (sid && token && from) {
+        const client: Twilio = twilio(sid, token);
+        const body = `შეყვანეთ კოდი: ${code}`;
+        await client.messages.create({ to: phone, from, body });
+        console.log(`📱 [PROD] SMS გაიგზავნა ${phone}-ზე`);
+        return { id: otpId, intent };
+      }
+    } catch (error) {
+      console.error('❌ [TWILIO] SMS გაგზავნის შეცდომა:', error);
+      // fallthrough to mock code
+    }
+
+    // If Twilio is not configured, expose mockCode
+    console.log(`📱 [FALLBACK] SMS კოდი ${phone}-ზე: ${code}`);
     return { id: otpId, intent, mockCode: code };
   }
 
@@ -81,17 +107,9 @@ export class AuthService {
         ownedCarwashes: [],
       });
       await user.save();
-      intent = 'register';
-    } else {
-      intent = 'login';
     }
 
-    // mark OTP as used
-    await this.otpModel
-      .updateOne({ id: otpId }, { isUsed: true, usedAt: Date.now() })
-      .exec();
-
-    return { user, intent };
+    return { user, intent: 'login' };
   }
 
   async complete(
@@ -103,7 +121,7 @@ export class AuthService {
     const user = await this.userModel.findOne({ id: userId }).exec();
     if (!user) throw new BadRequestException('user_not_found');
 
-    const updates: any = { updatedAt: Date.now() };
+    const updates: UpdateQuery<UserDocument> = { updatedAt: Date.now() };
 
     if (payload?.firstName && payload.firstName.trim().length > 0) {
       updates.firstName = payload.firstName.trim();
@@ -114,7 +132,6 @@ export class AuthService {
     }
 
     if (Object.keys(updates).length === 1) {
-      // only updatedAt
       throw new BadRequestException('no_updates');
     }
 
@@ -143,7 +160,6 @@ export class AuthService {
       )
       .exec();
 
-    console.log(`✅ [AUTH_SERVICE] User ${userId} role updated to: ${role}`);
     return {
       success: true,
       message: 'User role updated successfully',
@@ -156,12 +172,26 @@ export class AuthService {
     carwashId: string,
     action: 'add' | 'remove',
   ) {
+    console.log(
+      `🔍 [AUTH_SERVICE] updateOwnedCarwashes called with userId: ${userId}, carwashId: ${carwashId}, action: ${action}`,
+    );
+
     if (!userId) throw new BadRequestException('invalid_user');
     if (!carwashId) throw new BadRequestException('invalid_carwash_id');
     if (!action) throw new BadRequestException('invalid_action');
 
     const user = await this.userModel.findOne({ id: userId }).exec();
-    if (!user) throw new BadRequestException('user_not_found');
+    console.log(`🔍 [AUTH_SERVICE] User found:`, user ? 'YES' : 'NO');
+    if (!user) {
+      console.log(`❌ [AUTH_SERVICE] User not found with id: ${userId}`);
+      // Let's also try to find all users to see what IDs exist
+      const allUsers = await this.userModel
+        .find({})
+        .select('id name phone')
+        .exec();
+      console.log(`🔍 [AUTH_SERVICE] All users in database:`, allUsers);
+      throw new BadRequestException('user_not_found');
+    }
 
     const currentOwnedCarwashes = user.ownedCarwashes || [];
     let updatedOwnedCarwashes: string[];

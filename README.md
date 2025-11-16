@@ -1,98 +1,89 @@
-<p align="center">
-  <a href="http://nestjs.com/" target="blank"><img src="https://nestjs.com/img/logo-small.svg" width="120" alt="Nest Logo" /></a>
-</p>
+# CarApp Backend v2 🚗
 
-[circleci-image]: https://img.shields.io/circleci/build/github/nestjs/nest/master?token=abc123def456
-[circleci-url]: https://circleci.com/gh/nestjs/nest
+## აღწერა
 
-  <p align="center">A progressive <a href="http://nodejs.org" target="_blank">Node.js</a> framework for building efficient and scalable server-side applications.</p>
-    <p align="center">
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/v/@nestjs/core.svg" alt="NPM Version" /></a>
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/l/@nestjs/core.svg" alt="Package License" /></a>
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/dm/@nestjs/common.svg" alt="NPM Downloads" /></a>
-<a href="https://circleci.com/gh/nestjs/nest" target="_blank"><img src="https://img.shields.io/circleci/build/github/nestjs/nest/master" alt="CircleCI" /></a>
-<a href="https://discord.gg/G7Qnnhy" target="_blank"><img src="https://img.shields.io/badge/discord-online-brightgreen.svg" alt="Discord"/></a>
-<a href="https://opencollective.com/nest#backer" target="_blank"><img src="https://opencollective.com/nest/backers/badge.svg" alt="Backers on Open Collective" /></a>
-<a href="https://opencollective.com/nest#sponsor" target="_blank"><img src="https://opencollective.com/nest/sponsors/badge.svg" alt="Sponsors on Open Collective" /></a>
-  <a href="https://paypal.me/kamilmysliwiec" target="_blank"><img src="https://img.shields.io/badge/Donate-PayPal-ff3f59.svg" alt="Donate us"/></a>
-    <a href="https://opencollective.com/nest#sponsor"  target="_blank"><img src="https://img.shields.io/badge/Support%20us-Open%20Collective-41B883.svg" alt="Support us"></a>
-  <a href="https://twitter.com/nestframework" target="_blank"><img src="https://img.shields.io/twitter/follow/nestframework.svg?style=social&label=Follow" alt="Follow us on Twitter"></a>
-</p>
-  <!--[![Backers on Open Collective](https://opencollective.com/nest/backers/badge.svg)](https://opencollective.com/nest#backer)
-  [![Sponsors on Open Collective](https://opencollective.com/nest/sponsors/badge.svg)](https://opencollective.com/nest#sponsor)-->
+CarApp-ის განახლებული backend სერვისი NestJS framework-ზე დაფუძნებული. მხარს უჭერს:
 
-## Description
+- 🚗 **Carwash სერვისები** - პოპულარული ლოკაციების ინტელექტუალური ალგორითმი
+- 🔧 **Garage მართვა** - მანქანების და შეხსენებების სისტემა  
+- 💬 **Real-time Chat** - WebSocket მხარდაჭერით
+- 🤖 **AI რეკომენდაციები** - ნაწილებისა და სერვისებისთვის
+- 📱 **მობილური API** - React Native აპლიკაციისთვის
 
-[Nest](https://github.com/nestjs/nest) framework TypeScript starter repository.
+## 🚀 გაშვება
 
-## Project setup
+### 1. Dependencies-ის ინსტალაცია
+\`\`\`bash
+npm install
+\`\`\`
 
-```bash
-$ npm install
-```
+### 2. Development რეჟიმში გაშვება
+\`\`\`bash
+# Port 4000-ზე (frontend-თან შესაბამისობისთვის)
+npm run start:dev
+\`\`\`
 
-## Compile and run the project
+### 3. Production რეჟიმში გაშვება
+\`\`\`bash
+npm run build
+npm run start:prod
+\`\`\`
 
-```bash
-# development
-$ npm run start
+## 🔧 მთავარი ფუნქციები
 
-# watch mode
-$ npm run start:dev
+### პოპულარული სერვისების ალგორითმი
+- **რეიტინგი (40%)** - მაღალი რეიტინგი = პოპულარული
+- **რევიუების რაოდენობა (25%)** - მეტი რევიუ = უფრო პოპულარული
+- **ღიაა თუ არა (15%)** - ღია სერვისები პრიორიტეტულია
+- **ფასის კონკურენტუნარიანობა (10%)** - საშუალო ფასის მახლობლად
+- **სერვისების რაოდენობა (10%)** - მეტი სერვისი = უკეთესი
 
-# production mode
-$ npm run start:prod
-```
+### კეშირება
+- პოპულარული ლოკაციები კეშირდება 5 წუთით
+- ოპტიმიზირებული MongoDB queries
 
-## Run tests
+## 📡 API Endpoints
 
-```bash
-# unit tests
-$ npm run test
+### Carwash
+- `GET /carwash/locations/popular?limit=6` - პოპულარული ლოკაციები
+- `GET /carwash/locations` - ყველა ლოკაცია
+- `POST /carwash/locations` - ახალი ლოკაციის დამატება
 
-# e2e tests
-$ npm run test:e2e
+### Garage  
+- `GET /garage/cars` - მანქანების სია
+- `POST /garage/cars` - ახალი მანქანის დამატება
+- `GET /garage/reminders` - შეხსენებები
 
-# test coverage
-$ npm run test:cov
-```
+### Messages
+- WebSocket: `/messages` - Real-time chat
 
-## Deployment
+## 🗄️ Database
 
-When you're ready to deploy your NestJS application to production, there are some key steps you can take to ensure it runs as efficiently as possible. Check out the [deployment documentation](https://docs.nestjs.com/deployment) for more information.
+MongoDB Atlas-ზე დაფუძნებული:
+- **Database:** `carapp-v2`
+- **Collections:** cars, carwash-locations, users, reminders, etc.
 
-If you are looking for a cloud-based platform to deploy your NestJS application, check out [Mau](https://mau.nestjs.com), our official platform for deploying NestJS applications on AWS. Mau makes deployment straightforward and fast, requiring just a few simple steps:
+## 🔍 Debugging
 
-```bash
-$ npm install -g @nestjs/mau
-$ mau deploy
-```
+\`\`\`bash
+# Linting
+npm run lint:fix
 
-With Mau, you can deploy your application in just a few clicks, allowing you to focus on building features rather than managing infrastructure.
+# Tests
+npm run test
 
-## Resources
+# Debug mode
+npm run start:debug
+\`\`\`
 
-Check out a few resources that may come in handy when working with NestJS:
+## 📝 ცვლილებები v1-დან
 
-- Visit the [NestJS Documentation](https://docs.nestjs.com) to learn more about the framework.
-- For questions and support, please visit our [Discord channel](https://discord.gg/G7Qnnhy).
-- To dive deeper and get more hands-on experience, check out our official video [courses](https://courses.nestjs.com/).
-- Deploy your application to AWS with the help of [NestJS Mau](https://mau.nestjs.com) in just a few clicks.
-- Visualize your application graph and interact with the NestJS application in real-time using [NestJS Devtools](https://devtools.nestjs.com).
-- Need help with your project (part-time to full-time)? Check out our official [enterprise support](https://enterprise.nestjs.com).
-- To stay in the loop and get updates, follow us on [X](https://x.com/nestframework) and [LinkedIn](https://linkedin.com/company/nestjs).
-- Looking for a job, or have a job to offer? Check out our official [Jobs board](https://jobs.nestjs.com).
+1. ✅ **პორტი 4000** - frontend-თან შესაბამისობისთვის
+2. ✅ **პოპულარული სერვისების ალგორითმი** - რთული scoring system
+3. ✅ **კეშირება** - performance გაუმჯობესებისთვის
+4. ✅ **CORS მხარდაჭერა** - frontend integration-ისთვის
+5. ✅ **WebSocket** - real-time ფუნქციონალობისთვის
 
-## Support
+## 🤝 Development
 
-Nest is an MIT-licensed open source project. It can grow thanks to the sponsors and support by the amazing backers. If you'd like to join them, please [read more here](https://docs.nestjs.com/support).
-
-## Stay in touch
-
-- Author - [Kamil Myśliwiec](https://twitter.com/kammysliwiec)
-- Website - [https://nestjs.com](https://nestjs.com/)
-- Twitter - [@nestframework](https://twitter.com/nestframework)
-
-## License
-
-Nest is [MIT licensed](https://github.com/nestjs/nest/blob/master/LICENSE).
+Backend-v2 არის მთავარი სერვისი რომელსაც იყენებს frontend. ძველი backend საცავი მხოლოდ reference-ისთვის რჩება.

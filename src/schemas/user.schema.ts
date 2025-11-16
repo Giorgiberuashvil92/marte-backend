@@ -11,6 +11,9 @@ export class User {
   @Prop({ required: true, unique: true })
   phone: string;
 
+  @Prop({ unique: true, sparse: true })
+  firebaseUid?: string;
+
   @Prop()
   email?: string;
 
@@ -71,8 +74,8 @@ export class User {
 export const UserSchema = SchemaFactory.createForClass(User);
 
 // Indexes for better performance
-UserSchema.index({ phone: 1 });
-UserSchema.index({ email: 1 });
+// Avoid duplicate definition warnings; rely on @Prop uniques for phone/firebaseUid
+UserSchema.index({ email: 1 }, { sparse: true });
 UserSchema.index({ isVerified: 1 });
 UserSchema.index({ isActive: 1 });
 UserSchema.index({ createdAt: -1 });

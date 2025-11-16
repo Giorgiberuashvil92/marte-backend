@@ -18,15 +18,24 @@ import { CreateCarwashBookingDto } from './dto/create-carwash-booking.dto';
 import { UpdateCarwashBookingDto } from './dto/update-carwash-booking.dto';
 import { CreateCarwashLocationDto } from './dto/create-carwash-location.dto';
 import { UpdateCarwashLocationDto } from './dto/update-carwash-location.dto';
+import { NotificationsService } from '../notifications/notifications.service';
 
 @Injectable()
 export class CarwashService {
   private readonly logger = new Logger(CarwashService.name);
+
+  private popularLocationsCache: {
+    data: any[];
+    timestamp: number;
+  } | null = null;
+
+  private readonly CACHE_DURATION = 5 * 60 * 1000;
   constructor(
     @InjectModel(CarwashLocation.name)
     private readonly carwashModel: Model<CarwashLocationDocument>,
     @InjectModel(CarwashBooking.name)
     private readonly bookingModel: Model<CarwashBookingDocument>,
+    private readonly notificationsService: NotificationsService,
   ) {}
 
   // Bookings
@@ -48,6 +57,35 @@ export class CarwashService {
     try {
       const saved = await booking.save();
       this.logger.log(`createBooking saved id=${saved.id || saved._id}`);
+      // Push notify carwash owner about new booking
+      try {
+        const location = await this.carwashModel
+          .findOne({ id: dto.locationId })
+          .lean();
+        const ownerId = (location as any)?.ownerId;
+        if (ownerId) {
+          await this.notificationsService.sendPushToTargets(
+            [{ userId: String(ownerId) }],
+            {
+              title: 'MARTE - მართე',
+              body: `${dto.locationName || location?.name || 'სამრეცხაო'} • ${
+                dto.serviceName || 'სერვისი'
+              } ${dto.bookingTime ? '• ' + dto.bookingTime : ''}`,
+              data: {
+                type: 'carwash_booking',
+                screen: 'Bookings',
+                carwashId: dto.locationId,
+                bookingId: (saved as any)._id?.toString() || saved.id,
+              },
+              sound: 'default',
+              badge: 1,
+            },
+            'system',
+          );
+        }
+      } catch (e) {
+        this.logger.warn('createBooking push send failed', e);
+      }
       return saved;
     } catch (err: any) {
       this.logger.error(
@@ -90,6 +128,47 @@ export class CarwashService {
     const updated = await this.bookingModel.findById(id).exec();
     this.logger.log(`updateBooking done id=${id} found=${!!updated}`);
     if (!updated) throw new NotFoundException('booking_not_found');
+
+    try {
+      if (updates['status'] === 'confirmed') {
+        const bookingJson: any = updated.toJSON();
+        const customerUserId: string | undefined = bookingJson?.userId;
+        const locationId: string | undefined = bookingJson?.locationId;
+        const locationName: string | undefined = bookingJson?.locationName;
+        const bookingTime: string | undefined = bookingJson?.bookingTime;
+
+        if (customerUserId) {
+          await this.notificationsService.sendPushToTargets(
+            [{ userId: String(customerUserId) }],
+            {
+              title: '✅ ჯავშანი დადასტურებულია',
+              body: `${locationName || 'სამრეცხაო'} • დრო: ${bookingTime || ''} — გმადლობთ, რომ ირჩევთ ჩვენს სერვისს!`,
+              data: {
+                type: 'carwash_booking_confirmed',
+                screen: 'Bookings',
+                carwashId: locationId || '',
+                bookingId: bookingJson?.id || id,
+              },
+              sound: 'default',
+              badge: 1,
+            },
+            'system',
+          );
+          this.logger.log(
+            `✅ Sent confirmation push to user ${customerUserId} for booking ${id}`,
+          );
+        } else {
+          this.logger.warn(
+            `⚠️ Booking ${id} has no userId; skipping confirmation push`,
+          );
+        }
+      }
+    } catch (e) {
+      this.logger.warn(
+        `⚠️ updateBooking confirmation push failed for ${id}`,
+        e,
+      );
+    }
     return updated;
   }
 
@@ -131,6 +210,60 @@ export class CarwashService {
       .exec();
   }
 
+  // Reminders (run via controller endpoint/cron)
+  private parseSlotTimestamp(booking: any): number | null {
+    const dayTs = Number(booking.bookingDate);
+    const timeStr = String(booking.bookingTime || '');
+    if (!Number.isFinite(dayTs) || !timeStr.includes(':')) return null;
+    const [hh, mm] = timeStr.split(':').map((v: string) => parseInt(v, 10));
+    if (!Number.isFinite(hh) || !Number.isFinite(mm)) return null;
+    return dayTs + (hh * 60 + mm) * 60 * 1000;
+  }
+
+  async sendUpcomingReminders(): Promise<{ sent: number }> {
+    const now = Date.now();
+    const windowStart = now + 29 * 60 * 1000;
+    const windowEnd = now + 31 * 60 * 1000;
+
+    const candidates = await this.bookingModel
+      .find({ status: 'confirmed' })
+      .limit(500)
+      .lean();
+
+    let sent = 0;
+    for (const b of candidates) {
+      if (b.reminderSentAt) continue;
+      const slotTs = this.parseSlotTimestamp(b);
+      if (!slotTs) continue;
+      if (slotTs >= windowStart && slotTs <= windowEnd) {
+        try {
+          await this.notificationsService.sendPushToTargets(
+            [{ userId: String(b.userId) }],
+            {
+              title: '⏰ შეხსენება ჯავშანზე',
+              body: `${b.locationName || 'სამრეცხაო'} • დაწყება ${b.bookingTime || ''}`,
+              data: {
+                type: 'carwash_booking_reminder',
+                screen: 'Bookings',
+                carwashId: b.locationId,
+                bookingId: String((b as any)._id || b.id || ''),
+              },
+              sound: 'default',
+              badge: 1,
+            },
+            'system',
+          );
+          await this.bookingModel.updateOne(
+            { _id: (b as any)._id },
+            { $set: { reminderSentAt: now } },
+          );
+          sent += 1;
+        } catch {}
+      }
+    }
+    return { sent };
+  }
+
   // Locations
   async createLocation(dto: CreateCarwashLocationDto) {
     const now = Date.now();
@@ -163,10 +296,65 @@ export class CarwashService {
   }
 
   async getPopularLocations(limit = 10) {
-    return this.carwashModel.find({}).sort({ rating: -1 }).limit(limit).exec();
-  }
+    // კეშირებული მონაცემების შემოწმება
+    if (
+      this.popularLocationsCache &&
+      Date.now() - this.popularLocationsCache.timestamp < this.CACHE_DURATION
+    ) {
+      this.logger.log('📦 Returning cached popular locations');
+      return this.popularLocationsCache.data.slice(0, limit);
+    }
 
-  
+    this.logger.log('🔄 Fetching fresh popular locations from database');
+
+    // MongoDB query - გაფილტრული და ოპტიმიზირებული
+    const locations = await this.carwashModel
+      .find({
+        isOpen: true,
+        rating: { $gte: 4.0 },
+      })
+      .sort({ rating: -1, reviews: -1 })
+      .limit(limit * 2) // მეტი ამოვიღოთ რომ ალგორითმისთვის საკმარისი იყოს
+      .exec();
+
+    const scoredLocations = locations.map((location) => {
+      const ratingScore = (location.rating || 0) * 40; // 0-40 ქულა
+      const reviewsScore = Math.min((location.reviews || 0) * 0.5, 25); // 0-25 ქულა
+      const openScore = location.isOpen ? 15 : 0; // 0-15 ქულა
+      const priceScore = Math.max(
+        0,
+        10 - Math.abs((location.price || 30) - 30) * 0.2,
+      ); // 0-10 ქულა (საშუალო ფასი 30₾)
+      const servicesScore = Math.min(
+        (location.detailedServices?.length || 0) * 2,
+        10,
+      ); // 0-10 ქულა
+
+      const totalScore =
+        ratingScore + reviewsScore + openScore + priceScore + servicesScore;
+
+      return {
+        ...location.toObject(),
+        popularityScore: totalScore,
+      };
+    });
+
+    // დახარისხება პოპულარობის მიხედვით
+    scoredLocations.sort((a, b) => b.popularityScore - a.popularityScore);
+
+    const result = scoredLocations.slice(0, limit);
+
+    // კეშირება
+    this.popularLocationsCache = {
+      data: scoredLocations,
+      timestamp: Date.now(),
+    };
+
+    this.logger.log(
+      `✅ Returning ${result.length} popular locations with popularity scores`,
+    );
+    return result;
+  }
 
   async findLocationById(id: string) {
     const doc = await this.carwashModel.findOne({ id }).exec();
@@ -321,6 +509,4 @@ export class CarwashService {
       .exec();
     return status;
   }
-
-  
 }

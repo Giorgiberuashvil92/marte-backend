@@ -133,9 +133,8 @@ export class CommunityService {
     }
   }
 
-  async listPosts(userId?: string) {
+  async listPosts() {
     const filter: any = { isActive: true };
-    if (userId) filter.userId = userId;
     const docs = await this.postModel
       .find(filter)
       .sort({ createdAt: -1 })

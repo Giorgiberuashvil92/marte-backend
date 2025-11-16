@@ -4,6 +4,8 @@ import { Model } from 'mongoose';
 import { Store, StoreDocument } from '../schemas/store.schema';
 import { Dismantler, DismantlerDocument } from '../schemas/dismantler.schema';
 import { Part, PartDocument } from '../schemas/part.schema';
+import { Request, RequestDocument } from '../schemas/request.schema';
+import { User, UserDocument } from '../schemas/user.schema';
 
 export interface AIRecommendation {
   id: string;
@@ -39,6 +41,8 @@ export class AIRecommendationsService {
     @InjectModel(Dismantler.name)
     private dismantlerModel: Model<DismantlerDocument>,
     @InjectModel(Part.name) private partModel: Model<PartDocument>,
+    @InjectModel(Request.name) private requestModel: Model<RequestDocument>,
+    @InjectModel(User.name) private userModel: Model<UserDocument>,
   ) {}
 
   async recommendForPartsRequest(
@@ -73,6 +77,284 @@ export class AIRecommendationsService {
 
     console.log(`🤖 Generated ${sortedRecommendations.length} recommendations`);
     return sortedRecommendations;
+  }
+
+  async getSellerStatus(params: {
+    userId: string;
+    phone?: string;
+    make?: string;
+    model?: string;
+    year?: string;
+    debug?: boolean;
+  }): Promise<{
+    showSellerPanel: boolean;
+    counts: { stores: number; parts: number; dismantlers: number };
+    matchingRequests: Request[];
+    ownedStores: Array<{
+      id: string;
+      title: string;
+      type: string;
+      phone: string;
+      location: string;
+      address: string;
+      images: string[];
+    }>;
+    ownedParts: Array<{
+      id: string;
+      title: string;
+      brand?: string;
+      model?: string;
+      year?: number;
+      price: string;
+      location: string;
+      phone: string;
+      images: string[];
+    }>;
+    ownedDismantlers: Array<{
+      id: string;
+      brand: string;
+      model: string;
+      yearFrom: number;
+      yearTo: number;
+      phone: string;
+      location: string;
+      photos: string[];
+    }>;
+  }> {
+    const { userId, phone, make, model, year, debug } = params;
+
+    // Try to load authoritative phone from users collection
+    let effectivePhone = phone;
+    if (!effectivePhone) {
+      const u = await this.userModel.findOne({ id: userId }).lean().exec();
+      effectivePhone = u?.phone;
+    }
+
+    // Match stores by ownerId OR phone as fallback
+    const storeFilter: Record<string, any> = effectivePhone
+      ? { $or: [{ ownerId: userId }, { phone: effectivePhone }] }
+      : { ownerId: userId };
+    // Parts might be linked either by seller or ownerId depending on creator flow
+    const partFilter: Record<string, any> = {
+      $or: [{ seller: userId }, { ownerId: userId }],
+    };
+    // Match dismantlers by ownerId OR phone (fallback, როგორც მაღაზიებში)
+    const dismantlerFilter: Record<string, any> = effectivePhone
+      ? { $or: [{ ownerId: userId }, { phone: effectivePhone }] }
+      : { ownerId: userId };
+
+    const [stores, parts, dismantlers, storeDocs, partDocs, dismantlerDocs] =
+      await Promise.all([
+        this.storeModel.countDocuments(storeFilter),
+        this.partModel.countDocuments(partFilter),
+        this.dismantlerModel.countDocuments(dismantlerFilter),
+        this.storeModel
+          .find(storeFilter)
+          .sort({ createdAt: -1 })
+          .limit(20)
+          .lean()
+          .exec(),
+        this.partModel
+          .find(partFilter)
+          .sort({ createdAt: -1 })
+          .limit(20)
+          .lean()
+          .exec(),
+        this.dismantlerModel
+          .find(dismantlerFilter)
+          .sort({ createdAt: -1 })
+          .limit(20)
+          .lean()
+          .exec(),
+      ]);
+
+    if (debug) {
+      console.log('[AI] seller-status counts', {
+        userId,
+        phone: effectivePhone,
+        stores,
+        parts,
+        dismantlers,
+      });
+    }
+
+    let matchingRequests: Request[] = [];
+
+    // Build predicates from owned inventory (parts + dismantlers)
+    const orPredicates: any[] = [];
+
+    const buildFlexRegex = (text: string) => {
+      const escaped = this.escapeRegExp(text || '');
+      const flexible = escaped
+        .replace(/\\s\+/g, '\\s*')
+        .replace(/-/g, '[-\\s]?')
+        .replace(/\s/g, '\\s*');
+      return new RegExp(flexible, 'i');
+    };
+
+    for (const p of partDocs || []) {
+      const pred: any = {
+        'vehicle.make': buildFlexRegex(p.brand || ''),
+        'vehicle.model': buildFlexRegex(p.model || ''),
+      };
+      if (p.year) {
+        const yStr = String(p.year);
+        const yNum = parseInt(yStr);
+        pred['vehicle.year'] = {
+          $in: [yStr, Number.isFinite(yNum) ? yNum : yStr],
+        };
+      }
+      if (p.brand && p.model && p.model.trim()) {
+        orPredicates.push(pred);
+      }
+    }
+
+    // Dismantlers: brand + model + year within [yearFrom, yearTo]
+    for (const d of dismantlerDocs || []) {
+      if (!d.brand || !d.model) continue;
+      const years: string[] = [];
+      if (Number.isFinite(d.yearFrom) && Number.isFinite(d.yearTo)) {
+        const start = Math.min(d.yearFrom, d.yearTo);
+        const end = Math.max(d.yearFrom, d.yearTo);
+        for (let y = start; y <= end; y++) years.push(String(y));
+      }
+      const pred: any = {
+        'vehicle.make': buildFlexRegex(d.brand),
+        'vehicle.model': buildFlexRegex(d.model),
+      };
+      if (years.length > 0) {
+        const yearsNum = years
+          .map((ys) => parseInt(ys))
+          .filter((yn) => Number.isFinite(yn));
+        pred['vehicle.year'] = { $in: [...years, ...yearsNum] };
+      }
+      orPredicates.push(pred);
+    }
+
+    if (orPredicates.length === 0 && make && model && year) {
+      orPredicates.push({
+        'vehicle.make': new RegExp(`^${this.escapeRegExp(make)}$`, 'i'),
+        'vehicle.model': new RegExp(`^${this.escapeRegExp(model)}$`, 'i'),
+        'vehicle.year': String(year),
+      });
+    }
+
+    if (orPredicates.length > 0) {
+      // 1) DB query
+      let dbDocs: any[] = [];
+      try {
+        dbDocs = await this.requestModel
+          .find({ status: 'active', $or: orPredicates })
+          .sort({ createdAt: -1 })
+          .limit(200)
+          .lean()
+          .exec();
+      } catch {}
+
+      // 2) In-memory robust filter (always compute), then prefer non-empty
+      const allActive = await this.requestModel
+        .find({ status: 'active' })
+        .sort({ createdAt: -1 })
+        .limit(500)
+        .lean()
+        .exec();
+
+      const normalize = (v: any) => (v ?? '').toString().trim();
+      const yearToInt = (v: any) => {
+        const n = parseInt((v ?? '').toString());
+        return Number.isFinite(n) ? n : undefined;
+      };
+      const matches = (req: any) => {
+        const make = normalize(req?.vehicle?.make);
+        const model = normalize(req?.vehicle?.model);
+        const yearStr = normalize(req?.vehicle?.year);
+        const yearNum = yearToInt(yearStr);
+
+        const partsOk = (partDocs || []).some((p: any) => {
+          const brandOk = buildFlexRegex(normalize(p?.brand)).test(make);
+          const modelOk = buildFlexRegex(normalize(p?.model)).test(model);
+          if (!brandOk || !modelOk) return false;
+          if (p?.year) {
+            const py = yearToInt(p.year);
+            return yearStr === String(p.year) || (py && yearNum === py);
+          }
+          return true;
+        });
+
+        const dismantlersOk = (dismantlerDocs || []).some((d: any) => {
+          const brandOk = buildFlexRegex(normalize(d?.brand)).test(make);
+          const modelOk = buildFlexRegex(normalize(d?.model)).test(model);
+          if (!brandOk || !modelOk) return false;
+          if (!Number.isFinite(d?.yearFrom) || !Number.isFinite(d?.yearTo))
+            return false;
+          const from = Math.min(d.yearFrom, d.yearTo);
+          const to = Math.max(d.yearFrom, d.yearTo);
+          if (Number.isFinite(yearNum))
+            return (yearNum as number) >= from && (yearNum as number) <= to;
+          return [from, to].map(String).includes(yearStr);
+        });
+
+        return partsOk || dismantlersOk;
+      };
+
+      const memDocs = (allActive || []).filter(matches).slice(0, 200);
+
+      const chosen = memDocs.length > 0 ? memDocs : dbDocs;
+      if (debug) {
+        try {
+          console.log(
+            '[AI] matched request ids (chosen)',
+            chosen.map((r: any) => r._id || r.id),
+          );
+        } catch {}
+      }
+      matchingRequests = chosen as unknown as Request[];
+    }
+
+    return {
+      showSellerPanel: stores + parts + dismantlers > 0,
+      counts: { stores, parts, dismantlers },
+      matchingRequests,
+      ownedStores: (storeDocs || []).map((s: any) => ({
+        id: String(s._id || s.id),
+        title: s.title,
+        type: s.type,
+        phone: s.phone,
+        location: s.location,
+        address: s.address,
+        images: Array.isArray(s.images) ? s.images : [],
+      })),
+      ownedParts: (partDocs || []).map((p: any) => ({
+        id: String(p._id || p.id),
+        title: p.title,
+        brand: p.brand,
+        model: p.model,
+        year:
+          typeof p.year === 'number'
+            ? p.year
+            : p.year
+              ? parseInt(String(p.year))
+              : undefined,
+        price: p.price,
+        location: p.location,
+        phone: p.phone,
+        images: Array.isArray(p.images) ? p.images : [],
+      })),
+      ownedDismantlers: (dismantlerDocs || []).map((d: any) => ({
+        id: String(d._id || d.id),
+        brand: d.brand,
+        model: d.model,
+        yearFrom: d.yearFrom,
+        yearTo: d.yearTo,
+        phone: d.phone,
+        location: d.location,
+        photos: Array.isArray(d.photos) ? d.photos : [],
+      })),
+    };
+  }
+
+  private escapeRegExp(input: string): string {
+    return input.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   }
 
   generateAIExplanation(
@@ -316,5 +598,4 @@ export class AIRecommendationsService {
       };
     });
   }
-
 }

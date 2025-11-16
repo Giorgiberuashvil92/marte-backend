@@ -30,4 +30,4 @@ export class Conversation {
 export const ConversationSchema = SchemaFactory.createForClass(Conversation);
 ConversationSchema.index({ userId: 1, lastMessageAt: -1 });
 ConversationSchema.index({ partnerId: 1, lastMessageAt: -1 });
-ConversationSchema.index({ requestId: 1 });
+// requestId already has unique index from @Prop({ unique: true })

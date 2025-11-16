@@ -1,8 +1,9 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, NotFoundException, Inject, forwardRef } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import { Request, RequestDocument } from '../schemas/request.schema';
 import { NotificationsService } from '../notifications/notifications.service';
+import { AINotificationsService } from '../ai/ai-notifications.service';
 
 @Injectable()
 export class RequestsService {
@@ -10,6 +11,8 @@ export class RequestsService {
     @InjectModel(Request.name)
     private readonly requestModel: Model<RequestDocument>,
     private readonly notificationsService: NotificationsService,
+    @Inject(forwardRef(() => AINotificationsService))
+    private readonly aiNotificationsService: AINotificationsService,
   ) {}
 
   async create(dto: any) {
@@ -34,14 +37,13 @@ export class RequestsService {
     // Send push notifications to relevant stores/dismantlers
     if ((dto as any).vehicle && (dto as any).partName && (dto as any).userId) {
       try {
-        await this.notificationsService.sendRequestNotificationToRelevantStores(
-          {
-            partName: (dto as any).partName,
-            vehicle: (dto as any).vehicle,
-            location: (dto as any).location,
-            userId: (dto as any).userId,
-          },
-        );
+        await this.notificationsService.sendRequestNotificationToRelevantStores({
+          partName: (dto as any).partName,
+          vehicle: (dto as any).vehicle,
+          location: (dto as any).location,
+          userId: (dto as any).userId,
+          requestId: savedRequest._id?.toString(),
+        });
         console.log(
           '📱 Push notifications sent for request:',
           savedRequest._id,
@@ -49,6 +51,19 @@ export class RequestsService {
       } catch (error) {
         console.error('❌ Failed to send push notifications:', error);
         // Don't fail the request creation if notifications fail
+      }
+
+      try {
+        await this.aiNotificationsService.sendAIRecommendationNotification(
+          (dto as any).userId,
+          savedRequest,
+        );
+        console.log(
+          '🤖 AI recommendation push sent for request:',
+          savedRequest._id,
+        );
+      } catch (error) {
+        console.error('❌ Failed to send AI recommendation push:', error);
       }
     }
 

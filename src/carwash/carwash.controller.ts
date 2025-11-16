@@ -195,6 +195,13 @@ export class CarwashController {
     );
   }
 
+  // Booking reminders (manual trigger or cron runner)
+  @Post('bookings/reminders/run')
+  async runReminders() {
+    this.logger.log('runReminders invoked');
+    return this.carwashService.sendUpcomingReminders();
+  }
+
   // Real-time status endpoints
   @Get('locations/:id/status')
   async getRealTimeStatus(@Param('id') id: string) {

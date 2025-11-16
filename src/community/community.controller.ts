@@ -6,7 +6,6 @@ import {
   Patch,
   Param,
   Delete,
-  Query,
 } from '@nestjs/common';
 import { CommunityService } from './community.service';
 
@@ -20,8 +19,8 @@ export class CommunityController {
   }
 
   @Get('posts')
-  listPosts(@Query('userId') userId?: string) {
-    return this.communityService.listPosts(userId);
+  listPosts() {
+    return this.communityService.listPosts();
   }
 
   @Get('posts/:id')
