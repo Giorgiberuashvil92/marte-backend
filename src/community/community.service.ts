@@ -77,6 +77,8 @@ export class CommunityService {
       userName: obj.userName,
       userInitial: obj.userInitial,
       commentText: obj.content || obj.commentText || obj.text || '',
+      likesCount: typeof obj.likes === 'number' ? obj.likes : 0,
+      isLiked: false,
       createdAt: obj.createdAt,
       updatedAt: obj.updatedAt,
     };
@@ -223,6 +225,10 @@ export class CommunityService {
         .toUpperCase();
     const comment = new this.commentModel(payload);
     const saved = await comment.save();
+    await this.postModel
+      .updateOne({ _id: payload.postId }, { $inc: { comments: 1 } })
+      .exec()
+      .catch(() => undefined);
     return this.mapComment(saved);
   }
 
@@ -297,6 +303,10 @@ export class CommunityService {
       .countDocuments({ commentId })
       .exec();
     const isLiked = !existing;
+    await this.commentModel
+      .updateOne({ _id: commentId }, { $set: { likes: likesCount } })
+      .exec()
+      .catch(() => undefined);
     return { isLiked, likesCount };
   }
 
@@ -310,6 +320,10 @@ export class CommunityService {
     if (!res) throw new NotFoundException('comment_not_found');
     // Optionally cleanup likes
     await this.commentLikeModel.deleteMany({ commentId }).exec();
+    await this.postModel
+      .updateOne({ _id: res.postId }, { $inc: { comments: -1 } })
+      .exec()
+      .catch(() => undefined);
     return { success: true };
   }
 }

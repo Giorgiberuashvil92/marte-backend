@@ -3,6 +3,7 @@ import { AppModule } from './app.module';
 import { IoAdapter } from '@nestjs/platform-socket.io';
 import * as admin from 'firebase-admin';
 import * as fs from 'fs';
+import { json, urlencoded } from 'body-parser';
 
 function initializeFirebase() {
   try {
@@ -82,6 +83,10 @@ async function bootstrap() {
   initializeFirebase();
 
   const app = await NestFactory.create(AppModule);
+
+  // Increase body size limits (for CarFAX HTML -> PDF)
+  app.use(json({ limit: '2mb' }));
+  app.use(urlencoded({ limit: '2mb', extended: true }));
 
   // Enable Socket.IO
   app.useWebSocketAdapter(new IoAdapter(app));
