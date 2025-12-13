@@ -9,7 +9,6 @@ function initializeFirebase() {
   try {
     let serviceAccount: admin.ServiceAccount | null = null;
 
-    // Option 1: Read from .env as Base64 encoded JSON (recommended)
     if (process.env.FIREBASE_SERVICE_ACCOUNT_JSON) {
       try {
         const base64String = process.env.FIREBASE_SERVICE_ACCOUNT_JSON.trim();
@@ -67,6 +66,8 @@ function initializeFirebase() {
       }
     }
 
+    
+
     // Initialize Firebase Admin
     admin.initializeApp({
       credential: admin.credential.cert(serviceAccount),
@@ -91,17 +92,27 @@ async function bootstrap() {
   // Enable Socket.IO
   app.useWebSocketAdapter(new IoAdapter(app));
 
-  // Enable CORS for admin localhost
+  // Enable CORS with configurable origins (Railway env-friendly)
+  const extraOrigins = (process.env.ALLOWED_ORIGINS || '')
+    .split(',')
+    .map((o) => o.trim())
+    .filter(Boolean);
+
+  const corsOrigins = [
+    'http://localhost:3000',
+    'http://127.0.0.1:3000',
+    process.env.ADMIN_ORIGIN,
+    ...extraOrigins,
+  ].filter(Boolean);
+
   app.enableCors({
-    origin: [
-      'http://localhost:3000',
-      'http://127.0.0.1:3000',
-      process.env.ADMIN_ORIGIN || '',
-    ].filter(Boolean),
+    origin: corsOrigins,
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization'],
     credentials: true,
   });
+
+  console.log('CORS enabled for origins:', corsOrigins);
 
   await app.listen(process.env.PORT ?? 3000);
 }
