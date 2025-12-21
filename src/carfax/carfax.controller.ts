@@ -1,4 +1,15 @@
-import { Controller, Post, Get, Body, Param, Request } from '@nestjs/common';
+import {
+  Controller,
+  Post,
+  Get,
+  Body,
+  Param,
+  Request,
+  Res,
+  HttpException,
+  HttpStatus,
+} from '@nestjs/common';
+import type { Response } from 'express';
 import { CarFAXService } from './carfax.service';
 import { CarFAXRequestDto } from './dto/carfax-request.dto';
 import { CarFAXResponseDto } from './dto/carfax-response.dto';
@@ -32,6 +43,29 @@ export class CarFAXController {
     const userId =
       (req.headers as Record<string, string>)['x-user-id'] || 'demo-user';
     return await this.carfaxService.getCarFAXReportById(reportId, userId);
+  }
+
+  @Post('pdf')
+  async generatePdfFromHtml(
+    @Body() body: { html: string; fileName?: string; baseUrl?: string },
+    @Res() res: Response,
+  ) {
+    if (!body?.html || body.html.trim().length === 0) {
+      throw new HttpException(
+        'html ველი აუცილებელია',
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+
+    const pdfBuffer = await this.carfaxService.htmlToPdf(
+      body.html,
+      body.baseUrl || 'https://cai.autoimports.ge/',
+    );
+    const fileName = body.fileName || 'carfax-report.pdf';
+
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="${fileName}"`);
+    res.end(pdfBuffer);
   }
 
   @Get('health')

@@ -46,7 +46,6 @@ export class CommunityPost {
 
 export const CommunityPostSchema = SchemaFactory.createForClass(CommunityPost);
 
-// Return id instead of _id and strip __v
 CommunityPostSchema.set('toJSON', {
   virtuals: true,
   versionKey: false,
