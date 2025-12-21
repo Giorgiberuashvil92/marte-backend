@@ -1,0 +1,13 @@
+{
+	"folders": [
+		{
+			"name": "carappX",
+			"path": "../../../carappX"
+		},
+		{
+			"name": "marte-backend",
+			"path": "../.."
+		}
+	],
+	"settings": {}
+}

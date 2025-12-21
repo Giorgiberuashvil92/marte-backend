@@ -131,6 +131,55 @@ export class NotificationsController {
     }
   }
 
+  @Get('devices')
+  async getDeviceTokens(@Query('userId') userId?: string) {
+    try {
+      console.log('📱 [NOTIFICATIONS] GET /notifications/devices called with userId:', userId);
+      const tokens = await this.notificationsService.getDeviceTokens(userId);
+      console.log('📱 [NOTIFICATIONS] Found tokens:', tokens.length);
+      return {
+        success: true,
+        data: tokens,
+      };
+    } catch (error) {
+      console.error('❌ [NOTIFICATIONS] Error getting device tokens:', error);
+      throw new BadRequestException({
+        success: false,
+        message: 'Device tokens-ის მიღება ვერ მოხერხდა',
+        error: error instanceof Error ? error.message : 'Unknown error',
+      });
+    }
+  }
+
+  @Post('broadcast')
+  async broadcastNotification(
+    @Body()
+    body: {
+      title?: string;
+      body?: string;
+      data?: Record<string, any>;
+    },
+  ) {
+    try {
+      const result = await this.notificationsService.broadcastToAllUsers({
+        title: body.title || 'მადლობა',
+        body: body.body || 'მადლობა რომ შემოგვიერთდით! 🎉',
+        data: body.data || {},
+      });
+      return {
+        success: true,
+        message: 'Broadcast notification sent successfully',
+        ...result,
+      };
+    } catch (error) {
+      throw new BadRequestException({
+        success: false,
+        message: 'Broadcast notification-ის გაგზავნა ვერ მოხერხდა',
+        error: error instanceof Error ? error.message : 'Unknown error',
+      });
+    }
+  }
+
   @Get('user/:userId')
   async getUserNotifications(
     @Param('userId') userId: string,
@@ -186,6 +235,20 @@ export class NotificationsController {
       userId: string;
       token: string;
       platform?: string;
+      deviceInfo?: {
+        deviceName?: string | null;
+        modelName?: string | null;
+        brand?: string | null;
+        manufacturer?: string | null;
+        osName?: string | null;
+        osVersion?: string | null;
+        deviceType?: string | null;
+        totalMemory?: number | null;
+        appVersion?: string | null;
+        appBuildNumber?: string | null;
+        platform?: string | null;
+        platformVersion?: string | null;
+      };
     },
   ) {
     try {

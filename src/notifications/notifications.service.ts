@@ -766,20 +766,49 @@ export class NotificationsService {
     userId: string;
     token: string;
     platform?: string;
+    deviceInfo?: {
+      deviceName?: string | null;
+      modelName?: string | null;
+      brand?: string | null;
+      manufacturer?: string | null;
+      osName?: string | null;
+      osVersion?: string | null;
+      deviceType?: string | null;
+      totalMemory?: number | null;
+      appVersion?: string | null;
+      appBuildNumber?: string | null;
+      platform?: string | null;
+      platformVersion?: string | null;
+    };
   }) {
     console.log('📱 [NOTIFICATIONS] Registering device token:', {
       userId: dto.userId,
       token: dto.token.substring(0, 50) + '...',
       platform: dto.platform || 'unknown',
+      deviceInfo: dto.deviceInfo ? '✅ Provided' : '❌ Not provided',
     });
+
+    const updateData: any = {
+      userId: dto.userId,
+      platform: dto.platform || 'unknown',
+    };
+
+    if (dto.deviceInfo) {
+      updateData.deviceInfo = dto.deviceInfo;
+      console.log('📱 [NOTIFICATIONS] Device info:', {
+        deviceName: dto.deviceInfo.deviceName,
+        modelName: dto.deviceInfo.modelName,
+        brand: dto.deviceInfo.brand,
+        osName: dto.deviceInfo.osName,
+        osVersion: dto.deviceInfo.osVersion,
+        appVersion: dto.deviceInfo.appVersion,
+      });
+    }
 
     const result = await this.deviceTokenModel.updateOne(
       { token: dto.token },
       {
-        $set: {
-          userId: dto.userId,
-          platform: dto.platform || 'unknown',
-        },
+        $set: updateData,
       },
       { upsert: true },
     );
@@ -800,11 +829,69 @@ export class NotificationsService {
         userId: savedToken.userId,
         platform: savedToken.platform,
         tokenExists: !!savedToken.token,
+        hasDeviceInfo: !!savedToken.deviceInfo,
       });
     } else {
       console.error('❌ [NOTIFICATIONS] Token not found after saving!');
     }
 
     return { ok: true };
+  }
+
+  async getDeviceTokens(userId?: string): Promise<DeviceTokenDocument[]> {
+    const query: any = {};
+    if (userId) {
+      query.userId = userId;
+    }
+    return this.deviceTokenModel.find(query).sort({ createdAt: -1 }).lean();
+  }
+
+  async broadcastToAllUsers(payload: {
+    title: string;
+    body: string;
+    data?: Record<string, any>;
+  }): Promise<{ sent: number; failed: number; total: number }> {
+    console.log(
+      '📢 [NOTIFICATIONS] Broadcasting to all users:',
+      payload.title,
+    );
+
+    // Get all device tokens
+    const allTokens = await this.deviceTokenModel.find({}).lean();
+    const tokens = allTokens
+      .map((t) => t.token)
+      .filter((token): token is string => !!token);
+
+    console.log(
+      `📢 [NOTIFICATIONS] Found ${tokens.length} device tokens to send`,
+    );
+
+    if (tokens.length === 0) {
+      return { sent: 0, failed: 0, total: 0 };
+    }
+
+    // Send to all tokens
+    let sent = 0;
+    let failed = 0;
+
+    try {
+      await this.sendFcm(tokens, {
+        ...payload,
+        data: payload.data || {},
+        sound: 'default',
+        badge: 1,
+      });
+      sent = tokens.length;
+      console.log(`✅ [NOTIFICATIONS] Broadcast sent to ${sent} devices`);
+    } catch (error) {
+      console.error('❌ [NOTIFICATIONS] Broadcast failed:', error);
+      failed = tokens.length;
+    }
+
+    return {
+      sent,
+      failed,
+      total: tokens.length,
+    };
   }
 }

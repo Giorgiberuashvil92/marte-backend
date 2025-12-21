@@ -113,4 +113,9 @@ export class UpdateStoreDto {
   @IsOptional()
   @IsString()
   license?: string;
+
+  // შიდა/ინტერნალური სურათი ( напр. admin panel cover )
+  @IsOptional()
+  @IsUrl()
+  internalImage?: string;
 }

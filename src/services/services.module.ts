@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { MongooseModule } from '@nestjs/mongoose';
 import { ServicesController } from './services.controller';
 import { ServicesService } from './services.service';
+import { AutoServicesService } from './auto-services.service';
 import {
   CarwashLocation,
   CarwashLocationSchema,
@@ -10,6 +11,7 @@ import { Store, StoreSchema } from '../schemas/store.schema';
 import { Dismantler, DismantlerSchema } from '../schemas/dismantler.schema';
 import { Part, PartSchema } from '../schemas/part.schema';
 import { Category, CategorySchema } from '../schemas/category.schema';
+import { Service, ServiceSchema } from '../schemas/service.schema';
 
 @Module({
   imports: [
@@ -19,10 +21,11 @@ import { Category, CategorySchema } from '../schemas/category.schema';
       { name: Dismantler.name, schema: DismantlerSchema },
       { name: Part.name, schema: PartSchema },
       { name: Category.name, schema: CategorySchema },
+      { name: Service.name, schema: ServiceSchema },
     ]),
   ],
   controllers: [ServicesController],
-  providers: [ServicesService],
-  exports: [ServicesService],
+  providers: [ServicesService, AutoServicesService],
+  exports: [ServicesService, AutoServicesService],
 })
 export class ServicesModule {}

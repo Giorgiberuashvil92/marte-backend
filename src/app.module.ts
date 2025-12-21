@@ -52,6 +52,7 @@ import { Comment, CommentSchema } from './schemas/comment.schema';
 import { Dismantler, DismantlerSchema } from './schemas/dismantler.schema';
 import { Part, PartSchema } from './schemas/part.schema';
 import { Category, CategorySchema } from './schemas/category.schema';
+import { Service, ServiceSchema } from './schemas/service.schema';
 import {
   Notification,
   NotificationSchema,
@@ -71,6 +72,10 @@ import {
   SubscriptionSchema,
 } from './schemas/subscription.schema';
 import { Payment, PaymentSchema } from './schemas/payment.schema';
+import {
+  LoginHistory,
+  LoginHistorySchema,
+} from './schemas/login-history.schema';
 
 @Module({
   imports: [
@@ -100,6 +105,7 @@ import { Payment, PaymentSchema } from './schemas/payment.schema';
       { name: Dismantler.name, schema: DismantlerSchema },
       { name: Part.name, schema: PartSchema },
       { name: Category.name, schema: CategorySchema },
+      { name: Service.name, schema: ServiceSchema },
       { name: Notification.name, schema: NotificationSchema },
       { name: Mechanic.name, schema: MechanicSchema },
       { name: MarteOrder.name, schema: MarteOrderSchema },
@@ -107,6 +113,7 @@ import { Payment, PaymentSchema } from './schemas/payment.schema';
       { name: CarFAXReport.name, schema: CarFAXReportSchema },
       { name: Subscription.name, schema: SubscriptionSchema },
       { name: Payment.name, schema: PaymentSchema },
+      { name: LoginHistory.name, schema: LoginHistorySchema },
     ]),
     GarageModule,
     AuthModule,

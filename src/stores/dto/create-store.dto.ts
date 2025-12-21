@@ -27,6 +27,11 @@ export class CreateStoreDto {
   @IsOptional()
   images?: string[];
 
+  // შიდა/ინტერნალური სურათი ( напр. admin panel cover )
+  @IsOptional()
+  @IsUrl()
+  internalImage?: string;
+
   @IsString()
   @IsNotEmpty()
   location: string;
