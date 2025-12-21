@@ -41,7 +41,6 @@ export class CarFAXService {
         );
       }
 
-      // მონაცემების შენახვა/განახლება ბაზაში (VIN უნიკალურია)
       const payload = {
         userId,
         vin: request.vin,
