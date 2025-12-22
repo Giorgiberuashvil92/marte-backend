@@ -5,6 +5,7 @@ import {
   Param,
   Put,
   Patch,
+  Delete,
   Body,
   BadRequestException,
 } from '@nestjs/common';
@@ -84,6 +85,16 @@ export class UsersController {
       success: true,
       message: 'მომხმარებელი წარმატებით განახლდა',
       data: user,
+    };
+  }
+
+  @Delete(':id')
+  async delete(@Param('id') id: string) {
+    if (!id) throw new BadRequestException('id_required');
+    await this.users.deleteUser(id);
+    return {
+      success: true,
+      message: 'მომხმარებელი წარმატებით წაიშალა',
     };
   }
 

@@ -26,6 +26,7 @@ import { BOGModule } from './bog/bog.module';
 import { StoriesModule } from './stories/stories.module';
 import { LoyaltyModule } from './loyalty/loyalty.module';
 import { UsersModule } from './users/users.module';
+import { CarRentalModule } from './car-rental/car-rental.module';
 import databaseConfig from './config/database.config';
 
 // Schemas
@@ -137,6 +138,7 @@ import {
     LoyaltyModule,
     StoriesModule,
     UsersModule,
+    CarRentalModule,
   ],
   controllers: [AppController],
   providers: [AppService],

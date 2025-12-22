@@ -145,4 +145,10 @@ export class UsersService {
     if (!updated) throw new BadRequestException('user_not_found');
     return updated;
   }
+
+  async deleteUser(id: string) {
+    const deleted = await this.userModel.findOneAndDelete({ id }).lean();
+    if (!deleted) throw new BadRequestException('user_not_found');
+    return deleted;
+  }
 }

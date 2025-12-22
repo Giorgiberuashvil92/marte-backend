@@ -99,8 +99,10 @@ async function bootstrap() {
     .filter(Boolean);
 
   const corsOrigins = [
-    'http://localhost:3000',
-    'http://127.0.0.1:3000',
+    'http://localhost:3000', // Admin Panel
+    'http://127.0.0.1:3000', // Admin Panel
+    'http://localhost:3001', // Backend self-reference
+    'http://127.0.0.1:3001', // Backend self-reference
     process.env.ADMIN_ORIGIN,
     ...extraOrigins,
   ].filter(Boolean);
@@ -114,6 +116,8 @@ async function bootstrap() {
 
   console.log('CORS enabled for origins:', corsOrigins);
 
-  await app.listen(process.env.PORT ?? 3000);
+  const port = process.env.PORT ?? 3000;
+  await app.listen(port);
+  console.log(`🚀 Backend running on port ${port}`);
 }
 void bootstrap();
