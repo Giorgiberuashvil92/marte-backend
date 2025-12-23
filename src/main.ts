@@ -66,8 +66,6 @@ function initializeFirebase() {
       }
     }
 
-    
-
     // Initialize Firebase Admin
     admin.initializeApp({
       credential: admin.credential.cert(serviceAccount),
@@ -99,10 +97,11 @@ async function bootstrap() {
     .filter(Boolean);
 
   const corsOrigins = [
-    'http://localhost:3000', // Admin Panel
-    'http://127.0.0.1:3000', // Admin Panel
+    'http://localhost:3000', // Admin Panel (local)
+    'http://127.0.0.1:3000', // Admin Panel (local)
     'http://localhost:3001', // Backend self-reference
     'http://127.0.0.1:3001', // Backend self-reference
+    'https://free-nextjs-admin-dashboard-omega-green.vercel.app', // Admin Panel (Vercel)
     process.env.ADMIN_ORIGIN,
     ...extraOrigins,
   ].filter(Boolean);
@@ -110,7 +109,12 @@ async function bootstrap() {
   app.enableCors({
     origin: corsOrigins,
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization'],
+    allowedHeaders: [
+      'Content-Type',
+      'Authorization',
+      'Cache-Control',
+      'X-Requested-With',
+    ],
     credentials: true,
   });
 
