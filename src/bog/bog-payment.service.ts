@@ -66,6 +66,25 @@ export class BOGPaymentService {
       // BOG API-ისთვის მონაცემების მომზადება
       const bogOrderData = this.prepareBOGOrderData(orderData);
 
+      // Logging: ვნახოთ რა იგზავნება BOG API-ში
+      this.logger.log(
+        '═══════════════════════════════════════════════════════',
+      );
+      this.logger.log('📤 BOG Order Request Data:');
+      this.logger.log(
+        '═══════════════════════════════════════════════════════',
+      );
+      this.logger.log(JSON.stringify(bogOrderData, null, 2));
+      this.logger.log(
+        '═══════════════════════════════════════════════════════',
+      );
+      this.logger.log(
+        `💾 save_card: ${bogOrderData.save_card ? '✅ true' : '❌ false'}`,
+      );
+      this.logger.log(
+        '═══════════════════════════════════════════════════════',
+      );
+
       // BOG API-ზე მოთხოვნის გაგზავნა
       const response = await fetch(
         `${this.BOG_API_BASE_URL}/ecommerce/orders`,
@@ -296,7 +315,9 @@ export class BOGPaymentService {
       this.logger.log(
         `   • Endpoint: ${this.BOG_IPAY_BASE_URL}/checkout/payment/subscription`,
       );
-      this.logger.log(`   • Request Body: ${JSON.stringify(requestBody, null, 2)}`);
+      this.logger.log(
+        `   • Request Body: ${JSON.stringify(requestBody, null, 2)}`,
+      );
 
       const response = await fetch(
         `${this.BOG_IPAY_BASE_URL}/checkout/payment/subscription`,
