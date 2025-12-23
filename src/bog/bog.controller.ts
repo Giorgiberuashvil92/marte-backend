@@ -156,65 +156,323 @@ export class BOGController {
     @Headers() headers: Record<string, any>,
   ): Promise<{ success: boolean; message: string }> {
     try {
-      this.logger.log('🔄 BOG Callback მიღებულია:', {
-        headers: headers,
-        body: callbackData,
-      });
+      this.logger.log(
+        '═══════════════════════════════════════════════════════',
+      );
+      this.logger.log('🔄 BOG CALLBACK მიღებულია - დეტალური ინფორმაცია:');
+      this.logger.log(
+        '═══════════════════════════════════════════════════════',
+      );
+      this.logger.log('📥 Headers:', JSON.stringify(headers, null, 2));
+      this.logger.log(
+        '📦 Callback Data:',
+        JSON.stringify(callbackData, null, 2),
+      );
+      this.logger.log(
+        '═══════════════════════════════════════════════════════',
+      );
 
       // BOG callback-ის სტრუქტურის შემოწმება
-      const { order_id, status, amount, currency } = callbackData;
+      // BOG callback სტრუქტურა:
+      // {
+      //   event: 'order_payment',
+      //   body: {
+      //     client: { order_id: '...' },
+      //     order_status: { key: 'completed', value: '...' },
+      //     purchase_units: { request_amount: '1.0', currency_code: 'GEL' }
+      //   }
+      // }
+
+      // BOG callback-ის სტრუქტურა:
+      // {
+      //   event: 'order_payment',
+      //   external_order_id: '...',
+      //   body: {
+      //     order_id: '...',  // ← აქ არის order_id!
+      //     external_order_id: '...',
+      //     client: { id: '...' },
+      //     order_status: { key: 'completed' },
+      //     purchase_units: { request_amount: '1.0', currency_code: 'GEL' }
+      //   }
+      // }
+      const innerBody =
+        callbackData.body?.body || callbackData.body || callbackData;
+      const order_id =
+        (innerBody?.order_id as string) ||
+        (callbackData.body?.client?.order_id as string) ||
+        (callbackData.order_id as string) ||
+        '';
+      const status =
+        (innerBody?.order_status?.key as string) ||
+        (callbackData.body?.order_status?.key as string) ||
+        (callbackData.status as string) ||
+        '';
+      const amount = innerBody?.purchase_units?.request_amount
+        ? parseFloat(String(innerBody.purchase_units.request_amount))
+        : callbackData.body?.purchase_units?.request_amount
+          ? parseFloat(String(callbackData.body.purchase_units.request_amount))
+          : callbackData.amount
+            ? parseFloat(String(callbackData.amount))
+            : 0;
+      const currency =
+        (innerBody?.purchase_units?.currency_code as string) ||
+        (callbackData.body?.purchase_units?.currency_code as string) ||
+        (callbackData.currency as string) ||
+        'GEL';
+      const external_order_id =
+        (callbackData.external_order_id as string) ||
+        (innerBody?.external_order_id as string) ||
+        (callbackData.body?.external_order_id as string) ||
+        '';
+
+      this.logger.log('📊 გადახდის დეტალები:');
+      this.logger.log(`   • Order ID: ${order_id}`);
+      this.logger.log(`   • Status: ${status}`);
+      this.logger.log(`   • Amount: ${amount}`);
+      this.logger.log(`   • Currency: ${currency}`);
+      this.logger.log(`   • External Order ID: ${external_order_id}`);
 
       if (!order_id) {
         this.logger.error('❌ BOG Callback-ში არ არის order_id');
+        this.logger.error(
+          '📦 Full callback data:',
+          JSON.stringify(callbackData, null, 2),
+        );
         return {
           success: false,
           message: 'Order ID არ არის მოწოდებული',
         };
       }
 
-      this.logger.log(`📊 BOG გადახდის დეტალები:`, {
-        order_id,
-        status,
-        amount,
-        currency,
-      });
-
       // გადახდის სტატუსის დამუშავება
       if (status === 'completed' || status === 'success') {
+        this.logger.log(
+          '═══════════════════════════════════════════════════════',
+        );
         this.logger.log(`✅ BOG გადახდა წარმატებულია: ${order_id}`);
+        this.logger.log(
+          '═══════════════════════════════════════════════════════',
+        );
 
-        // Payment token-ის (order_id) შენახვა recurring payment-ებისთვის
         try {
+          this.logger.log('🔍 ვპოულობთ payment-ს database-ში...');
           // ვპოულობთ payment-ს ამ orderId-ით
-          const payment = await this.paymentModel
+          let payment: PaymentDocument | null = await this.paymentModel
             .findOne({ orderId: order_id })
             .exec();
 
           if (payment) {
-            // შევინახოთ order_id როგორც paymentToken recurring payment-ებისთვის
-            await this.paymentsService.savePaymentToken(order_id, order_id);
+            this.logger.log(`✅ Payment ნაპოვნია database-ში:`);
+            this.logger.log(`   • Payment ID: ${payment._id}`);
+            this.logger.log(`   • User ID: ${payment.userId}`);
             this.logger.log(
-              `💾 Payment token შენახულია recurring payment-ებისთვის: ${order_id}`,
+              `   • Amount: ${payment.amount} ${payment.currency}`,
             );
+            this.logger.log(`   • Status: ${payment.status}`);
+            this.logger.log(`   • Created: ${payment.createdAt}`);
           } else {
             this.logger.log(
-              `⚠️ Payment არ მოიძებნა orderId-ით: ${order_id}. შეიძლება ჯერ არ იყოს შენახული.`,
+              `⚠️ Payment არ მოიძებნა database-ში orderId-ით: ${order_id}`,
+            );
+          }
+
+          // თუ payment არ არსებობს, შევქმნათ ახალი
+          if (!payment) {
+            this.logger.log(
+              '═══════════════════════════════════════════════════════',
+            );
+            this.logger.log(`💾 ახალი Payment Record-ის შექმნა`);
+            this.logger.log(
+              '═══════════════════════════════════════════════════════',
+            );
+            this.logger.log(`   • Order ID: ${order_id}`);
+
+            // BOG-ისგან მიღებული callback data-დან ვპოულობთ user-ს
+            // external_order_id-დან (რომელიც შეიძლება შეიცავდეს user ID-ს)
+            const externalOrderId =
+              (callbackData.external_order_id as string) ||
+              (callbackData.body?.external_order_id as string) ||
+              '';
+            this.logger.log(`   • External Order ID: ${externalOrderId}`);
+
+            let userId = 'unknown';
+
+            // Pattern: test_payment_1234567890_userId ან carapp_1234567890_userId
+            const userIdMatch =
+              externalOrderId.match(/test_payment_\d+_(.+)/) ||
+              externalOrderId.match(/carapp_\d+_(.+)/);
+            if (userIdMatch && userIdMatch[1]) {
+              userId = userIdMatch[1];
+              this.logger.log(`   ✅ User ID ნაპოვნია: ${userId}`);
+            } else {
+              this.logger.log(
+                `   ⚠️ User ID ვერ მოიძებნა, გამოყენებული იქნება: ${userId}`,
+              );
+            }
+
+            // შევქმნათ payment record
+            const paymentData = {
+              userId: userId,
+              orderId: order_id,
+              amount: amount || 0,
+              currency: currency || 'GEL',
+              paymentMethod: 'BOG',
+              status: 'completed',
+              context:
+                (callbackData.product_id as string) ||
+                (callbackData.body?.purchase_units?.items?.[0]
+                  ?.external_item_id as string) ||
+                'test',
+              description:
+                (callbackData.description as string) ||
+                (callbackData.purchase_description as string) ||
+                (callbackData.body?.purchase_units?.items?.[0]
+                  ?.description as string) ||
+                'BOG გადახდა',
+              paymentDate: new Date().toISOString(),
+              metadata: {
+                serviceName:
+                  (callbackData.description as string) ||
+                  (callbackData.purchase_description as string) ||
+                  (callbackData.body?.purchase_units?.items?.[0]
+                    ?.description as string) ||
+                  'BOG გადახდა',
+              },
+            };
+
+            this.logger.log('📝 Payment Data რომელიც შეინახება:');
+            this.logger.log(JSON.stringify(paymentData, null, 2));
+
+            this.logger.log('💾 Payment-ის შენახვა database-ში...');
+            const newPayment =
+              await this.paymentsService.createPayment(paymentData);
+
+            payment = newPayment;
+            this.logger.log(
+              '═══════════════════════════════════════════════════════',
+            );
+            this.logger.log(`✅ ახალი Payment Record წარმატებით შეიქმნა!`);
+            this.logger.log(
+              '═══════════════════════════════════════════════════════',
+            );
+            this.logger.log(`   • Payment ID: ${String(newPayment._id)}`);
+            this.logger.log(`   • User ID: ${newPayment.userId}`);
+            this.logger.log(`   • Order ID: ${newPayment.orderId}`);
+            this.logger.log(
+              `   • Amount: ${newPayment.amount} ${newPayment.currency}`,
+            );
+            this.logger.log(`   • Status: ${newPayment.status}`);
+            this.logger.log(`   • Context: ${newPayment.context}`);
+            this.logger.log(`   • Description: ${newPayment.description}`);
+            this.logger.log(`   • Created At: ${newPayment.createdAt}`);
+            this.logger.log(
+              '═══════════════════════════════════════════════════════',
+            );
+
+            // 🔍 Verification: შევამოწმოთ რომ payment რეალურად ინახება database-ში
+            this.logger.log(
+              '🔍 Verification: ვამოწმებთ payment-ის არსებობას database-ში...',
+            );
+            const verifyPayment = await this.paymentModel
+              .findOne({ orderId: order_id })
+              .exec();
+
+            if (verifyPayment) {
+              this.logger.log(
+                `✅ VERIFICATION SUCCESS: Payment ნაპოვნია database-ში!`,
+              );
+              this.logger.log(
+                `   • Verified Payment ID: ${String(verifyPayment._id)}`,
+              );
+              this.logger.log(
+                `   • Verified Order ID: ${verifyPayment.orderId}`,
+              );
+            } else {
+              this.logger.error(
+                `❌ VERIFICATION FAILED: Payment არ მოიძებნა database-ში!`,
+              );
+              this.logger.error(`   • Order ID: ${order_id}`);
+            }
+          }
+
+          // შევინახოთ order_id როგორც paymentToken recurring payment-ებისთვის
+          if (payment) {
+            this.logger.log(
+              '═══════════════════════════════════════════════════════',
+            );
+            this.logger.log(
+              '💾 Payment Token-ის შენახვა Recurring Payment-ებისთვის',
+            );
+            this.logger.log(
+              '═══════════════════════════════════════════════════════',
+            );
+            this.logger.log(
+              `   • Order ID (რომელიც გახდება token): ${order_id}`,
+            );
+            this.logger.log(`   • Payment ID: ${String(payment._id)}`);
+
+            await this.paymentsService.savePaymentToken(order_id, order_id);
+
+            this.logger.log(`✅ Payment Token წარმატებით შეინახა!`);
+            this.logger.log(`   • Token: ${order_id}`);
+            this.logger.log(
+              `   • ეს token გამოყენებული იქნება recurring payment-ებისთვის`,
+            );
+            this.logger.log(
+              '═══════════════════════════════════════════════════════',
+            );
+          } else {
+            this.logger.warn(
+              '⚠️ Payment არ არსებობს, token-ის შენახვა ვერ მოხერხდა',
             );
           }
         } catch (error) {
           this.logger.error(
-            '❌ Payment token-ის შენახვის შეცდომა:',
-            error instanceof Error ? error.message : 'Unknown error',
+            '═══════════════════════════════════════════════════════',
+          );
+          this.logger.error('❌ Payment-ის შენახვის შეცდომა!');
+          this.logger.error(
+            '═══════════════════════════════════════════════════════',
+          );
+          this.logger.error(`   • Order ID: ${order_id}`);
+          this.logger.error(
+            `   • Error: ${error instanceof Error ? error.message : 'Unknown error'}`,
+          );
+          if (error instanceof Error && error.stack) {
+            this.logger.error(`   • Stack: ${error.stack}`);
+          }
+          this.logger.error(
+            '═══════════════════════════════════════════════════════',
           );
           // არ ვაბრუნებთ შეცდომას, რადგან callback-ი უნდა დასრულდეს წარმატებით
         }
+
+        this.logger.log(
+          '═══════════════════════════════════════════════════════',
+        );
+        this.logger.log('✅ გადახდა წარმატებით დამუშავდა და დასრულდა!');
+        this.logger.log(
+          '═══════════════════════════════════════════════════════',
+        );
 
         return {
           success: true,
           message: 'გადახდა წარმატებით დამუშავდა',
         };
       } else if (status === 'failed' || status === 'cancelled') {
+        this.logger.log(
+          '═══════════════════════════════════════════════════════',
+        );
         this.logger.log(`❌ BOG გადახდა წარუმატებელია: ${order_id}`);
+        this.logger.log(
+          '═══════════════════════════════════════════════════════',
+        );
+        this.logger.log(`   • Order ID: ${order_id}`);
+        this.logger.log(`   • Status: ${status}`);
+        this.logger.log(`   • Amount: ${amount} ${currency}`);
+        this.logger.log(
+          '═══════════════════════════════════════════════════════',
+        );
 
         return {
           success: false,

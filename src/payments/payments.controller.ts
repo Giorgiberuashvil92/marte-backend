@@ -78,6 +78,43 @@ export class PaymentsController {
     }
   }
 
+  /**
+   * Payment-ის მიღება Order ID-ით
+   * GET /api/payments/order/:orderId
+   */
+  @Get('order/:orderId')
+  async getPaymentByOrderId(@Param('orderId') orderId: string) {
+    try {
+      this.logger.log(`🔍 Getting payment by orderId: ${orderId}`);
+
+      const payment = await this.paymentsService.getPaymentByOrderId(orderId);
+
+      if (!payment) {
+        this.logger.log(`⚠️ Payment not found for orderId: ${orderId}`);
+        return {
+          success: false,
+          message: 'Payment not found',
+          data: null,
+        };
+      }
+
+      this.logger.log(`✅ Payment found: ${String(payment._id)}`);
+
+      return {
+        success: true,
+        message: 'Payment retrieved successfully',
+        data: payment,
+      };
+    } catch (error) {
+      this.logger.error('❌ Failed to get payment by orderId:', error);
+      return {
+        success: false,
+        message: 'Failed to retrieve payment',
+        error: error.message,
+      };
+    }
+  }
+
   @Get('stats')
   async getPaymentStats() {
     try {
