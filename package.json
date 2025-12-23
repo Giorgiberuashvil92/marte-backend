@@ -23,6 +23,10 @@
     "seed:categories": "node seed-categories.js",
     "seed:categories:overwrite": "node seed-categories.js --overwrite",
     "test:recurring-payments": "node test-recurring-payments.js",
+    "create:test-subscription": "node create-test-subscription.js",
+    "view:payments": "node view-payments.js",
+    "create:recurring-from-token": "node create-recurring-from-token.js",
+    "process:recurring": "node process-recurring-payment.js",
     "test:debug": "node --inspect-brk -r tsconfig-paths/register -r ts-node/register node_modules/.bin/jest --runInBand",
     "test:e2e": "jest --config ./test/jest-e2e.json"
   },

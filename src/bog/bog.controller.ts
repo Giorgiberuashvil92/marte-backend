@@ -22,6 +22,7 @@ import {
   BOGRecurringPaymentResponseDto,
 } from './dto/bog-payment.dto';
 import { Payment, PaymentDocument } from '../schemas/payment.schema';
+import { SubscriptionsService } from '../subscriptions/subscriptions.service';
 
 @Controller('bog')
 export class BOGController {
@@ -31,6 +32,7 @@ export class BOGController {
     private readonly bogPaymentService: BOGPaymentService,
     private readonly bogOAuthService: BOGOAuthService,
     private readonly paymentsService: PaymentsService,
+    private readonly subscriptionsService: SubscriptionsService,
     @InjectModel(Payment.name) private paymentModel: Model<PaymentDocument>,
   ) {}
 
@@ -183,18 +185,6 @@ export class BOGController {
       //   }
       // }
 
-      // BOG callback-ის სტრუქტურა:
-      // {
-      //   event: 'order_payment',
-      //   external_order_id: '...',
-      //   body: {
-      //     order_id: '...',  // ← აქ არის order_id!
-      //     external_order_id: '...',
-      //     client: { id: '...' },
-      //     order_status: { key: 'completed' },
-      //     purchase_units: { request_amount: '1.0', currency_code: 'GEL' }
-      //   }
-      // }
       const innerBody =
         callbackData.body?.body || callbackData.body || callbackData;
       const order_id =
@@ -421,6 +411,71 @@ export class BOGController {
             this.logger.log(
               '═══════════════════════════════════════════════════════',
             );
+
+            // Subscription-ის შექმნა (თუ context არის 'subscription' ან 'test_subscription' ან 'test')
+            const context = payment.context || '';
+            if (
+              context === 'subscription' ||
+              context === 'test_subscription' ||
+              context === 'test'
+            ) {
+              try {
+                this.logger.log(
+                  '═══════════════════════════════════════════════════════',
+                );
+                this.logger.log('📝 Subscription-ის შექმნა payment-ის შემდეგ');
+                this.logger.log(
+                  '═══════════════════════════════════════════════════════',
+                );
+                this.logger.log(`   • User ID: ${payment.userId}`);
+                this.logger.log(`   • Payment Token: ${order_id}`);
+                this.logger.log(
+                  `   • Amount: ${payment.amount} ${payment.currency}`,
+                );
+                this.logger.log(`   • Context: ${context}`);
+
+                const subscription =
+                  await this.subscriptionsService.createSubscriptionFromPayment(
+                    payment.userId,
+                    order_id,
+                    payment.amount,
+                    payment.currency,
+                    context,
+                  );
+
+                this.logger.log(
+                  '═══════════════════════════════════════════════════════',
+                );
+                this.logger.log(`✅ Subscription წარმატებით შეიქმნა!`);
+                this.logger.log(
+                  '═══════════════════════════════════════════════════════',
+                );
+                this.logger.log(
+                  `   • Subscription ID: ${String(subscription._id)}`,
+                );
+                this.logger.log(`   • User ID: ${subscription.userId}`);
+                this.logger.log(`   • Plan: ${subscription.planName}`);
+                this.logger.log(
+                  `   • Price: ${subscription.planPrice} ${subscription.currency}`,
+                );
+                this.logger.log(`   • Period: ${subscription.period}`);
+                this.logger.log(`   • Status: ${subscription.status}`);
+                this.logger.log(
+                  `   • Next Billing Date: ${subscription.nextBillingDate?.toISOString()}`,
+                );
+                this.logger.log(
+                  '═══════════════════════════════════════════════════════',
+                );
+              } catch (subscriptionError) {
+                this.logger.error(
+                  '❌ Subscription-ის შექმნის შეცდომა:',
+                  subscriptionError instanceof Error
+                    ? subscriptionError.message
+                    : 'Unknown error',
+                );
+                // არ ვაბრუნებთ error-ს, რადგან payment-ი უკვე შენახულია
+              }
+            }
           } else {
             this.logger.warn(
               '⚠️ Payment არ არსებობს, token-ის შენახვა ვერ მოხერხდა',

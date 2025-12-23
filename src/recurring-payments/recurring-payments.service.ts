@@ -112,8 +112,11 @@ export class RecurringPaymentsService {
       );
     }
 
-    // გადახდის შენახვა database-ში
-    await this.paymentsService.createPayment({
+    // გადახდის შენახვა database-ში (payments collection-ში)
+    this.logger.log(
+      '💾 Recurring payment-ის შენახვა payments collection-ში...',
+    );
+    const payment = await this.paymentsService.createPayment({
       userId: subscription.userId,
       orderId: recurringPaymentResult.order_id,
       amount: subscription.planPrice,
@@ -121,12 +124,17 @@ export class RecurringPaymentsService {
       paymentMethod: 'BOG',
       status: 'completed',
       context: 'subscription',
-      description: `${subscription.planName} - ${subscription.period} subscription`,
+      description: `${subscription.planName} - ${subscription.period} subscription (Billing Cycle ${subscription.billingCycles + 1})`,
       paymentDate: new Date().toISOString(),
+      isRecurring: true,
+      recurringPaymentId: subscriptionId,
       metadata: {
         serviceName: `${subscription.planName} - ${subscription.period} subscription`,
       },
     });
+    this.logger.log(
+      `✅ Recurring payment შეინახა payments collection-ში: ${String(payment._id)}`,
+    );
 
     // subscription-ის განახლება
     const nextBillingDate = this.calculateNextBillingDate(
@@ -186,6 +194,8 @@ export class RecurringPaymentsService {
     this.logger.log('🔄 Manual რეკურინგ გადახდების დამუშავება...');
 
     const now = new Date();
+    this.logger.log(`📅 Current time: ${now.toISOString()}`);
+    
     const subscriptionsToCharge = await this.subscriptionModel
       .find({
         status: 'active',
@@ -193,6 +203,16 @@ export class RecurringPaymentsService {
         bogCardToken: { $exists: true, $ne: null },
       })
       .exec();
+    
+    this.logger.log(`📊 Found ${subscriptionsToCharge.length} subscriptions to charge`);
+    if (subscriptionsToCharge.length > 0) {
+      subscriptionsToCharge.forEach((sub) => {
+        this.logger.log(`   • Subscription ID: ${String(sub._id)}`);
+        this.logger.log(`   • User ID: ${sub.userId}`);
+        this.logger.log(`   • Next Billing Date: ${sub.nextBillingDate?.toISOString()}`);
+        this.logger.log(`   • BOG Token: ${sub.bogCardToken}`);
+      });
+    }
 
     let successCount = 0;
     let failureCount = 0;

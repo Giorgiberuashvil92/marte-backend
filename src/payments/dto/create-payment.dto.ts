@@ -4,6 +4,7 @@ import {
   IsOptional,
   IsObject,
   IsDateString,
+  IsBoolean,
 } from 'class-validator';
 
 export class CreatePaymentDto {
@@ -50,4 +51,16 @@ export class CreatePaymentDto {
       email?: string;
     };
   };
+
+  @IsOptional()
+  @IsString()
+  paymentToken?: string;
+
+  @IsOptional()
+  @IsBoolean()
+  isRecurring?: boolean;
+
+  @IsOptional()
+  @IsString()
+  recurringPaymentId?: string;
 }

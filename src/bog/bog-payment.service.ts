@@ -35,8 +35,8 @@ interface BOGStatusApiResponse {
 @Injectable()
 export class BOGPaymentService {
   private readonly logger = new Logger(BOGPaymentService.name);
-  private readonly BOG_API_BASE_URL = 'https://api.bog.ge/payments/v1';
-  private readonly BOG_IPAY_BASE_URL = 'https://api.bog.ge/payments/v1'; // iPay API base URL
+  private readonly BOG_API_BASE_URL = 'https://api.bog.ge/payments/v1'; // OAuth და ecommerce endpoints
+  private readonly BOG_IPAY_BASE_URL = 'https://ipay.ge/opay/api/v1'; // iPay API base URL (recurring payments-ისთვის)
 
   constructor(
     private bogOAuthService: BOGOAuthService,
@@ -247,6 +247,7 @@ export class BOGPaymentService {
         fail: orderData.fail_url || `${baseUrl}/payment/fail`,
       },
       ttl: 15, // 15 წუთი
+      save_card: true, // ✅ Card token-ის შენახვა recurring payment-ებისთვის
     };
   }
 
@@ -276,7 +277,27 @@ export class BOGPaymentService {
       }
 
       // BOG iPay API-ზე რეკურინგ გადახდის მოთხოვნა
-      // Endpoint: POST /api/v1/checkout/payment/subscription
+      // Endpoint: POST /opay/api/v1/checkout/payment/subscription
+      // Base URL: https://ipay.ge/opay/api/v1 (documentation-ის მიხედვით)
+      // Recurring payment-ისთვის საჭიროა წარმატებული გადახდის order_id
+      const requestBody = {
+        order_id: recurringPaymentData.order_id, // წარმატებული გადახდის order_id რომელიც გამოიყენება როგორც token
+        amount: {
+          currency_code: recurringPaymentData.currency || 'GEL',
+          value: recurringPaymentData.amount.toString(),
+        },
+        shop_order_id: recurringPaymentData.shop_order_id,
+        purchase_description: recurringPaymentData.purchase_description,
+      };
+
+      this.logger.log(
+        '📤 Sending recurring payment request to BOG iPay API...',
+      );
+      this.logger.log(
+        `   • Endpoint: ${this.BOG_IPAY_BASE_URL}/checkout/payment/subscription`,
+      );
+      this.logger.log(`   • Request Body: ${JSON.stringify(requestBody, null, 2)}`);
+
       const response = await fetch(
         `${this.BOG_IPAY_BASE_URL}/checkout/payment/subscription`,
         {
@@ -286,26 +307,46 @@ export class BOGPaymentService {
             'Content-Type': 'application/json',
             'Accept-Language': 'ka',
           },
-          body: JSON.stringify({
-            order_id: recurringPaymentData.order_id,
-            amount: {
-              currency_code: recurringPaymentData.currency || 'GEL',
-              value: recurringPaymentData.amount.toString(),
-            },
-            shop_order_id: recurringPaymentData.shop_order_id,
-            purchase_description: recurringPaymentData.purchase_description,
-          }),
+          body: JSON.stringify(requestBody),
         },
       );
 
+      this.logger.log(
+        `📥 BOG API Response Status: ${response.status} ${response.statusText}`,
+      );
+
       if (!response.ok) {
-        const errorData = (await response.json()) as {
-          message?: string;
-          error?: string;
-        };
+        const errorText = await response.text();
+        let errorData: { message?: string; error?: string; code?: string } = {};
+
+        try {
+          errorData = JSON.parse(errorText);
+        } catch {
+          errorData = { message: errorText || 'Unknown error' };
+        }
+
         const errorMessage =
-          errorData.message || errorData.error || 'Unknown error';
-        this.logger.error('❌ რეკურინგ გადახდის შეცდომა:', errorMessage);
+          errorData.message ||
+          errorData.error ||
+          errorData.code ||
+          'Unknown error';
+
+        this.logger.error(
+          '═══════════════════════════════════════════════════════',
+        );
+        this.logger.error('❌ BOG Recurring Payment Error:');
+        this.logger.error(
+          '═══════════════════════════════════════════════════════',
+        );
+        this.logger.error(
+          `   • Status: ${response.status} ${response.statusText}`,
+        );
+        this.logger.error(`   • Error Code: ${errorData.code || 'N/A'}`);
+        this.logger.error(`   • Error Message: ${errorMessage}`);
+        this.logger.error(`   • Full Response: ${errorText.substring(0, 500)}`);
+        this.logger.error(
+          '═══════════════════════════════════════════════════════',
+        );
 
         throw new HttpException(
           `რეკურინგ გადახდა ვერ მოხერხდა: ${errorMessage}`,
