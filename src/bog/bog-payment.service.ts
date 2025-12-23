@@ -5,6 +5,8 @@ import {
   BOGOrderRequestDto,
   BOGOrderResponseDto,
   BOGPaymentStatusDto,
+  BOGRecurringPaymentDto,
+  BOGRecurringPaymentResponseDto,
 } from './dto/bog-payment.dto';
 
 // BOG API Response Types
@@ -34,6 +36,7 @@ interface BOGStatusApiResponse {
 export class BOGPaymentService {
   private readonly logger = new Logger(BOGPaymentService.name);
   private readonly BOG_API_BASE_URL = 'https://api.bog.ge/payments/v1';
+  private readonly BOG_IPAY_BASE_URL = 'https://api.bog.ge/payments/v1'; // iPay API base URL
 
   constructor(
     private bogOAuthService: BOGOAuthService,
@@ -245,5 +248,144 @@ export class BOGPaymentService {
       },
       ttl: 15, // 15 წუთი
     };
+  }
+
+  /**
+   * რეკურინგ გადახდის განხორციელება BOG iPay API-ს გამოყენებით
+   * გამოიყენება წარმატებული გადახდის order_id, რომელიც გამოიყენება რეკურინგ გადახდებისთვის
+   *
+   * @see https://api.bog.ge/docs/ipay/recurring-payments
+   */
+  async processRecurringPayment(
+    recurringPaymentData: BOGRecurringPaymentDto,
+  ): Promise<BOGRecurringPaymentResponseDto> {
+    try {
+      this.logger.log('🔄 რეკურინგ გადახდის დაწყება...', {
+        order_id: recurringPaymentData.order_id,
+        amount: recurringPaymentData.amount,
+        shop_order_id: recurringPaymentData.shop_order_id,
+      });
+
+      // OAuth Token-ის მიღება
+      const token = await this.bogOAuthService.getAccessToken();
+      if (!token) {
+        throw new HttpException(
+          'BOG OAuth token ვერ მოიძებნა',
+          HttpStatus.UNAUTHORIZED,
+        );
+      }
+
+      // BOG iPay API-ზე რეკურინგ გადახდის მოთხოვნა
+      // Endpoint: POST /api/v1/checkout/payment/subscription
+      const response = await fetch(
+        `${this.BOG_IPAY_BASE_URL}/checkout/payment/subscription`,
+        {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${token}`,
+            'Content-Type': 'application/json',
+            'Accept-Language': 'ka',
+          },
+          body: JSON.stringify({
+            order_id: recurringPaymentData.order_id,
+            amount: {
+              currency_code: recurringPaymentData.currency || 'GEL',
+              value: recurringPaymentData.amount.toString(),
+            },
+            shop_order_id: recurringPaymentData.shop_order_id,
+            purchase_description: recurringPaymentData.purchase_description,
+          }),
+        },
+      );
+
+      if (!response.ok) {
+        const errorData = (await response.json()) as {
+          message?: string;
+          error?: string;
+        };
+        const errorMessage =
+          errorData.message || errorData.error || 'Unknown error';
+        this.logger.error('❌ რეკურინგ გადახდის შეცდომა:', errorMessage);
+
+        throw new HttpException(
+          `რეკურინგ გადახდა ვერ მოხერხდა: ${errorMessage}`,
+          HttpStatus.BAD_REQUEST,
+        );
+      }
+
+      const responseData = (await response.json()) as {
+        order_id: string;
+        status: string;
+        message?: string;
+      };
+
+      this.logger.log('✅ რეკურინგ გადახდა წარმატებით განხორციელდა:', {
+        order_id: responseData.order_id,
+        status: responseData.status,
+      });
+
+      return {
+        order_id: responseData.order_id,
+        status: responseData.status,
+        message:
+          responseData.message || 'რეკურინგ გადახდა წარმატებით განხორციელდა',
+      };
+    } catch (error: unknown) {
+      this.logger.error(
+        '❌ რეკურინგ გადახდის შეცდომა:',
+        error instanceof Error ? error.message : 'Unknown error',
+      );
+
+      if (error instanceof HttpException) {
+        throw error;
+      }
+
+      throw new HttpException(
+        `რეკურინგ გადახდა ვერ მოხერხდა: ${
+          error instanceof Error ? error.message : 'Unknown error'
+        }`,
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
+  }
+
+  /**
+   * Payment token-ის მიღება გადახდის დეტალებიდან
+   * BOG iPay API-ში, რეკურინგ გადახდებისთვის გამოიყენება წარმატებული გადახდის order_id
+   * ეს order_id ინახება პირველი გადახდის შემდეგ და გამოიყენება რეკურინგ გადახდებისთვის
+   *
+   * @param orderId - წარმატებული გადახდის order_id
+   * @returns order_id რომელიც გამოიყენება რეკურინგ გადახდებისთვის
+   */
+  async getRecurringPaymentToken(orderId: string): Promise<string | null> {
+    try {
+      this.logger.log(
+        `🔍 Recurring payment token-ის მიღება orderId-დან: ${orderId}`,
+      );
+
+      // ვამოწმებთ რომ გადახდა წარმატებულია
+      const paymentStatus = await this.getOrderStatus(orderId);
+
+      if (
+        paymentStatus.status !== 'completed' &&
+        paymentStatus.status !== 'success'
+      ) {
+        this.logger.warn(
+          `⚠️ გადახდა არ არის წარმატებული: ${paymentStatus.status}`,
+        );
+        return null;
+      }
+
+      // BOG iPay API-ში, რეკურინგ გადახდებისთვის გამოიყენება წარმატებული გადახდის order_id
+      // ეს order_id არის "payment token" რეკურინგ გადახდებისთვის
+      this.logger.log('✅ Recurring payment token (order_id) მიღებულია');
+      return orderId;
+    } catch (error: unknown) {
+      this.logger.error(
+        '❌ Recurring payment token-ის მიღების შეცდომა:',
+        error instanceof Error ? error.message : 'Unknown error',
+      );
+      return null;
+    }
   }
 }

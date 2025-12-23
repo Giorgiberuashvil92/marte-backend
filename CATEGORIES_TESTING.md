@@ -249,3 +249,4 @@ npm start
 - [ ] Category გვერდი მუშაობს mobile app-ში
 - [ ] Production API-ზე კატეგორიები ხელმისაწვდომია
 
+

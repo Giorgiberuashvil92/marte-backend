@@ -32,6 +32,15 @@ export class Payment {
   @Prop({ required: true })
   paymentDate: Date;
 
+  @Prop({ required: false })
+  paymentToken?: string; // BOG payment token for recurring payments
+
+  @Prop({ required: false })
+  isRecurring?: boolean; // არის თუ არა ეს რეკურინგ გადახდა
+
+  @Prop({ required: false })
+  recurringPaymentId?: string; // რეკურინგ გადახდის ID
+
   @Prop({
     required: false,
     type: {

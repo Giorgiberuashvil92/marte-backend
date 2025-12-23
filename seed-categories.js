@@ -345,3 +345,4 @@ async function seedCategories() {
 // Run the seed function
 seedCategories();
 
+

@@ -37,9 +37,11 @@ export class PaymentsService {
       });
 
       return savedPayment;
-    } catch (error) {
+    } catch (error: unknown) {
       this.logger.error('❌ Failed to save payment to database:', error);
-      throw new Error(`Failed to save payment: ${error.message}`);
+      throw new Error(
+        `Failed to save payment: ${error instanceof Error ? error.message : 'Unknown error'}`,
+      );
     }
   }
 
@@ -57,9 +59,11 @@ export class PaymentsService {
       );
 
       return payments;
-    } catch (error) {
+    } catch (error: unknown) {
       this.logger.error('❌ Failed to get user payments:', error);
-      throw new Error(`Failed to get user payments: ${error.message}`);
+      throw new Error(
+        `Failed to get user payments: ${error instanceof Error ? error.message : 'Unknown error'}`,
+      );
     }
   }
 
@@ -100,7 +104,7 @@ export class PaymentsService {
 
       const stats = {
         totalPayments,
-        totalAmount: totalAmount[0]?.total || 0,
+        totalAmount: (totalAmount[0] as { total?: number })?.total || 0,
         paymentsByMethod,
         paymentsByContext,
         recentPayments,
@@ -109,10 +113,10 @@ export class PaymentsService {
       this.logger.log('✅ Payment statistics calculated successfully');
 
       return stats;
-    } catch (error) {
+    } catch (error: unknown) {
       this.logger.error('❌ Failed to calculate payment statistics:', error);
       throw new Error(
-        `Failed to calculate payment statistics: ${error.message}`,
+        `Failed to calculate payment statistics: ${error instanceof Error ? error.message : 'Unknown error'}`,
       );
     }
   }
@@ -130,9 +134,94 @@ export class PaymentsService {
       this.logger.log(`✅ Payment found: ${paymentId}`);
 
       return payment;
-    } catch (error) {
+    } catch (error: unknown) {
       this.logger.error('❌ Failed to get payment by ID:', error);
-      throw new Error(`Failed to get payment: ${error.message}`);
+      throw new Error(
+        `Failed to get payment: ${error instanceof Error ? error.message : 'Unknown error'}`,
+      );
+    }
+  }
+
+  async savePaymentToken(
+    orderId: string,
+    paymentToken: string,
+  ): Promise<PaymentDocument> {
+    try {
+      this.logger.log(`💾 Saving payment token for order: ${orderId}`);
+
+      const payment = await this.paymentModel
+        .findOneAndUpdate(
+          { orderId },
+          {
+            paymentToken,
+            updatedAt: new Date(),
+          },
+          { new: true },
+        )
+        .exec();
+
+      if (!payment) {
+        throw new Error(`Payment with orderId ${orderId} not found`);
+      }
+
+      this.logger.log(`✅ Payment token saved for order: ${orderId}`);
+
+      return payment;
+    } catch (error: unknown) {
+      this.logger.error('❌ Failed to save payment token:', error);
+      throw new Error(
+        `Failed to save payment token: ${error instanceof Error ? error.message : 'Unknown error'}`,
+      );
+    }
+  }
+
+  async getPaymentByOrderId(orderId: string): Promise<PaymentDocument | null> {
+    try {
+      this.logger.log(`🔍 Getting payment by orderId: ${orderId}`);
+
+      const payment = await this.paymentModel.findOne({ orderId }).exec();
+
+      if (payment) {
+        this.logger.log(`✅ Payment found for orderId: ${orderId}`);
+      } else {
+        this.logger.log(`⚠️ Payment not found for orderId: ${orderId}`);
+      }
+
+      return payment;
+    } catch (error: unknown) {
+      this.logger.error('❌ Failed to get payment by orderId:', error);
+      throw new Error(
+        `Failed to get payment: ${error instanceof Error ? error.message : 'Unknown error'}`,
+      );
+    }
+  }
+
+  async getUserPaymentToken(userId: string): Promise<string | null> {
+    try {
+      this.logger.log(`🔍 Getting payment token for user: ${userId}`);
+
+      // ვპოულობთ ბოლო წარმატებულ გადახდას ამ მომხმარებლისთვის, რომელსაც აქვს paymentToken
+      const payment = await this.paymentModel
+        .findOne({
+          userId,
+          status: 'completed',
+          paymentToken: { $exists: true, $ne: null },
+        })
+        .sort({ paymentDate: -1 })
+        .exec();
+
+      if (payment && payment.paymentToken) {
+        this.logger.log(`✅ Payment token found for user: ${userId}`);
+        return payment.paymentToken;
+      }
+
+      this.logger.log(`⚠️ Payment token not found for user: ${userId}`);
+      return null;
+    } catch (error: unknown) {
+      this.logger.error('❌ Failed to get user payment token:', error);
+      throw new Error(
+        `Failed to get payment token: ${error instanceof Error ? error.message : 'Unknown error'}`,
+      );
     }
   }
 }

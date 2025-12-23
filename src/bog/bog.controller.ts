@@ -9,13 +9,19 @@ import {
   HttpStatus,
   Headers,
 } from '@nestjs/common';
+import { InjectModel } from '@nestjs/mongoose';
+import { Model } from 'mongoose';
 import { BOGPaymentService } from './bog-payment.service';
 import { BOGOAuthService } from './bog-oauth.service';
+import { PaymentsService } from '../payments/payments.service';
 import {
   BOGOrderRequestDto,
   BOGOrderResponseDto,
   BOGPaymentStatusDto,
+  BOGRecurringPaymentDto,
+  BOGRecurringPaymentResponseDto,
 } from './dto/bog-payment.dto';
+import { Payment, PaymentDocument } from '../schemas/payment.schema';
 
 @Controller('bog')
 export class BOGController {
@@ -24,6 +30,8 @@ export class BOGController {
   constructor(
     private readonly bogPaymentService: BOGPaymentService,
     private readonly bogOAuthService: BOGOAuthService,
+    private readonly paymentsService: PaymentsService,
+    @InjectModel(Payment.name) private paymentModel: Model<PaymentDocument>,
   ) {}
 
   /**
@@ -143,10 +151,10 @@ export class BOGController {
    */
   @Post('callback')
   @HttpCode(HttpStatus.OK)
-  handleBOGCallback(
+  async handleBOGCallback(
     @Body() callbackData: any,
     @Headers() headers: Record<string, any>,
-  ): { success: boolean; message: string } {
+  ): Promise<{ success: boolean; message: string }> {
     try {
       this.logger.log('🔄 BOG Callback მიღებულია:', {
         headers: headers,
@@ -175,11 +183,31 @@ export class BOGController {
       if (status === 'completed' || status === 'success') {
         this.logger.log(`✅ BOG გადახდა წარმატებულია: ${order_id}`);
 
-        // აქ შეგიძლიათ დაუმატოთ:
-        // - გადახდის მონაცემების ბაზაში შენახვა
-        // - მომხმარებელს შეტყობინების გაგზავნა
-        // - შეკვეთის სტატუსის განახლება
-        // - CarWash booking-ის დადასტურება
+        // Payment token-ის (order_id) შენახვა recurring payment-ებისთვის
+        try {
+          // ვპოულობთ payment-ს ამ orderId-ით
+          const payment = await this.paymentModel
+            .findOne({ orderId: order_id })
+            .exec();
+
+          if (payment) {
+            // შევინახოთ order_id როგორც paymentToken recurring payment-ებისთვის
+            await this.paymentsService.savePaymentToken(order_id, order_id);
+            this.logger.log(
+              `💾 Payment token შენახულია recurring payment-ებისთვის: ${order_id}`,
+            );
+          } else {
+            this.logger.log(
+              `⚠️ Payment არ მოიძებნა orderId-ით: ${order_id}. შეიძლება ჯერ არ იყოს შენახული.`,
+            );
+          }
+        } catch (error) {
+          this.logger.error(
+            '❌ Payment token-ის შენახვის შეცდომა:',
+            error instanceof Error ? error.message : 'Unknown error',
+          );
+          // არ ვაბრუნებთ შეცდომას, რადგან callback-ი უნდა დასრულდეს წარმატებით
+        }
 
         return {
           success: true,
@@ -236,6 +264,89 @@ export class BOGController {
       return {
         success: false,
         message: 'Token cache-ის გასუფთავება ვერ მოხერხდა',
+      };
+    }
+  }
+
+  /**
+   * რეკურინგ გადახდის განხორციელება
+   * POST /bog/recurring-payment
+   *
+   * გამოიყენება წარმატებული გადახდის order_id, რომელიც ინახება პირველი გადახდის შემდეგ
+   *
+   * @see https://api.bog.ge/docs/ipay/recurring-payments
+   */
+  @Post('recurring-payment')
+  @HttpCode(HttpStatus.OK)
+  async processRecurringPayment(
+    @Body() recurringPaymentData: BOGRecurringPaymentDto,
+  ): Promise<BOGRecurringPaymentResponseDto> {
+    try {
+      this.logger.log('🔄 რეკურინგ გადახდის მოთხოვნა მიღებულია', {
+        order_id: recurringPaymentData.order_id,
+        amount: recurringPaymentData.amount,
+      });
+
+      const result =
+        await this.bogPaymentService.processRecurringPayment(
+          recurringPaymentData,
+        );
+
+      this.logger.log(
+        '✅ რეკურინგ გადახდა წარმატებით განხორციელდა:',
+        result.order_id,
+      );
+
+      return result;
+    } catch (error: any) {
+      this.logger.error(
+        '❌ რეკურინგ გადახდის შეცდომა:',
+        (error as Error).message,
+      );
+      throw error;
+    }
+  }
+
+  /**
+   * Recurring payment token-ის მიღება (order_id) წარმატებული გადახდისგან
+   * GET /bog/recurring-payment-token/:orderId
+   *
+   * ეს endpoint აბრუნებს order_id-ს, რომელიც გამოიყენება რეკურინგ გადახდებისთვის
+   */
+  @Get('recurring-payment-token/:orderId')
+  async getRecurringPaymentToken(
+    @Param('orderId') orderId: string,
+  ): Promise<{ success: boolean; token?: string; message: string }> {
+    try {
+      this.logger.log(`🔍 Recurring payment token-ის მიღება: ${orderId}`);
+
+      const token =
+        await this.bogPaymentService.getRecurringPaymentToken(orderId);
+
+      if (!token) {
+        return {
+          success: false,
+          message:
+            'Recurring payment token ვერ მოიძებნა. შეამოწმეთ რომ გადახდა წარმატებულია.',
+        };
+      }
+
+      this.logger.log('✅ Recurring payment token მიღებულია');
+
+      return {
+        success: true,
+        token,
+        message: 'Recurring payment token წარმატებით მიღებულია',
+      };
+    } catch (error: any) {
+      this.logger.error(
+        '❌ Recurring payment token-ის მიღების შეცდომა:',
+        (error as Error).message,
+      );
+
+      return {
+        success: false,
+        message: `Recurring payment token-ის მიღება ვერ მოხერხდა: ${(error as Error).message}`,
       };
     }
   }
