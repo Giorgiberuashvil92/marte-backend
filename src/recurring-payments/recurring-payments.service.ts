@@ -106,9 +106,13 @@ export class RecurringPaymentsService {
         purchase_description: `${subscription.planName} - ${subscription.period} subscription`,
       });
 
-    if (recurringPaymentResult.status !== 'success') {
+    // BOG API-ის მიხედვით, status შეიძლება იყოს 'in_progress' ან 'success'
+    if (
+      recurringPaymentResult.status !== 'success' &&
+      recurringPaymentResult.status !== 'in_progress'
+    ) {
       throw new Error(
-        `BOG recurring payment ვერ მოხერხდა: ${recurringPaymentResult.message}`,
+        `BOG recurring payment ვერ მოხერხდა: ${recurringPaymentResult.message || 'Unknown error'}`,
       );
     }
 

@@ -36,7 +36,8 @@ interface BOGStatusApiResponse {
 export class BOGPaymentService {
   private readonly logger = new Logger(BOGPaymentService.name);
   private readonly BOG_API_BASE_URL = 'https://api.bog.ge/payments/v1'; // OAuth და ecommerce endpoints
-  private readonly BOG_IPAY_BASE_URL = 'https://ipay.ge/opay/api/v1'; // iPay API base URL (recurring payments-ისთვის)
+  private readonly BOG_IPAY_BASE_URL =
+    'https://api.bog.ge/v1/checkout/payment/subscription'; // iPay API base URL (recurring payments-ისთვის)
 
   constructor(
     private bogOAuthService: BOGOAuthService,
@@ -310,40 +311,90 @@ export class BOGPaymentService {
       };
 
       this.logger.log(
+        '═══════════════════════════════════════════════════════',
+      );
+      this.logger.log(
         '📤 Sending recurring payment request to BOG iPay API...',
       );
       this.logger.log(
-        `   • Endpoint: ${this.BOG_IPAY_BASE_URL}/checkout/payment/subscription`,
+        '═══════════════════════════════════════════════════════',
+      );
+      this.logger.log(`   • Base URL: ${this.BOG_IPAY_BASE_URL}`);
+      // თუ BOG_IPAY_BASE_URL უკვე შეიცავს full path-ს, არ ვამატებთ /checkout/payment/subscription
+      const endpoint = this.BOG_IPAY_BASE_URL.includes(
+        '/checkout/payment/subscription',
+      )
+        ? this.BOG_IPAY_BASE_URL
+        : `${this.BOG_IPAY_BASE_URL}/checkout/payment/subscription`;
+      this.logger.log(`   • Full Endpoint: ${endpoint}`);
+      this.logger.log(`   • Method: POST`);
+      this.logger.log(
+        `   • Authorization: Bearer ${token.substring(0, 20)}...`,
       );
       this.logger.log(
         `   • Request Body: ${JSON.stringify(requestBody, null, 2)}`,
       );
-
-      const response = await fetch(
-        `${this.BOG_IPAY_BASE_URL}/checkout/payment/subscription`,
-        {
-          method: 'POST',
-          headers: {
-            Authorization: `Bearer ${token}`,
-            'Content-Type': 'application/json',
-            'Accept-Language': 'ka',
-          },
-          body: JSON.stringify(requestBody),
-        },
+      this.logger.log(
+        '═══════════════════════════════════════════════════════',
       );
 
+      const response = await fetch(endpoint, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json',
+          'Accept-Language': 'ka',
+        },
+        body: JSON.stringify(requestBody),
+      });
+
       this.logger.log(
-        `📥 BOG API Response Status: ${response.status} ${response.statusText}`,
+        '═══════════════════════════════════════════════════════',
+      );
+      this.logger.log('📥 BOG API Response:');
+      this.logger.log(
+        '═══════════════════════════════════════════════════════',
+      );
+      this.logger.log(`   • Status: ${response.status} ${response.statusText}`);
+      this.logger.log(`   • OK: ${response.ok}`);
+
+      // ვამოწმებთ response-ის content type-ს
+      const contentType = response.headers.get('content-type');
+      this.logger.log(`   • Content-Type: ${contentType || 'N/A'}`);
+
+      // ვალოგებთ headers-ებს
+      const headers: Record<string, string> = {};
+      response.headers.forEach((value, key) => {
+        headers[key] = value;
+      });
+      this.logger.log(
+        `   • Response Headers: ${JSON.stringify(headers, null, 2)}`,
+      );
+      this.logger.log(
+        '═══════════════════════════════════════════════════════',
       );
 
       if (!response.ok) {
         const errorText = await response.text();
         let errorData: { message?: string; error?: string; code?: string } = {};
 
+        // თუ HTML response-ია, ვალოგებთ მხოლოდ პირველ 500 სიმბოლოს
+        const isHtml =
+          errorText.trim().startsWith('<!DOCTYPE') ||
+          errorText.trim().startsWith('<html');
+        const errorPreview = isHtml
+          ? errorText.substring(0, 500) + (errorText.length > 500 ? '...' : '')
+          : errorText;
+
         try {
           errorData = JSON.parse(errorText);
         } catch {
-          errorData = { message: errorText || 'Unknown error' };
+          // თუ JSON parse ვერ მოხერხდა, ვიყენებთ errorText-ს
+          errorData = {
+            message: isHtml
+              ? `HTML response received (likely 404 or authentication error): ${response.status} ${response.statusText}`
+              : errorText || 'Unknown error',
+          };
         }
 
         const errorMessage =
@@ -362,9 +413,11 @@ export class BOGPaymentService {
         this.logger.error(
           `   • Status: ${response.status} ${response.statusText}`,
         );
+        this.logger.error(`   • Content-Type: ${contentType || 'N/A'}`);
+        this.logger.error(`   • Is HTML Response: ${isHtml ? 'Yes' : 'No'}`);
         this.logger.error(`   • Error Code: ${errorData.code || 'N/A'}`);
         this.logger.error(`   • Error Message: ${errorMessage}`);
-        this.logger.error(`   • Full Response: ${errorText.substring(0, 500)}`);
+        this.logger.error(`   • Response Preview: ${errorPreview}`);
         this.logger.error(
           '═══════════════════════════════════════════════════════',
         );
@@ -372,6 +425,18 @@ export class BOGPaymentService {
         throw new HttpException(
           `რეკურინგ გადახდა ვერ მოხერხდა: ${errorMessage}`,
           HttpStatus.BAD_REQUEST,
+        );
+      }
+
+      // ვამოწმებთ რომ response არის JSON
+      if (!contentType || !contentType.includes('application/json')) {
+        const responseText = await response.text();
+        this.logger.error(
+          `❌ Unexpected content type: ${contentType}. Response: ${responseText.substring(0, 500)}`,
+        );
+        throw new HttpException(
+          `BOG API-მა დააბრუნა არასწორი content type: ${contentType}`,
+          HttpStatus.BAD_GATEWAY,
         );
       }
 

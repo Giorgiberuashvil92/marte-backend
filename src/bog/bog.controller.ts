@@ -1,3 +1,5 @@
+/* eslint-disable @typescript-eslint/no-unsafe-assignment */
+/* eslint-disable @typescript-eslint/no-unsafe-member-access */
 import {
   Controller,
   Get,
@@ -259,7 +261,86 @@ export class BOGController {
               `   • Amount: ${payment.amount} ${payment.currency}`,
             );
             this.logger.log(`   • Status: ${payment.status}`);
-            this.logger.log(`   • Created: ${payment.createdAt}`);
+            this.logger.log(`   • Created: ${payment.createdAt?.toISOString() || 'N/A'}`);
+
+            // განვაახლოთ payment BOG callback-ის დეტალური მონაცემებით
+            const innerBodyForUpdate =
+              callbackData.body?.body || callbackData.body || callbackData;
+            const paymentDetailForUpdate =
+              innerBodyForUpdate?.payment_detail ||
+              callbackData.body?.payment_detail ||
+              callbackData.payment_detail;
+            const orderStatusForUpdate =
+              innerBodyForUpdate?.order_status ||
+              callbackData.body?.order_status ||
+              callbackData.order_status;
+            const purchaseUnitsForUpdate =
+              innerBodyForUpdate?.purchase_units ||
+              callbackData.body?.purchase_units ||
+              callbackData.purchase_units;
+            const redirectLinksForUpdate =
+              innerBodyForUpdate?.redirect_links ||
+              callbackData.body?.redirect_links ||
+              callbackData.redirect_links;
+            const buyerForUpdate =
+              innerBodyForUpdate?.buyer ||
+              callbackData.body?.buyer ||
+              callbackData.buyer;
+
+            const updateData: any = {
+              status: 'completed',
+              updatedAt: new Date(),
+              externalOrderId: external_order_id,
+              // BOG payment_detail-ის დეტალური მონაცემები
+              transactionId: paymentDetailForUpdate?.transaction_id,
+              payerIdentifier: paymentDetailForUpdate?.payer_identifier,
+              transferAmount: paymentDetailForUpdate?.transfer_amount
+                ? parseFloat(String(paymentDetailForUpdate.transfer_amount))
+                : undefined,
+              paymentOption: paymentDetailForUpdate?.payment_option,
+              cardType: paymentDetailForUpdate?.card_type,
+              cardExpiryDate: paymentDetailForUpdate?.card_expiry_date,
+              refundAmount: paymentDetailForUpdate?.refund_amount
+                ? parseFloat(String(paymentDetailForUpdate.refund_amount))
+                : undefined,
+              pgTrxId: paymentDetailForUpdate?.pg_trx_id,
+              authCode: paymentDetailForUpdate?.auth_code,
+              code: paymentDetailForUpdate?.code,
+              codeDescription: paymentDetailForUpdate?.code_description,
+              savedCardType: paymentDetailForUpdate?.saved_card_type,
+              parentOrderId: paymentDetailForUpdate?.parent_order_id,
+            };
+
+            // metadata-ს განახლება
+            const existingMetadata = payment.metadata || {};
+            updateData.metadata = {
+              ...existingMetadata,
+              bogCallbackData: {
+                payment_detail: paymentDetailForUpdate,
+                order_status: orderStatusForUpdate,
+                purchase_units: purchaseUnitsForUpdate,
+                redirect_links: redirectLinksForUpdate,
+                buyer: buyerForUpdate,
+                event: callbackData.event,
+                lang: callbackData.lang || innerBodyForUpdate?.lang,
+                industry: callbackData.industry || innerBodyForUpdate?.industry,
+                capture: callbackData.capture || innerBodyForUpdate?.capture,
+                reject_reason:
+                  callbackData.reject_reason || innerBodyForUpdate?.reject_reason,
+                actions: callbackData.actions || innerBodyForUpdate?.actions,
+                disputes: callbackData.disputes || innerBodyForUpdate?.disputes,
+                split: callbackData.split || innerBodyForUpdate?.split,
+                discount: callbackData.discount || innerBodyForUpdate?.discount,
+              },
+            };
+
+            // განვაახლოთ payment-ი
+            await this.paymentModel
+              .findByIdAndUpdate(payment._id, updateData)
+              .exec();
+            this.logger.log(
+              '✅ Payment განახლებულია BOG callback-ის მონაცემებით',
+            );
           } else {
             this.logger.log(
               `⚠️ Payment არ მოიძებნა database-ში orderId-ით: ${order_id}`,
@@ -300,8 +381,17 @@ export class BOGController {
               );
             }
 
-            // შევქმნათ payment record
-            const paymentData = {
+            // BOG callback-ის დეტალური მონაცემების მოპოვება
+            const innerBody =
+              callbackData.body?.body || callbackData.body || callbackData;
+            const paymentDetail = innerBody?.payment_detail || callbackData.body?.payment_detail || callbackData.payment_detail;
+            const orderStatus = innerBody?.order_status || callbackData.body?.order_status || callbackData.order_status;
+            const purchaseUnits = innerBody?.purchase_units || callbackData.body?.purchase_units || callbackData.purchase_units;
+            const redirectLinks = innerBody?.redirect_links || callbackData.body?.redirect_links || callbackData.redirect_links;
+            const buyer = innerBody?.buyer || callbackData.body?.buyer || callbackData.buyer;
+
+            // შევქმნათ payment record BOG callback-ის ყველა მონაცემით
+            const paymentData: any = {
               userId: userId,
               orderId: order_id,
               amount: amount || 0,
@@ -320,6 +410,25 @@ export class BOGController {
                   ?.description as string) ||
                 'BOG გადახდა',
               paymentDate: new Date().toISOString(),
+              externalOrderId: external_order_id,
+              // BOG payment_detail-ის დეტალური მონაცემები
+              transactionId: paymentDetail?.transaction_id,
+              payerIdentifier: paymentDetail?.payer_identifier,
+              transferAmount: paymentDetail?.transfer_amount
+                ? parseFloat(String(paymentDetail.transfer_amount))
+                : undefined,
+              paymentOption: paymentDetail?.payment_option,
+              cardType: paymentDetail?.card_type,
+              cardExpiryDate: paymentDetail?.card_expiry_date,
+              refundAmount: paymentDetail?.refund_amount
+                ? parseFloat(String(paymentDetail.refund_amount))
+                : undefined,
+              pgTrxId: paymentDetail?.pg_trx_id,
+              authCode: paymentDetail?.auth_code,
+              code: paymentDetail?.code,
+              codeDescription: paymentDetail?.code_description,
+              savedCardType: paymentDetail?.saved_card_type,
+              parentOrderId: paymentDetail?.parent_order_id,
               metadata: {
                 serviceName:
                   (callbackData.description as string) ||
@@ -327,6 +436,23 @@ export class BOGController {
                   (callbackData.body?.purchase_units?.items?.[0]
                     ?.description as string) ||
                   'BOG გადახდა',
+                // BOG callback-ის სრული მონაცემები
+                bogCallbackData: {
+                  payment_detail: paymentDetail,
+                  order_status: orderStatus,
+                  purchase_units: purchaseUnits,
+                  redirect_links: redirectLinks,
+                  buyer: buyer,
+                  event: callbackData.event,
+                  lang: callbackData.lang || innerBody?.lang,
+                  industry: callbackData.industry || innerBody?.industry,
+                  capture: callbackData.capture || innerBody?.capture,
+                  reject_reason: callbackData.reject_reason || innerBody?.reject_reason,
+                  actions: callbackData.actions || innerBody?.actions,
+                  disputes: callbackData.disputes || innerBody?.disputes,
+                  split: callbackData.split || innerBody?.split,
+                  discount: callbackData.discount || innerBody?.discount,
+                },
               },
             };
 
@@ -354,7 +480,7 @@ export class BOGController {
             this.logger.log(`   • Status: ${newPayment.status}`);
             this.logger.log(`   • Context: ${newPayment.context}`);
             this.logger.log(`   • Description: ${newPayment.description}`);
-            this.logger.log(`   • Created At: ${newPayment.createdAt}`);
+            this.logger.log(`   • Created At: ${newPayment.createdAt?.toISOString() || 'N/A'}`);
             this.logger.log(
               '═══════════════════════════════════════════════════════',
             );
