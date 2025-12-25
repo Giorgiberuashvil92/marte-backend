@@ -14,6 +14,22 @@ export class DeviceToken {
 
   @Prop({ default: 'unknown' })
   platform: string;
+
+  @Prop({ type: Object, required: false })
+  deviceInfo?: {
+    deviceName?: string | null;
+    modelName?: string | null;
+    brand?: string | null;
+    manufacturer?: string | null;
+    osName?: string | null;
+    osVersion?: string | null;
+    deviceType?: string | null;
+    totalMemory?: number | null;
+    appVersion?: string | null;
+    appBuildNumber?: string | null;
+    platform?: string | null;
+    platformVersion?: string | null;
+  };
 }
 
 export type DeviceTokenDocument = HydratedDocument<DeviceToken>;

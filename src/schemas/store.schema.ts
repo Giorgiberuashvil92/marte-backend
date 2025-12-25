@@ -21,6 +21,10 @@ export class Store {
   @Prop({ type: [String] })
   images?: string[];
 
+  // შიდა/ინტერნალური გამოსახულება ( напр. admin panel cover )
+  @Prop()
+  internalImage?: string;
+
   @Prop({ required: true })
   location: string;
 

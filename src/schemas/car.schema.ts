@@ -48,7 +48,6 @@ export class Car {
 
 export const CarSchema = SchemaFactory.createForClass(Car);
 
-// Return id instead of _id and strip __v
 CarSchema.set('toJSON', {
   virtuals: true,
   versionKey: false,
