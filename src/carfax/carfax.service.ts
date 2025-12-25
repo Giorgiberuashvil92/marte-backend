@@ -8,13 +8,14 @@ import {
 import { CarFAXRequestDto } from './dto/carfax-request.dto';
 import { CarFAXResponseDto } from './dto/carfax-response.dto';
 import axios from 'axios';
+import { chromium } from 'playwright';
 
 @Injectable()
 export class CarFAXService {
   private readonly logger = new Logger(CarFAXService.name);
   private readonly CARFAX_API_URL =
-    'https://dealers.autoimports.ge/api/report/carfax';
-  private readonly CARFAX_API_KEY = '23f57611-7a25-4be3-9ade-a311f7c016c3';
+    'https://cai.autoimports.ge/api/report/carfax';
+  private readonly CARFAX_API_KEY = '21f47811-7a21-4be4-9ade-a311f7c016c9';
 
   constructor(
     @InjectModel(CarFAXReport.name)
@@ -30,37 +31,7 @@ export class CarFAXService {
         `CarFAX მოხსენების მოთხოვნა VIN: ${request.vin} მომხმარებლისთვის: ${userId}`,
       );
 
-      const existingReport = await this.carfaxReportModel
-        .findOne({ vin: request.vin })
-        .exec();
-
-      if (existingReport) {
-        this.logger.log(
-          `არსებული CarFAX მოხსენება ნაპოვნია VIN: ${request.vin}`,
-        );
-        return {
-          success: true,
-          data: {
-            vin: existingReport.vin,
-            make: existingReport.make,
-            model: existingReport.model,
-            year: existingReport.year,
-            mileage: existingReport.mileage || 0,
-            accidents: existingReport.accidents,
-            owners: existingReport.owners,
-            serviceRecords: existingReport.serviceRecords,
-            titleStatus: existingReport.titleStatus,
-            lastServiceDate:
-              existingReport.lastServiceDate ||
-              new Date().toISOString().split('T')[0],
-            reportId: existingReport.reportId,
-            reportData: existingReport.reportData || null,
-          },
-          message: 'CarFAX მოხსენება ნაპოვნია ბაზაში',
-        };
-      }
-
-      // API-სთან დაკავშირება
+      // ჯერ ვიღებთ გარე API-დან, მერე ვინახავთ
       const apiResponse = await this.callCarFAXAPI(request.vin);
 
       if (!apiResponse.success) {
@@ -70,8 +41,7 @@ export class CarFAXService {
         );
       }
 
-      // მონაცემების შენახვა ბაზაში
-      const newReport = new this.carfaxReportModel({
+      const payload = {
         userId,
         vin: request.vin,
         make: apiResponse.data?.make || 'უცნობი',
@@ -87,9 +57,13 @@ export class CarFAXService {
           new Date().toISOString().split('T')[0],
         reportId: apiResponse.data?.reportId || `CF${Date.now()}`,
         reportData: apiResponse.data?.reportData || null,
-      });
+      };
 
-      const savedReport = await newReport.save();
+      const savedReport = await this.carfaxReportModel.findOneAndUpdate(
+        { vin: request.vin },
+        payload,
+        { upsert: true, new: true, setDefaultsOnInsert: true },
+      );
       this.logger.log(`CarFAX მოხსენება შენახულია ბაზაში VIN: ${request.vin}`);
 
       return {
@@ -136,41 +110,81 @@ export class CarFAXService {
       const response = await axios.get(`${this.CARFAX_API_URL}?vin=${vin}`, {
         headers: {
           'api-key': this.CARFAX_API_KEY,
-          'Content-Type': 'application/json',
+          Accept: 'text/html',
+          'User-Agent': 'curl/7.79.1', // match PHP curl UA
         },
         timeout: 30000, // 30 წამი timeout
+        responseType: 'text',
+        transformResponse: r => r, // prevent JSON parse
+        maxBodyLength: Infinity,
+        maxContentLength: Infinity,
+        validateStatus: () => true, // we handle non-2xx manually
       });
 
-      this.logger.log(`CarFAX API პასუხი VIN: ${vin}`, response.data);
+      this.logger.log(
+        `CarFAX API პასუხი VIN: ${vin} status: ${response.status}`,
+      );
 
-      if (response.status === 200 && response.data) {
-        // API-ს პასუხის პარსინგი (რეალური API-ს მიხედვით შეიძლება შეიცვალოს)
-        const apiData = response.data;
+      const contentType = response.headers['content-type'] || '';
+      const body = response.data as string;
 
+      // If HTML returned, wrap minimal data and htmlContent
+      const isHtml =
+        contentType.includes('text/html') ||
+        body.trim().startsWith('<') ||
+        body.toLowerCase().includes('<html');
+
+      if (response.status === 200 && isHtml) {
         return {
           success: true,
           data: {
-            vin: vin,
-            make: apiData.make || 'უცნობი',
-            model: apiData.model || 'უცნობი',
-            year: apiData.year || new Date().getFullYear(),
-            mileage: apiData.mileage || 0,
-            accidents: apiData.accidents || 0,
-            owners: apiData.owners || 1,
-            serviceRecords: apiData.serviceRecords || 0,
-            titleStatus: apiData.titleStatus || 'Clean',
-            lastServiceDate:
-              apiData.lastServiceDate || new Date().toISOString().split('T')[0],
+            vin,
+            make: 'უცნობი',
+            model: 'უცნობი',
+            year: new Date().getFullYear(),
+            mileage: 0,
+            accidents: 0,
+            owners: 1,
+            serviceRecords: 0,
+            titleStatus: 'უცნობი',
             reportId: `CF${Date.now()}`,
-            reportData: apiData,
+            reportData: { htmlContent: body, contentType },
           },
         };
-      } else {
-        return {
-          success: false,
-          error: 'CarFAX API-დან მოხსენება ვერ მოიძებნა',
-        };
       }
+
+      // fallback JSON parse if not HTML
+      try {
+        const apiData = typeof body === 'string' ? JSON.parse(body) : body;
+        if (response.status === 200 && apiData) {
+          return {
+            success: true,
+            data: {
+              vin: vin,
+              make: apiData.make || 'უცნობი',
+              model: apiData.model || 'უცნობი',
+              year: apiData.year || new Date().getFullYear(),
+              mileage: apiData.mileage || 0,
+              accidents: apiData.accidents || 0,
+              owners: apiData.owners || 1,
+              serviceRecords: apiData.serviceRecords || 0,
+              titleStatus: apiData.titleStatus || 'Clean',
+              lastServiceDate:
+                apiData.lastServiceDate ||
+                new Date().toISOString().split('T')[0],
+              reportId: `CF${Date.now()}`,
+              reportData: apiData,
+            },
+          };
+        }
+      } catch {
+        // ignore JSON parse error
+      }
+
+      return {
+        success: false,
+        error: 'CarFAX API-დან მოხსენება ვერ მოიძებნა',
+      };
     } catch (error) {
       this.logger.error(
         `CarFAX API-სთან დაკავშირების შეცდომა VIN: ${vin}`,
@@ -266,6 +280,52 @@ export class CarFAXService {
         'CarFAX მოხსენების მიღებისას მოხდა შეცდომა',
         HttpStatus.INTERNAL_SERVER_ERROR,
       );
+    }
+  }
+
+  async htmlToPdf(html: string, baseUrl = 'https://cai.autoimports.ge/'): Promise<Buffer> {
+    let browser;
+    try {
+      browser = await chromium.launch({
+        headless: true,
+        args: ['--no-sandbox', '--disable-setuid-sandbox'],
+      });
+      const page = await browser.newPage({ viewport: { width: 1280, height: 1800 } });
+
+      // Ensure base tag for relative assets and charset
+      let wrapped = html;
+      const hasHead = wrapped.toLowerCase().includes('<head');
+      if (hasHead) {
+        if (!/charset=/i.test(wrapped)) {
+          wrapped = wrapped.replace('<head>', '<head><meta charset="UTF-8">');
+        }
+        if (!/<base\s+/i.test(wrapped)) {
+          wrapped = wrapped.replace('<head>', `<head><base href="${baseUrl}">`);
+        }
+      } else {
+        wrapped = `<!DOCTYPE html><html><head><meta charset="UTF-8"><base href="${baseUrl}"></head><body>${html}</body></html>`;
+      }
+
+      await page.setContent(wrapped, { waitUntil: 'networkidle' });
+      await page.waitForLoadState('networkidle');
+      await page.waitForTimeout(2000);
+      const pdf = await page.pdf({
+        format: 'A4',
+        printBackground: true,
+        margin: { top: '20mm', bottom: '20mm', left: '15mm', right: '15mm' },
+      });
+      await browser.close();
+      return pdf;
+    } catch (error) {
+      this.logger.error('HTML -> PDF გარდაქმნის შეცდომა', error as any);
+      throw new HttpException(
+        'PDF გენერაცია ვერ მოხერხდა',
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    } finally {
+      if (browser) {
+        await browser.close().catch(() => undefined);
+      }
     }
   }
 }

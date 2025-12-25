@@ -18,6 +18,12 @@ export class Comment {
   @Prop({ required: true })
   userId: string;
 
+  @Prop()
+  userName?: string;
+
+  @Prop()
+  userInitial?: string;
+
   @Prop({ required: true })
   content: string;
 

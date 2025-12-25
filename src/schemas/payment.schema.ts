@@ -32,6 +32,15 @@ export class Payment {
   @Prop({ required: true })
   paymentDate: Date;
 
+  @Prop({ required: false })
+  paymentToken?: string; // BOG payment token for recurring payments
+
+  @Prop({ required: false })
+  isRecurring?: boolean; // არის თუ არა ეს რეკურინგ გადახდა
+
+  @Prop({ required: false })
+  recurringPaymentId?: string; // რეკურინგ გადახდის ID
+
   @Prop({
     required: false,
     type: {
@@ -50,6 +59,8 @@ export class Payment {
         },
         required: false,
       },
+      // BOG callback-ის დამატებითი მონაცემები
+      bogCallbackData: { type: Object, required: false },
     },
   })
   metadata?: {
@@ -65,7 +76,51 @@ export class Payment {
       phone?: string;
       email?: string;
     };
+    bogCallbackData?: any; // BOG callback-ის სრული მონაცემები
   };
+
+  // BOG payment detail-ის დამატებითი ველები
+  @Prop({ required: false })
+  transactionId?: string; // BOG transaction_id
+
+  @Prop({ required: false })
+  payerIdentifier?: string; // BOG payer_identifier (masked card number)
+
+  @Prop({ required: false })
+  transferAmount?: number; // BOG transfer_amount
+
+  @Prop({ required: false })
+  paymentOption?: string; // BOG payment_option (e.g., "direct_debit")
+
+  @Prop({ required: false })
+  cardType?: string; // BOG card_type (e.g., "mc", "visa")
+
+  @Prop({ required: false })
+  cardExpiryDate?: string; // BOG card_expiry_date (e.g., "07/29")
+
+  @Prop({ required: false })
+  refundAmount?: number; // BOG refund_amount
+
+  @Prop({ required: false })
+  pgTrxId?: string; // BOG pg_trx_id
+
+  @Prop({ required: false })
+  authCode?: string; // BOG auth_code
+
+  @Prop({ required: false })
+  code?: string; // BOG code (e.g., "100")
+
+  @Prop({ required: false })
+  codeDescription?: string; // BOG code_description (e.g., "Successful payment")
+
+  @Prop({ required: false })
+  savedCardType?: string; // BOG saved_card_type
+
+  @Prop({ required: false })
+  parentOrderId?: string; // BOG parent_order_id
+
+  @Prop({ required: false })
+  externalOrderId?: string; // BOG external_order_id
 
   @Prop({ default: Date.now })
   createdAt: Date;

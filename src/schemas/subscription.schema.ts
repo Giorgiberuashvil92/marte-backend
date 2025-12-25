@@ -66,7 +66,7 @@ export class Subscription {
   updatedAt: Date;
 
   @Prop()
-  bogCardToken?: string; // BOG-ის დამახსოვრებული ბარათის token
+  bogCardToken?: string; // BOG-ის წარმატებული გადახდის order_id, რომელიც გამოიყენება რეკურინგ გადახდებისთვის
 }
 
 export const SubscriptionSchema = SchemaFactory.createForClass(Subscription);

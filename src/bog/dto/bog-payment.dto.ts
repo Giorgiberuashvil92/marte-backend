@@ -54,3 +54,35 @@ export class BOGPaymentStatusDto {
   @IsString()
   message?: string;
 }
+
+// BOG Recurring Payment Request
+export class BOGRecurringPaymentDto {
+  @IsString()
+  order_id: string; // წარმატებული გადახდის order_id, რომელიც გამოიყენება რეკურინგ გადახდებისთვის
+
+  @IsNumber()
+  amount: number; // გადასახდელი თანხა
+
+  @IsOptional()
+  @IsString()
+  currency?: string; // 'GEL'
+
+  @IsString()
+  shop_order_id: string; // შენი shop-ის order ID
+
+  @IsString()
+  purchase_description: string; // გადახდის აღწერა
+}
+
+// BOG Recurring Payment Response
+export class BOGRecurringPaymentResponseDto {
+  @IsString()
+  order_id: string;
+
+  @IsString()
+  status: string; // 'success' | 'error' | 'in_progress'
+
+  @IsOptional()
+  @IsString()
+  message?: string;
+}

@@ -3,6 +3,7 @@ import { InjectModel } from '@nestjs/mongoose';
 import { Model, UpdateQuery } from 'mongoose';
 import { User, UserDocument } from '../schemas/user.schema';
 import { Otp, OtpDocument } from '../schemas/otp.schema';
+import { LoginHistoryService } from './login-history.service';
 // Firebase phone auth support removed in favor of Twilio OTP
 import twilio, { Twilio } from 'twilio';
 
@@ -11,6 +12,7 @@ export class AuthService {
   constructor(
     @InjectModel(User.name) private userModel: Model<UserDocument>,
     @InjectModel(Otp.name) private otpModel: Model<OtpDocument>,
+    private loginHistoryService: LoginHistoryService,
   ) {}
 
   normalizeGePhone(input: string): string {
@@ -108,6 +110,23 @@ export class AuthService {
       });
       await user.save();
     }
+
+    // Update last login time
+    user.lastLoginAt = Date.now();
+    await user.save();
+
+    // Save login history (async, don't wait for it)
+    this.loginHistoryService
+      .createLoginHistory({
+        userId: user.id,
+        phone: user.phone,
+        email: user.email,
+        firstName: user.firstName,
+        status: 'success',
+      })
+      .catch((err) => {
+        console.error('Error saving login history:', err);
+      });
 
     return { user, intent: 'login' };
   }

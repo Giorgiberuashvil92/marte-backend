@@ -5,6 +5,8 @@ import {
   BOGOrderRequestDto,
   BOGOrderResponseDto,
   BOGPaymentStatusDto,
+  BOGRecurringPaymentDto,
+  BOGRecurringPaymentResponseDto,
 } from './dto/bog-payment.dto';
 
 // BOG API Response Types
@@ -33,7 +35,9 @@ interface BOGStatusApiResponse {
 @Injectable()
 export class BOGPaymentService {
   private readonly logger = new Logger(BOGPaymentService.name);
-  private readonly BOG_API_BASE_URL = 'https://api.bog.ge/payments/v1';
+  private readonly BOG_API_BASE_URL = 'https://api.bog.ge/payments/v1'; // OAuth და ecommerce endpoints
+  private readonly BOG_IPAY_BASE_URL =
+    'https://api.bog.ge/v1/checkout/payment/subscription'; // iPay API base URL (recurring payments-ისთვის)
 
   constructor(
     private bogOAuthService: BOGOAuthService,
@@ -62,6 +66,25 @@ export class BOGPaymentService {
 
       // BOG API-ისთვის მონაცემების მომზადება
       const bogOrderData = this.prepareBOGOrderData(orderData);
+
+      // Logging: ვნახოთ რა იგზავნება BOG API-ში
+      this.logger.log(
+        '═══════════════════════════════════════════════════════',
+      );
+      this.logger.log('📤 BOG Order Request Data:');
+      this.logger.log(
+        '═══════════════════════════════════════════════════════',
+      );
+      this.logger.log(JSON.stringify(bogOrderData, null, 2));
+      this.logger.log(
+        '═══════════════════════════════════════════════════════',
+      );
+      this.logger.log(
+        `💾 save_card: ${bogOrderData.save_card ? '✅ true' : '❌ false'}`,
+      );
+      this.logger.log(
+        '═══════════════════════════════════════════════════════',
+      );
 
       // BOG API-ზე მოთხოვნის გაგზავნა
       const response = await fetch(
@@ -244,6 +267,252 @@ export class BOGPaymentService {
         fail: orderData.fail_url || `${baseUrl}/payment/fail`,
       },
       ttl: 15, // 15 წუთი
+      save_card: true, // ✅ Card token-ის შენახვა recurring payment-ებისთვის
     };
+  }
+
+  /**
+   * რეკურინგ გადახდის განხორციელება BOG iPay API-ს გამოყენებით
+   * გამოიყენება წარმატებული გადახდის order_id, რომელიც გამოიყენება რეკურინგ გადახდებისთვის
+   *
+   * @see https://api.bog.ge/docs/ipay/recurring-payments
+   */
+  async processRecurringPayment(
+    recurringPaymentData: BOGRecurringPaymentDto,
+  ): Promise<BOGRecurringPaymentResponseDto> {
+    try {
+      this.logger.log('🔄 რეკურინგ გადახდის დაწყება...', {
+        order_id: recurringPaymentData.order_id,
+        amount: recurringPaymentData.amount,
+        shop_order_id: recurringPaymentData.shop_order_id,
+      });
+
+      // OAuth Token-ის მიღება
+      const token = await this.bogOAuthService.getAccessToken();
+      if (!token) {
+        throw new HttpException(
+          'BOG OAuth token ვერ მოიძებნა',
+          HttpStatus.UNAUTHORIZED,
+        );
+      }
+
+      // BOG iPay API-ზე რეკურინგ გადახდის მოთხოვნა
+      // Endpoint: POST /opay/api/v1/checkout/payment/subscription
+      // Base URL: https://ipay.ge/opay/api/v1 (documentation-ის მიხედვით)
+      // Recurring payment-ისთვის საჭიროა წარმატებული გადახდის order_id
+      const requestBody = {
+        order_id: recurringPaymentData.order_id, // წარმატებული გადახდის order_id რომელიც გამოიყენება როგორც token
+        amount: {
+          currency_code: recurringPaymentData.currency || 'GEL',
+          value: recurringPaymentData.amount.toString(),
+        },
+        shop_order_id: recurringPaymentData.shop_order_id,
+        purchase_description: recurringPaymentData.purchase_description,
+      };
+
+      this.logger.log(
+        '═══════════════════════════════════════════════════════',
+      );
+      this.logger.log(
+        '📤 Sending recurring payment request to BOG iPay API...',
+      );
+      this.logger.log(
+        '═══════════════════════════════════════════════════════',
+      );
+      this.logger.log(`   • Base URL: ${this.BOG_IPAY_BASE_URL}`);
+      // თუ BOG_IPAY_BASE_URL უკვე შეიცავს full path-ს, არ ვამატებთ /checkout/payment/subscription
+      const endpoint = this.BOG_IPAY_BASE_URL.includes(
+        '/checkout/payment/subscription',
+      )
+        ? this.BOG_IPAY_BASE_URL
+        : `${this.BOG_IPAY_BASE_URL}/checkout/payment/subscription`;
+      this.logger.log(`   • Full Endpoint: ${endpoint}`);
+      this.logger.log(`   • Method: POST`);
+      this.logger.log(
+        `   • Authorization: Bearer ${token.substring(0, 20)}...`,
+      );
+      this.logger.log(
+        `   • Request Body: ${JSON.stringify(requestBody, null, 2)}`,
+      );
+      this.logger.log(
+        '═══════════════════════════════════════════════════════',
+      );
+
+      const response = await fetch(endpoint, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json',
+          'Accept-Language': 'ka',
+        },
+        body: JSON.stringify(requestBody),
+      });
+
+      this.logger.log(
+        '═══════════════════════════════════════════════════════',
+      );
+      this.logger.log('📥 BOG API Response:');
+      this.logger.log(
+        '═══════════════════════════════════════════════════════',
+      );
+      this.logger.log(`   • Status: ${response.status} ${response.statusText}`);
+      this.logger.log(`   • OK: ${response.ok}`);
+
+      // ვამოწმებთ response-ის content type-ს
+      const contentType = response.headers.get('content-type');
+      this.logger.log(`   • Content-Type: ${contentType || 'N/A'}`);
+
+      // ვალოგებთ headers-ებს
+      const headers: Record<string, string> = {};
+      response.headers.forEach((value, key) => {
+        headers[key] = value;
+      });
+      this.logger.log(
+        `   • Response Headers: ${JSON.stringify(headers, null, 2)}`,
+      );
+      this.logger.log(
+        '═══════════════════════════════════════════════════════',
+      );
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        let errorData: { message?: string; error?: string; code?: string } = {};
+
+        // თუ HTML response-ია, ვალოგებთ მხოლოდ პირველ 500 სიმბოლოს
+        const isHtml =
+          errorText.trim().startsWith('<!DOCTYPE') ||
+          errorText.trim().startsWith('<html');
+        const errorPreview = isHtml
+          ? errorText.substring(0, 500) + (errorText.length > 500 ? '...' : '')
+          : errorText;
+
+        try {
+          errorData = JSON.parse(errorText);
+        } catch {
+          // თუ JSON parse ვერ მოხერხდა, ვიყენებთ errorText-ს
+          errorData = {
+            message: isHtml
+              ? `HTML response received (likely 404 or authentication error): ${response.status} ${response.statusText}`
+              : errorText || 'Unknown error',
+          };
+        }
+
+        const errorMessage =
+          errorData.message ||
+          errorData.error ||
+          errorData.code ||
+          'Unknown error';
+
+        this.logger.error(
+          '═══════════════════════════════════════════════════════',
+        );
+        this.logger.error('❌ BOG Recurring Payment Error:');
+        this.logger.error(
+          '═══════════════════════════════════════════════════════',
+        );
+        this.logger.error(
+          `   • Status: ${response.status} ${response.statusText}`,
+        );
+        this.logger.error(`   • Content-Type: ${contentType || 'N/A'}`);
+        this.logger.error(`   • Is HTML Response: ${isHtml ? 'Yes' : 'No'}`);
+        this.logger.error(`   • Error Code: ${errorData.code || 'N/A'}`);
+        this.logger.error(`   • Error Message: ${errorMessage}`);
+        this.logger.error(`   • Response Preview: ${errorPreview}`);
+        this.logger.error(
+          '═══════════════════════════════════════════════════════',
+        );
+
+        throw new HttpException(
+          `რეკურინგ გადახდა ვერ მოხერხდა: ${errorMessage}`,
+          HttpStatus.BAD_REQUEST,
+        );
+      }
+
+      // ვამოწმებთ რომ response არის JSON
+      if (!contentType || !contentType.includes('application/json')) {
+        const responseText = await response.text();
+        this.logger.error(
+          `❌ Unexpected content type: ${contentType}. Response: ${responseText.substring(0, 500)}`,
+        );
+        throw new HttpException(
+          `BOG API-მა დააბრუნა არასწორი content type: ${contentType}`,
+          HttpStatus.BAD_GATEWAY,
+        );
+      }
+
+      const responseData = (await response.json()) as {
+        order_id: string;
+        status: string;
+        message?: string;
+      };
+
+      this.logger.log('✅ რეკურინგ გადახდა წარმატებით განხორციელდა:', {
+        order_id: responseData.order_id,
+        status: responseData.status,
+      });
+
+      return {
+        order_id: responseData.order_id,
+        status: responseData.status,
+        message:
+          responseData.message || 'რეკურინგ გადახდა წარმატებით განხორციელდა',
+      };
+    } catch (error: unknown) {
+      this.logger.error(
+        '❌ რეკურინგ გადახდის შეცდომა:',
+        error instanceof Error ? error.message : 'Unknown error',
+      );
+
+      if (error instanceof HttpException) {
+        throw error;
+      }
+
+      throw new HttpException(
+        `რეკურინგ გადახდა ვერ მოხერხდა: ${
+          error instanceof Error ? error.message : 'Unknown error'
+        }`,
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
+  }
+
+  /**
+   * Payment token-ის მიღება გადახდის დეტალებიდან
+   * BOG iPay API-ში, რეკურინგ გადახდებისთვის გამოიყენება წარმატებული გადახდის order_id
+   * ეს order_id ინახება პირველი გადახდის შემდეგ და გამოიყენება რეკურინგ გადახდებისთვის
+   *
+   * @param orderId - წარმატებული გადახდის order_id
+   * @returns order_id რომელიც გამოიყენება რეკურინგ გადახდებისთვის
+   */
+  async getRecurringPaymentToken(orderId: string): Promise<string | null> {
+    try {
+      this.logger.log(
+        `🔍 Recurring payment token-ის მიღება orderId-დან: ${orderId}`,
+      );
+
+      // ვამოწმებთ რომ გადახდა წარმატებულია
+      const paymentStatus = await this.getOrderStatus(orderId);
+
+      if (
+        paymentStatus.status !== 'completed' &&
+        paymentStatus.status !== 'success'
+      ) {
+        this.logger.warn(
+          `⚠️ გადახდა არ არის წარმატებული: ${paymentStatus.status}`,
+        );
+        return null;
+      }
+
+      // BOG iPay API-ში, რეკურინგ გადახდებისთვის გამოიყენება წარმატებული გადახდის order_id
+      // ეს order_id არის "payment token" რეკურინგ გადახდებისთვის
+      this.logger.log('✅ Recurring payment token (order_id) მიღებულია');
+      return orderId;
+    } catch (error: unknown) {
+      this.logger.error(
+        '❌ Recurring payment token-ის მიღების შეცდომა:',
+        error instanceof Error ? error.message : 'Unknown error',
+      );
+      return null;
+    }
   }
 }

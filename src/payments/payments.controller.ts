@@ -78,6 +78,43 @@ export class PaymentsController {
     }
   }
 
+  /**
+   * Payment-ის მიღება Order ID-ით
+   * GET /api/payments/order/:orderId
+   */
+  @Get('order/:orderId')
+  async getPaymentByOrderId(@Param('orderId') orderId: string) {
+    try {
+      this.logger.log(`🔍 Getting payment by orderId: ${orderId}`);
+
+      const payment = await this.paymentsService.getPaymentByOrderId(orderId);
+
+      if (!payment) {
+        this.logger.log(`⚠️ Payment not found for orderId: ${orderId}`);
+        return {
+          success: false,
+          message: 'Payment not found',
+          data: null,
+        };
+      }
+
+      this.logger.log(`✅ Payment found: ${String(payment._id)}`);
+
+      return {
+        success: true,
+        message: 'Payment retrieved successfully',
+        data: payment,
+      };
+    } catch (error) {
+      this.logger.error('❌ Failed to get payment by orderId:', error);
+      return {
+        success: false,
+        message: 'Failed to retrieve payment',
+        error: error.message,
+      };
+    }
+  }
+
   @Get('stats')
   async getPaymentStats() {
     try {
@@ -97,6 +134,78 @@ export class PaymentsController {
       return {
         success: false,
         message: 'Failed to retrieve payment statistics',
+        error: error.message,
+      };
+    }
+  }
+
+  /**
+   * Payment token-ის შენახვა orderId-სთვის
+   * POST /api/payments/save-token
+   */
+  @Post('save-token')
+  @HttpCode(HttpStatus.OK)
+  async savePaymentToken(
+    @Body() body: { orderId: string; paymentToken: string },
+  ) {
+    try {
+      this.logger.log('💾 Saving payment token:', {
+        orderId: body.orderId,
+      });
+
+      const payment = await this.paymentsService.savePaymentToken(
+        body.orderId,
+        body.paymentToken,
+      );
+
+      this.logger.log('✅ Payment token saved successfully');
+
+      return {
+        success: true,
+        message: 'Payment token saved successfully',
+        data: payment,
+      };
+    } catch (error) {
+      this.logger.error('❌ Failed to save payment token:', error);
+      return {
+        success: false,
+        message: 'Failed to save payment token',
+        error: error.message,
+      };
+    }
+  }
+
+  /**
+   * User-ის payment token-ის მიღება
+   * GET /api/payments/user/:userId/token
+   */
+  @Get('user/:userId/token')
+  async getUserPaymentToken(@Param('userId') userId: string) {
+    try {
+      this.logger.log(`🔍 Getting payment token for user: ${userId}`);
+
+      const token = await this.paymentsService.getUserPaymentToken(userId);
+
+      if (!token) {
+        return {
+          success: false,
+          message: 'Payment token not found for this user',
+          data: null,
+        };
+      }
+
+      this.logger.log('✅ Payment token retrieved successfully');
+
+      return {
+        success: true,
+        message: 'Payment token retrieved successfully',
+        data: { paymentToken: token },
+      };
+    } catch (error) {
+      this.logger.error('❌ Failed to get user payment token:', error);
+      return {
+        success: false,
+        message: 'Failed to retrieve payment token',
         error: error.message,
       };
     }
