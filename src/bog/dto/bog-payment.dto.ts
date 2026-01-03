@@ -31,6 +31,9 @@ export class BOGOrderRequestDto {
   @IsOptional()
   @IsString()
   fail_url?: string;
+
+  @IsOptional()
+  save_card?: boolean; // ბარათის დამახსოვრება recurring payment-ებისთვის
 }
 
 // BOG Order Response
@@ -56,33 +59,65 @@ export class BOGPaymentStatusDto {
 }
 
 // BOG Recurring Payment Request
+// BOG API დოკუმენტაციის მიხედვით, body-ში optional-ია callback_url და external_order_id
+// სხვა პარამეტრები (თანხა, ვალუტა, მყიდველის ინფორმაცია) ავტომატურად იღება parent_order_id-დან
 export class BOGRecurringPaymentDto {
   @IsString()
-  order_id: string; // წარმატებული გადახდის order_id, რომელიც გამოიყენება რეკურინგ გადახდებისთვის
-
-  @IsNumber()
-  amount: number; // გადასახდელი თანხა
+  parent_order_id: string; // წარმატებული გადახდის order_id, რომელზეც მოხდა ბარათის დამახსოვრება
 
   @IsOptional()
   @IsString()
-  currency?: string; // 'GEL'
+  callback_url?: string; // optional - თუ არ გადმოცემულია, გამოიყენება parent_order_id-ის შესაბამისი მნიშვნელობა
 
+  @IsOptional()
   @IsString()
-  shop_order_id: string; // შენი shop-ის order ID
+  external_order_id?: string; // optional - თუ არ გადმოცემულია, გამოიყენება parent_order_id-ის შესაბამისი მნიშვნელობა
 
+  // Legacy fields - kept for backward compatibility but not used in API request
+  @IsOptional()
   @IsString()
-  purchase_description: string; // გადახდის აღწერა
+  order_id?: string; // Legacy: იგივე რაც parent_order_id
+
+  @IsOptional()
+  @IsNumber()
+  amount?: number; // Legacy: არ გამოიყენება, ავტომატურად იღება parent_order_id-დან
+
+  @IsOptional()
+  @IsString()
+  currency?: string; // Legacy: არ გამოიყენება, ავტომატურად იღება parent_order_id-დან
+
+  @IsOptional()
+  @IsString()
+  shop_order_id?: string; // Legacy: იგივე რაც external_order_id
+
+  @IsOptional()
+  @IsString()
+  purchase_description?: string; // Legacy: არ გამოიყენება, ავტომატურად იღება parent_order_id-დან
 }
 
 // BOG Recurring Payment Response
+// BOG API დოკუმენტაციის მიხედვით, response არის: { id: string, _links: { details: { href: string } } }
 export class BOGRecurringPaymentResponseDto {
   @IsString()
-  order_id: string;
+  id: string; // ახალი order_id რეკურინგ გადახდისთვის
 
+  @IsOptional()
+  _links?: {
+    details?: {
+      href?: string;
+    };
+  };
+
+  // Legacy fields - kept for backward compatibility
+  @IsOptional()
   @IsString()
-  status: string; // 'success' | 'error' | 'in_progress'
+  order_id?: string; // Legacy: იგივე რაც id
 
   @IsOptional()
   @IsString()
-  message?: string;
+  status?: string; // Legacy: არ აბრუნებს BOG API
+
+  @IsOptional()
+  @IsString()
+  message?: string; // Legacy: არ აბრუნებს BOG API
 }

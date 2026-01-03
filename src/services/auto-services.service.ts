@@ -25,7 +25,8 @@ export class AutoServicesService {
     const query: Record<string, any> = {};
 
     if (filters?.category) {
-      query.category = filters.category;
+      // Use regex for case-insensitive matching and partial matching
+      query.category = { $regex: filters.category, $options: 'i' };
     }
 
     if (filters?.location) {
@@ -85,6 +86,20 @@ export class AutoServicesService {
           { category: { $regex: keyword, $options: 'i' } },
           { location: { $regex: keyword, $options: 'i' } },
         ],
+      })
+      .sort({ createdAt: -1 })
+      .exec();
+  }
+
+  /**
+   * აიღებს სერვისებს რომლებსაც აქვთ latitude და longitude
+   * ეს მეთოდი გამოიყენება რუკაზე სერვისების ჩვენებისთვის
+   */
+  async findWithCoordinates(): Promise<Service[]> {
+    return this.serviceModel
+      .find({
+        latitude: { $exists: true, $ne: null },
+        longitude: { $exists: true, $ne: null },
       })
       .sort({ createdAt: -1 })
       .exec();

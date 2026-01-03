@@ -4,6 +4,7 @@ import {
   Controller,
   Get,
   Post,
+  Put,
   Body,
   Param,
   Logger,
@@ -261,7 +262,9 @@ export class BOGController {
               `   • Amount: ${payment.amount} ${payment.currency}`,
             );
             this.logger.log(`   • Status: ${payment.status}`);
-            this.logger.log(`   • Created: ${payment.createdAt?.toISOString() || 'N/A'}`);
+            this.logger.log(
+              `   • Created: ${payment.createdAt?.toISOString() || 'N/A'}`,
+            );
 
             // განვაახლოთ payment BOG callback-ის დეტალური მონაცემებით
             const innerBodyForUpdate =
@@ -326,7 +329,8 @@ export class BOGController {
                 industry: callbackData.industry || innerBodyForUpdate?.industry,
                 capture: callbackData.capture || innerBodyForUpdate?.capture,
                 reject_reason:
-                  callbackData.reject_reason || innerBodyForUpdate?.reject_reason,
+                  callbackData.reject_reason ||
+                  innerBodyForUpdate?.reject_reason,
                 actions: callbackData.actions || innerBodyForUpdate?.actions,
                 disputes: callbackData.disputes || innerBodyForUpdate?.disputes,
                 split: callbackData.split || innerBodyForUpdate?.split,
@@ -360,35 +364,180 @@ export class BOGController {
 
             // BOG-ისგან მიღებული callback data-დან ვპოულობთ user-ს
             // external_order_id-დან (რომელიც შეიძლება შეიცავდეს user ID-ს)
-            const externalOrderId =
-              (callbackData.external_order_id as string) ||
-              (callbackData.body?.external_order_id as string) ||
-              '';
-            this.logger.log(`   • External Order ID: ${externalOrderId}`);
+            // გამოვიყენოთ იგივე external_order_id რომელიც ზემოთ განვსაზღვრეთ
+            const externalOrderId = external_order_id || '';
+            this.logger.log(
+              `   • External Order ID (userId-ის მოსაძებნად): ${externalOrderId}`,
+            );
 
             let userId = 'unknown';
 
-            // Pattern: test_payment_1234567890_userId ან carapp_1234567890_userId
+            // Pattern: test_payment_1234567890_userId, test_subscription_1234567890_userId, carapp_1234567890_userId
+            this.logger.log(
+              `   🔍 Pattern matching-ის ცდა: ${externalOrderId}`,
+            );
             const userIdMatch =
               externalOrderId.match(/test_payment_\d+_(.+)/) ||
-              externalOrderId.match(/carapp_\d+_(.+)/);
+              externalOrderId.match(/test_subscription_\d+_(.+)/) ||
+              externalOrderId.match(/carapp_\d+_(.+)/) ||
+              externalOrderId.match(/subscription_\w+_\d+_(.+)/) || // subscription_basic_1234567890_userId
+              externalOrderId.match(/recurring_.*_(\d+)$/); // recurring_orderId_timestamp_userId
+
             if (userIdMatch && userIdMatch[1]) {
               userId = userIdMatch[1];
-              this.logger.log(`   ✅ User ID ნაპოვნია: ${userId}`);
+              this.logger.log(`   ✅ User ID ნაპოვნია pattern-ით: ${userId}`);
             } else {
+              // თუ pattern-ით ვერ მოიძებნა, შევეცადოთ external_order_id-დან პირდაპირ მოვძებნოთ
+              // ან შევამოწმოთ არსებული payment-ში external_order_id-ით
               this.logger.log(
-                `   ⚠️ User ID ვერ მოიძებნა, გამოყენებული იქნება: ${userId}`,
+                `   ⚠️ User ID pattern-ით ვერ მოიძებნა, ვცდილობთ payment-ის მოძებნას external_order_id-ით...`,
               );
+
+              // ვპოულობთ payment-ს external_order_id-ით (frontend-იდან შექმნილი payment-ი)
+              const existingPaymentForUserId = await this.paymentModel
+                .findOne({ orderId: external_order_id })
+                .exec();
+
+              this.logger.log(
+                `   🔍 Payment ძებნის შედეგი: ${existingPaymentForUserId ? 'ნაპოვნია' : 'არ ნაპოვნია'}`,
+              );
+
+              if (
+                existingPaymentForUserId &&
+                existingPaymentForUserId.userId &&
+                existingPaymentForUserId.userId !== 'unknown'
+              ) {
+                userId = existingPaymentForUserId.userId;
+                this.logger.log(
+                  `   ✅ User ID ნაპოვნია არსებული payment-იდან: ${userId}`,
+                );
+              } else {
+                this.logger.log(
+                  `   ⚠️ User ID ვერ მოიძებნა, გამოყენებული იქნება: ${userId}`,
+                );
+              }
             }
 
             // BOG callback-ის დეტალური მონაცემების მოპოვება
             const innerBody =
               callbackData.body?.body || callbackData.body || callbackData;
-            const paymentDetail = innerBody?.payment_detail || callbackData.body?.payment_detail || callbackData.payment_detail;
-            const orderStatus = innerBody?.order_status || callbackData.body?.order_status || callbackData.order_status;
-            const purchaseUnits = innerBody?.purchase_units || callbackData.body?.purchase_units || callbackData.purchase_units;
-            const redirectLinks = innerBody?.redirect_links || callbackData.body?.redirect_links || callbackData.redirect_links;
-            const buyer = innerBody?.buyer || callbackData.body?.buyer || callbackData.buyer;
+            const paymentDetail =
+              innerBody?.payment_detail ||
+              callbackData.body?.payment_detail ||
+              callbackData.payment_detail;
+            const orderStatus =
+              innerBody?.order_status ||
+              callbackData.body?.order_status ||
+              callbackData.order_status;
+            const purchaseUnits =
+              innerBody?.purchase_units ||
+              callbackData.body?.purchase_units ||
+              callbackData.purchase_units;
+            const redirectLinks =
+              innerBody?.redirect_links ||
+              callbackData.body?.redirect_links ||
+              callbackData.redirect_links;
+            const buyer =
+              innerBody?.buyer ||
+              callbackData.body?.buyer ||
+              callbackData.buyer;
+
+            // Context-ის განსაზღვრა (subscription-ის შემთხვევაში external_order_id-დან)
+            let context =
+              (callbackData.product_id as string) ||
+              (callbackData.body?.purchase_units?.items?.[0]
+                ?.external_item_id as string) ||
+              '';
+
+            // თუ context არ არის, შევამოწმოთ external_order_id-ში
+            if (!context && external_order_id) {
+              if (
+                external_order_id.includes('subscription') ||
+                external_order_id.includes('test_subscription')
+              ) {
+                context = 'subscription';
+              } else if (external_order_id.includes('test_payment')) {
+                context = 'test';
+              }
+            }
+
+            // Default context
+            if (!context) {
+              context = 'test';
+            }
+
+            // Plan ID და Plan Name-ის მოძებნა external_order_id-დან ან არსებული payment-იდან
+            let planId: string | undefined;
+            let planName: string | undefined;
+            let planPrice: string | undefined;
+            let planCurrency: string | undefined;
+            let planPeriod: string | undefined;
+
+            // შევამოწმოთ external_order_id-ში planId (pattern: subscription_planId_timestamp_userId)
+            const planIdMatch = external_order_id.match(
+              /subscription_(\w+)_\d+_(.+)/,
+            );
+            if (planIdMatch && planIdMatch[1]) {
+              planId = planIdMatch[1];
+              this.logger.log(
+                `   ✅ Plan ID ნაპოვნია external_order_id-დან: ${planId}`,
+              );
+
+              // Plan period-ის განსაზღვრა planId-დან
+              if (planId === 'premium-monthly') {
+                planPeriod = 'თვეში';
+                planName = planName || 'პრემიუმ - თვეში';
+              } else if (planId === 'basic') {
+                planPeriod = 'უფასო';
+                planName = planName || 'ძირითადი';
+              }
+            }
+
+            // თუ planId ვერ მოიძებნა, შევამოწმოთ არსებული payment-ში (external_order_id-ით)
+            if (!planId) {
+              const existingPaymentForPlan = await this.paymentModel
+                .findOne({ orderId: external_order_id })
+                .exec();
+
+              if (existingPaymentForPlan?.metadata?.planId) {
+                planId = existingPaymentForPlan.metadata.planId;
+                planName = existingPaymentForPlan.metadata.planName;
+                planPrice = existingPaymentForPlan.metadata.planPrice;
+                planCurrency = existingPaymentForPlan.metadata.planCurrency;
+                planPeriod = existingPaymentForPlan.metadata.planPeriod;
+                this.logger.log(
+                  `   ✅ Plan ID ნაპოვნია არსებული payment-იდან: ${planId}`,
+                );
+              }
+            }
+
+            // თუ planPrice არ არის, გამოვიყენოთ amount
+            if (!planPrice && amount) {
+              planPrice = amount.toString();
+            }
+
+            // თუ planCurrency არ არის, გამოვიყენოთ currency
+            if (!planCurrency && currency) {
+              planCurrency = currency;
+            }
+
+            // თუ planPeriod არ არის, განვსაზღვროთ planId-დან
+            if (!planPeriod && planId) {
+              if (planId === 'premium-monthly') {
+                planPeriod = 'თვეში';
+              } else if (planId === 'basic') {
+                planPeriod = 'უფასო';
+              }
+            }
+
+            // თუ planName არ არის, განვსაზღვროთ planId-დან
+            if (!planName && planId) {
+              if (planId === 'premium-monthly') {
+                planName = 'პრემიუმ - თვეში';
+              } else if (planId === 'basic') {
+                planName = 'ძირითადი';
+              }
+            }
 
             // შევქმნათ payment record BOG callback-ის ყველა მონაცემით
             const paymentData: any = {
@@ -398,11 +547,7 @@ export class BOGController {
               currency: currency || 'GEL',
               paymentMethod: 'BOG',
               status: 'completed',
-              context:
-                (callbackData.product_id as string) ||
-                (callbackData.body?.purchase_units?.items?.[0]
-                  ?.external_item_id as string) ||
-                'test',
+              context: context,
               description:
                 (callbackData.description as string) ||
                 (callbackData.purchase_description as string) ||
@@ -436,6 +581,11 @@ export class BOGController {
                   (callbackData.body?.purchase_units?.items?.[0]
                     ?.description as string) ||
                   'BOG გადახდა',
+                planId: planId,
+                planName: planName,
+                planPrice: planPrice,
+                planCurrency: planCurrency,
+                planPeriod: planPeriod,
                 // BOG callback-ის სრული მონაცემები
                 bogCallbackData: {
                   payment_detail: paymentDetail,
@@ -447,7 +597,8 @@ export class BOGController {
                   lang: callbackData.lang || innerBody?.lang,
                   industry: callbackData.industry || innerBody?.industry,
                   capture: callbackData.capture || innerBody?.capture,
-                  reject_reason: callbackData.reject_reason || innerBody?.reject_reason,
+                  reject_reason:
+                    callbackData.reject_reason || innerBody?.reject_reason,
                   actions: callbackData.actions || innerBody?.actions,
                   disputes: callbackData.disputes || innerBody?.disputes,
                   split: callbackData.split || innerBody?.split,
@@ -480,7 +631,9 @@ export class BOGController {
             this.logger.log(`   • Status: ${newPayment.status}`);
             this.logger.log(`   • Context: ${newPayment.context}`);
             this.logger.log(`   • Description: ${newPayment.description}`);
-            this.logger.log(`   • Created At: ${newPayment.createdAt?.toISOString() || 'N/A'}`);
+            this.logger.log(
+              `   • Created At: ${newPayment.createdAt?.toISOString() || 'N/A'}`,
+            );
             this.logger.log(
               '═══════════════════════════════════════════════════════',
             );
@@ -538,6 +691,10 @@ export class BOGController {
               '═══════════════════════════════════════════════════════',
             );
 
+            // ბარათის დამახსოვრება უკვე მოხდა createOrder-ის შემდეგ, გადამისამართებამდე
+            // BOG API დოკუმენტაციის მიხედვით, ბარათის დამახსოვრება უნდა მოხდეს
+            // შეკვეთის შექმნის შემდეგ, გადახდების გვერდზე მომხმარებლის გადამისამართებამდე
+
             // Subscription-ის შექმნა (თუ context არის 'subscription' ან 'test_subscription' ან 'test')
             const context = payment.context || '';
             if (
@@ -560,13 +717,33 @@ export class BOGController {
                 );
                 this.logger.log(`   • Context: ${context}`);
 
+                // Plan ID და Plan Name-ის მიღება payment metadata-დან
+                const planId = payment.metadata?.planId;
+                const planName = payment.metadata?.planName;
+                const planPeriodFromMetadata = payment.metadata?.planPeriod;
+
+                if (planId) {
+                  this.logger.log(`   • Plan ID: ${planId}`);
+                }
+                if (planName) {
+                  this.logger.log(`   • Plan Name: ${planName}`);
+                }
+                if (planPeriodFromMetadata) {
+                  this.logger.log(
+                    `   • Plan Period: ${planPeriodFromMetadata}`,
+                  );
+                }
+
                 const subscription =
                   await this.subscriptionsService.createSubscriptionFromPayment(
                     payment.userId,
-                    order_id,
+                    order_id, // ეს არის create-order response-ის order_id (parent order_id)
                     payment.amount,
                     payment.currency,
                     context,
+                    planId,
+                    planName,
+                    planPeriodFromMetadata, // planPeriod-ის გადაცემა
                   );
 
                 this.logger.log(
@@ -592,6 +769,139 @@ export class BOGController {
                 this.logger.log(
                   '═══════════════════════════════════════════════════════',
                 );
+
+                // ბარათის დამახსოვრება recurring payments-ისთვის (callback-ის დროს)
+                // ეს აუცილებელია რადგან შეიძლება createOrder-ის შემდეგ saveCardForRecurringPayments ვერ მოხერხდა
+                // ვამოწმებთ orderStatus-ს (რომელიც განსაზღვრულია callback-ის დასაწყისში)
+                const currentOrderStatus =
+                  innerBody?.order_status ||
+                  callbackData.body?.order_status ||
+                  callbackData.order_status;
+
+                this.logger.log(
+                  '═══════════════════════════════════════════════════════',
+                );
+                this.logger.log(
+                  '💾 ბარათის დამახსოვრების მცდელობა recurring payments-ისთვის',
+                );
+                this.logger.log(
+                  '═══════════════════════════════════════════════════════',
+                );
+                this.logger.log(`   • Order ID: ${order_id}`);
+                this.logger.log(
+                  `   • Order Status: ${currentOrderStatus?.value || 'N/A'}`,
+                );
+                this.logger.log(
+                  `   • Subscription ID: ${String(subscription._id)}`,
+                );
+                this.logger.log(
+                  `   • BOG Token (bogCardToken): ${subscription.bogCardToken || 'N/A'}`,
+                );
+                this.logger.log(
+                  '═══════════════════════════════════════════════════════',
+                );
+
+                if (
+                  order_id &&
+                  (currentOrderStatus?.value === 'completed' ||
+                    currentOrderStatus?.value === 'success')
+                ) {
+                  // ამიტომ ვიყენებთ payment.metadata-დან
+                  const parentOrderId =
+                    payment.metadata?.bogCallbackData?.payment_detail
+                      ?.parent_order_id;
+
+                  let correctBogCardToken = order_id;
+
+                  // თუ ეს არის პირველი payment-ი (არ აქვს parentOrderId)
+                  // მაშინ bogCardToken უნდა იყოს ამ order_id (პირველი payment-ის orderId)
+                  if (!parentOrderId) {
+                    correctBogCardToken = order_id;
+                    this.logger.log(
+                      `   • პირველი payment-ი subscription-ისთვის, bogCardToken: ${correctBogCardToken}`,
+                    );
+                  }
+                  // თუ ეს არის recurring payment-ი (აქვს parentOrderId)
+                  // მაშინ bogCardToken უნდა იყოს parentOrderId (პირველი payment-ის orderId)
+                  else if (parentOrderId) {
+                    correctBogCardToken = parentOrderId;
+                    this.logger.log(
+                      `   • Recurring payment-ი, bogCardToken უნდა იყოს parentOrderId: ${correctBogCardToken}`,
+                    );
+                  }
+
+                  // განვაახლოთ subscription-ის bogCardToken თუ არასწორია
+                  // ეს აუცილებელია რომ recurring payments მუშაობდეს
+                  const previousBogCardToken = subscription.bogCardToken;
+                  if (
+                    !subscription.bogCardToken ||
+                    subscription.bogCardToken !== correctBogCardToken
+                  ) {
+                    subscription.bogCardToken = correctBogCardToken;
+                    await subscription.save();
+                    this.logger.log(
+                      `✅ Subscription-ის bogCardToken განახლებულია: ${correctBogCardToken}`,
+                    );
+                    this.logger.log(
+                      `   • წინა bogCardToken: ${previousBogCardToken || 'N/A'}`,
+                    );
+                    this.logger.log(
+                      `   • ახალი bogCardToken: ${correctBogCardToken}`,
+                    );
+                    this.logger.log(
+                      `   • 💡 ახლა შესაძლებელია recurring payments-ის გაკეთება ამ bogCardToken-ით`,
+                    );
+                  } else {
+                    this.logger.log(
+                      `✅ Subscription-ის bogCardToken უკვე სწორია: ${correctBogCardToken}`,
+                    );
+                  }
+                  try {
+                    this.logger.log(
+                      '💾 ბარათის დამახსოვრება recurring payments-ისთვის (callback-ის დროს)...',
+                    );
+                    this.logger.log(`   • Order ID: ${order_id}`);
+                    this.logger.log(
+                      `   • BOG Card Token (bogCardToken): ${correctBogCardToken}`,
+                    );
+                    await this.bogPaymentService.saveCardForRecurringPayments(
+                      order_id,
+                    );
+                    this.logger.log(
+                      `✅ ბარათი დამახსოვრებულია recurring payments-ისთვის order_id: ${order_id}-ისთვის`,
+                    );
+                  } catch (saveCardError) {
+                    // ბარათის დამახსოვრების შეცდომა არ უნდა შეაჩეროს subscription-ის შექმნა
+                    // bogCardToken მაინც ინახება subscription-ში და შესაძლებელია recurring payments-ის გაკეთება
+                    const errorMessage =
+                      saveCardError instanceof Error
+                        ? saveCardError.message
+                        : 'Unknown error';
+
+                    this.logger.warn(
+                      `⚠️ ბარათის დამახსოვრება ვერ მოხერხდა callback-ის დროს: ${errorMessage}`,
+                    );
+                    this.logger.warn(
+                      '   • ეს შეიძლება იყოს ნორმალური თუ ბარათი უკვე დამახსოვრებულია',
+                    );
+                    this.logger.warn(
+                      '   • ან შეიძლება იყოს პრობლემა BOG API-სთან',
+                    );
+                    this.logger.warn(
+                      `   • მაგრამ bogCardToken მაინც ინახება subscription-ში: ${correctBogCardToken}`,
+                    );
+                    this.logger.warn(
+                      '   • Subscription მაინც შეიქმნა, recurring payments შესაძლებელია მუშაობდეს',
+                    );
+                  }
+                } else {
+                  this.logger.warn(
+                    '⚠️ ბარათის დამახსოვრება გამოტოვებულია, რადგან order status არ არის completed/success',
+                  );
+                  this.logger.warn(
+                    `   • Order Status: ${currentOrderStatus?.value || 'N/A'}`,
+                  );
+                }
               } catch (subscriptionError) {
                 this.logger.error(
                   '❌ Subscription-ის შექმნის შეცდომა:',
@@ -711,9 +1021,11 @@ export class BOGController {
    * რეკურინგ გადახდის განხორციელება
    * POST /bog/recurring-payment
    *
-   * გამოიყენება წარმატებული გადახდის order_id, რომელიც ინახება პირველი გადახდის შემდეგ
+   * გამოიყენება წარმატებული გადახდის parent_order_id, რომელზეც მოხდა ბარათის დამახსოვრება
+   * BOG API დოკუმენტაციის მიხედვით, body-ში optional-ია callback_url და external_order_id
+   * სხვა პარამეტრები (თანხა, ვალუტა, მყიდველის ინფორმაცია) ავტომატურად იღება parent_order_id-დან
    *
-   * @see https://api.bog.ge/docs/ipay/recurring-payments
+   * @see https://api.bog.ge/docs/payments/recurring-payments
    */
   @Post('recurring-payment')
   @HttpCode(HttpStatus.OK)
@@ -786,6 +1098,41 @@ export class BOGController {
       return {
         success: false,
         message: `Recurring payment token-ის მიღება ვერ მოხერხდა: ${(error as Error).message}`,
+      };
+    }
+  }
+
+  /**
+   * ბარათის დამახსოვრების ტესტი კონკრეტული order_id-ით
+   * PUT /bog/save-card/:orderId
+   */
+  @Put('save-card/:orderId')
+  @HttpCode(HttpStatus.ACCEPTED)
+  async testSaveCard(@Param('orderId') orderId: string) {
+    try {
+      this.logger.log(`🧪 ბარათის დამახსოვრების ტესტი order_id: ${orderId}-ით`);
+
+      await this.bogPaymentService.saveCardForRecurringPayments(orderId);
+
+      this.logger.log(
+        `✅ ბარათის დამახსოვრების ტესტი წარმატებით დასრულდა order_id: ${orderId}-ით`,
+      );
+
+      return {
+        success: true,
+        message: 'ბარათი წარმატებით დამახსოვრებულია',
+        orderId: orderId,
+      };
+    } catch (error: unknown) {
+      this.logger.error(
+        `❌ ბარათის დამახსოვრების ტესტის შეცდომა order_id: ${orderId}-ით:`,
+        error instanceof Error ? error.message : 'Unknown error',
+      );
+
+      return {
+        success: false,
+        message: 'ბარათის დამახსოვრება ვერ მოხერხდა',
+        error: error instanceof Error ? error.message : 'Unknown error',
       };
     }
   }

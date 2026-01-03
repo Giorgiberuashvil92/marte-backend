@@ -134,7 +134,10 @@ export class NotificationsController {
   @Get('devices')
   async getDeviceTokens(@Query('userId') userId?: string) {
     try {
-      console.log('📱 [NOTIFICATIONS] GET /notifications/devices called with userId:', userId);
+      console.log(
+        '📱 [NOTIFICATIONS] GET /notifications/devices called with userId:',
+        userId,
+      );
       const tokens = await this.notificationsService.getDeviceTokens(userId);
       console.log('📱 [NOTIFICATIONS] Found tokens:', tokens.length);
       return {
@@ -167,9 +170,9 @@ export class NotificationsController {
         data: body.data || {},
       });
       return {
+        ...result,
         success: true,
         message: 'Broadcast notification sent successfully',
-        ...result,
       };
     } catch (error) {
       throw new BadRequestException({

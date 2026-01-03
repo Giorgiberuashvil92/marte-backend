@@ -6,6 +6,7 @@ import { Store } from '../schemas/store.schema';
 import { Dismantler } from '../schemas/dismantler.schema';
 import { Part } from '../schemas/part.schema';
 import { Category } from '../schemas/category.schema';
+import { Service } from '../schemas/service.schema';
 
 export interface ServiceItem {
   id: string;
@@ -23,6 +24,34 @@ export interface ServiceItem {
   popularity?: number;
   isOpen?: boolean;
   category?: string;
+}
+
+export interface MapServiceItem {
+  id: string;
+  title: string;
+  description: string;
+  type: 'carwash' | 'store' | 'service' | 'mechanic';
+  location?: string;
+  address?: string;
+  price?: string | number;
+  images?: string[];
+  phone?: string;
+  rating?: number;
+  reviews?: number;
+  latitude: number;
+  longitude: number;
+  isOpen?: boolean;
+  category?: string;
+  // დამატებითი ველები სხვადასხვა ტიპის სერვისებისთვის
+  services?: string[];
+  workingHours?: string;
+  waitTime?: string;
+  features?: string;
+  name?: string;
+  specialty?: string;
+  experience?: string;
+  avatar?: string;
+  isAvailable?: boolean;
 }
 
 export interface GetAllServicesOptions {
@@ -47,6 +76,8 @@ export class ServicesService {
     private readonly partModel: Model<Part>,
     @InjectModel(Category.name)
     private readonly categoryModel: Model<Category>,
+    @InjectModel(Service.name)
+    private readonly serviceModel: Model<Service>,
   ) {}
 
   async getAllServices(options: GetAllServicesOptions): Promise<ServiceItem[]> {
@@ -107,7 +138,9 @@ export class ServicesService {
       );
       return result;
     } catch (error) {
-      this.logger.error(`❌ Error fetching services: ${error.message}`);
+      const errorMessage =
+        error instanceof Error ? error.message : 'Unknown error';
+      this.logger.error(`❌ Error fetching services: ${errorMessage}`);
       throw error;
     }
   }
@@ -131,7 +164,7 @@ export class ServicesService {
   private async getCarwashServices(): Promise<ServiceItem[]> {
     const carwashes = await this.carwashModel.find({}).exec();
     return carwashes.map((carwash) => ({
-      id: carwash.id,
+      id: String(carwash.id),
       title: carwash.name,
       description: carwash.description,
       type: 'carwash' as const,
@@ -173,8 +206,12 @@ export class ServicesService {
               'https://images.unsplash.com/photo-1560472354-b33ff0c44a43?q=80&w=400&auto=format&fit=crop',
             ],
       phone: store.phone,
-      createdAt: new Date((store as any).createdAt || Date.now()),
-      updatedAt: new Date((store as any).updatedAt || Date.now()),
+      createdAt: new Date(
+        (store as { createdAt?: Date }).createdAt?.getTime() || Date.now(),
+      ),
+      updatedAt: new Date(
+        (store as { updatedAt?: Date }).updatedAt?.getTime() || Date.now(),
+      ),
       category: store.type,
       popularity: Math.random() * 5, // Temporary until we have real popularity data
     }));
@@ -197,8 +234,12 @@ export class ServicesService {
               'https://images.unsplash.com/photo-1502877338535-766e1452684a?q=80&w=400&auto=format&fit=crop',
             ],
       phone: dismantler.phone,
-      createdAt: new Date((dismantler as any).createdAt || Date.now()),
-      updatedAt: new Date((dismantler as any).updatedAt || Date.now()),
+      createdAt: new Date(
+        (dismantler as { createdAt?: Date }).createdAt?.getTime() || Date.now(),
+      ),
+      updatedAt: new Date(
+        (dismantler as { updatedAt?: Date }).updatedAt?.getTime() || Date.now(),
+      ),
       category: `${dismantler.brand} ${dismantler.model}`,
       popularity: dismantler.views || 0,
     }));
@@ -247,6 +288,149 @@ export class ServicesService {
       updatedAt: new Date(category.updatedAt || Date.now()),
       category: category.nameEn,
       popularity: category.popularity,
+    }));
+  }
+
+  /**
+   * აიღებს ყველა სერვისს რომლებსაც აქვთ latitude და longitude
+   * ეს მეთოდი გამოიყენება რუკაზე სერვისების ჩვენებისთვის
+   */
+  async getServicesForMap(): Promise<MapServiceItem[]> {
+    this.logger.log('🗺️ Fetching services for map with coordinates');
+
+    const mapServices: MapServiceItem[] = [];
+
+    try {
+      // Parallel queries for better performance
+      const promises: Promise<MapServiceItem[]>[] = [];
+
+      // Carwash services with coordinates
+      promises.push(this.getCarwashServicesForMap());
+
+      // Store services with coordinates
+      promises.push(this.getStoreServicesForMap());
+
+      // Service (auto-services) with coordinates
+      promises.push(this.getAutoServicesForMap());
+
+      const results = await Promise.all(promises);
+
+      // Flatten all results
+      results.forEach((serviceArray) => {
+        mapServices.push(...serviceArray);
+      });
+
+      this.logger.log(
+        `✅ Returning ${mapServices.length} services with coordinates for map`,
+      );
+      return mapServices;
+    } catch (error) {
+      const errorMessage =
+        error instanceof Error ? error.message : 'Unknown error';
+      this.logger.error(`❌ Error fetching services for map: ${errorMessage}`);
+      throw error;
+    }
+  }
+
+  private async getCarwashServicesForMap(): Promise<MapServiceItem[]> {
+    const carwashes = await this.carwashModel
+      .find({
+        latitude: { $exists: true, $ne: null },
+        longitude: { $exists: true, $ne: null },
+      })
+      .exec();
+
+    return carwashes.map((carwash) => ({
+      id: String(carwash.id),
+      title: carwash.name,
+      description: carwash.description,
+      type: 'carwash' as const,
+      location: carwash.location,
+      address: carwash.address,
+      price: `${carwash.price}₾`,
+      images:
+        carwash.images && carwash.images.length > 0
+          ? carwash.images
+          : [
+              'https://images.unsplash.com/photo-1558618666-fcd25c85cd64?q=80&w=400&auto=format&fit=crop',
+            ],
+      phone: carwash.phone,
+      rating: carwash.rating,
+      reviews: carwash.reviews,
+      latitude: carwash.latitude!,
+      longitude: carwash.longitude!,
+      isOpen: carwash.isOpen,
+      category: carwash.category,
+      workingHours: carwash.workingHours,
+      services: carwash.detailedServices?.map((s) => s.name) || [],
+    }));
+  }
+
+  private async getStoreServicesForMap(): Promise<MapServiceItem[]> {
+    const stores = await this.storeModel
+      .find({
+        latitude: { $exists: true, $ne: null },
+        longitude: { $exists: true, $ne: null },
+      })
+      .exec();
+
+    return stores.map((store) => ({
+      id: store._id.toString(),
+      title: store.title,
+      description: store.description,
+      type: 'store' as const,
+      location: store.location,
+      address: store.address,
+      images:
+        store.images && store.images.length > 0
+          ? store.images
+          : [
+              'https://images.unsplash.com/photo-1441986300917-64674bd600d8?q=80&w=400&auto=format&fit=crop',
+            ],
+      phone: store.phone,
+      latitude: store.latitude!,
+      longitude: store.longitude!,
+      category: store.type,
+      workingHours: store.workingHours,
+      services: store.services || [],
+    }));
+  }
+
+  private async getAutoServicesForMap(): Promise<MapServiceItem[]> {
+    const services = await this.serviceModel
+      .find({
+        latitude: { $exists: true, $ne: null },
+        longitude: { $exists: true, $ne: null },
+      })
+      .exec();
+
+    return services.map((service) => ({
+      id: service._id.toString(),
+      title: service.name,
+      description: service.description,
+      type: 'service' as const,
+      location: service.location,
+      address: service.address,
+      price: service.price,
+      images:
+        service.images && service.images.length > 0
+          ? service.images
+          : service.avatar
+            ? [service.avatar]
+            : [
+                'https://images.unsplash.com/photo-1558618666-fcd25c85cd64?q=80&w=400&auto=format&fit=crop',
+              ],
+      phone: service.phone,
+      rating: service.rating,
+      reviews: service.reviews,
+      latitude: service.latitude!,
+      longitude: service.longitude!,
+      isOpen: service.isOpen,
+      category: service.category,
+      workingHours: service.workingHours,
+      services: service.services || [],
+      waitTime: service.waitTime,
+      features: service.features,
     }));
   }
 }

@@ -61,6 +61,12 @@ export class Payment {
       },
       // BOG callback-ის დამატებითი მონაცემები
       bogCallbackData: { type: Object, required: false },
+      // Subscription-ის მონაცემები
+      planId: { type: String, required: false },
+      planName: { type: String, required: false },
+      planPrice: { type: String, required: false },
+      planCurrency: { type: String, required: false },
+      planPeriod: { type: String, required: false },
     },
   })
   metadata?: {
@@ -77,6 +83,12 @@ export class Payment {
       email?: string;
     };
     bogCallbackData?: any; // BOG callback-ის სრული მონაცემები
+    // Subscription-ის მონაცემები
+    planId?: string;
+    planName?: string;
+    planPrice?: string;
+    planCurrency?: string;
+    planPeriod?: string;
   };
 
   // BOG payment detail-ის დამატებითი ველები

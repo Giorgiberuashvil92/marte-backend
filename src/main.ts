@@ -99,6 +99,8 @@ async function bootstrap() {
   const corsOrigins = [
     'http://localhost:3000', // Admin Panel (local)
     'http://127.0.0.1:3000', // Admin Panel (local)
+    'http://localhost:4000', // Admin Panel (Next.js local)
+    'http://127.0.0.1:4000', // Admin Panel (Next.js local)
     'http://localhost:3001', // Backend self-reference
     'http://127.0.0.1:3001', // Backend self-reference
     'https://free-nextjs-admin-dashboard-omega-green.vercel.app', // Admin Panel (Vercel)
@@ -107,14 +109,10 @@ async function bootstrap() {
   ].filter(Boolean);
 
   app.enableCors({
-    origin: corsOrigins,
-    methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-    allowedHeaders: [
-      'Content-Type',
-      'Authorization',
-      'Cache-Control',
-      'X-Requested-With',
-    ],
+    origin: true, // Development mode-ში ყველა origin დასაშვებია
+    methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS', 'HEAD'],
+    allowedHeaders: '*', // ყველა header-ს იღებს
+    exposedHeaders: '*', // ყველა header-ს აბრუნებს
     credentials: true,
   });
 

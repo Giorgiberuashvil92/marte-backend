@@ -36,8 +36,7 @@ interface BOGStatusApiResponse {
 export class BOGPaymentService {
   private readonly logger = new Logger(BOGPaymentService.name);
   private readonly BOG_API_BASE_URL = 'https://api.bog.ge/payments/v1'; // OAuth და ecommerce endpoints
-  private readonly BOG_IPAY_BASE_URL =
-    'https://api.bog.ge/v1/checkout/payment/subscription'; // iPay API base URL (recurring payments-ისთვის)
+  private readonly BOG_IPAY_BASE_URL = 'https://ipay.ge/opay/api/v1'; // iPay API base URL (recurring payments-ისთვის)
 
   constructor(
     private bogOAuthService: BOGOAuthService,
@@ -110,6 +109,31 @@ export class BOGPaymentService {
       const responseData = (await response.json()) as BOGOrderApiResponse;
 
       this.logger.log('✅ BOG შეკვეთა წარმატებით შეიქმნა:', responseData.id);
+
+      // ბარათის დამახსოვრება (თუ save_card არის true)
+      // BOG API დოკუმენტაციის მიხედვით, ბარათის დამახსოვრება უნდა მოხდეს
+      // შეკვეთის შექმნის შემდეგ, გადახდების გვერდზე მომხმარებლის გადამისამართებამდე
+      if (bogOrderData.save_card) {
+        try {
+          this.logger.log(
+            `💾 ბარათის დამახსოვრება order_id: ${responseData.id}-ისთვის...`,
+          );
+          await this.saveCardForRecurringPayments(responseData.id);
+          this.logger.log(
+            `✅ ბარათი დამახსოვრებულია order_id: ${responseData.id}-ისთვის`,
+          );
+        } catch (saveCardError) {
+          // ბარათის დამახსოვრების შეცდომა არ უნდა შეაჩეროს order-ის შექმნა
+          // თუ order უკვე დამუშავებულია, ეს არ არის კრიტიკული შეცდომა
+          this.logger.warn(
+            `⚠️ ბარათის დამახსოვრება ვერ მოხერხდა, მაგრამ order შეიქმნა: ${
+              saveCardError instanceof Error
+                ? saveCardError.message
+                : 'Unknown error'
+            }`,
+          );
+        }
+      }
 
       // Response-ის ფორმატირება
       return {
@@ -246,9 +270,39 @@ export class BOGPaymentService {
   ): Record<string, any> {
     const baseUrl = this.configService.get<string>('APP_BASE_URL') || '';
 
+    // BOG API-ს სჭირდება HTTPS callback URL
+    // Development-ში გამოვიყენოთ production URL ან environment variable
+    let callbackUrl = orderData.callback_url;
+
+    // თუ callback_url არის HTTP (development), გამოვიყენოთ production URL ან env variable
+    if (callbackUrl && callbackUrl.startsWith('http://')) {
+      // პირველ რიგში შევამოწმოთ BOG_CALLBACK_URL env variable
+      let productionUrl = this.configService.get<string>('BOG_CALLBACK_URL');
+
+      // თუ BOG_CALLBACK_URL არ არის, გამოვიყენოთ APP_BASE_URL (მაგრამ მხოლოდ თუ HTTPS-ია)
+      if (!productionUrl) {
+        const appBaseUrl = this.configService.get<string>('APP_BASE_URL');
+        if (appBaseUrl && appBaseUrl.startsWith('https://')) {
+          productionUrl = appBaseUrl;
+        }
+      }
+
+      // თუ ჯერ კიდევ არ არის HTTPS URL, გამოვიყენოთ default production URL
+      if (!productionUrl || productionUrl.startsWith('http://')) {
+        productionUrl = 'https://marte-backend-production.up.railway.app';
+      }
+
+      // Replace HTTP URL with HTTPS production URL
+      callbackUrl = callbackUrl.replace(/^http:\/\/[^/]+/, productionUrl);
+
+      this.logger.warn(
+        `⚠️ HTTP callback URL გადაკეთდა HTTPS-ზე: ${orderData.callback_url} → ${callbackUrl}`,
+      );
+    }
+
     return {
       application_type: 'mobile',
-      callback_url: orderData.callback_url,
+      callback_url: callbackUrl,
       external_order_id: orderData.external_order_id,
       purchase_units: {
         currency: orderData.currency || 'GEL',
@@ -267,24 +321,39 @@ export class BOGPaymentService {
         fail: orderData.fail_url || `${baseUrl}/payment/fail`,
       },
       ttl: 15, // 15 წუთი
-      save_card: true, // ✅ Card token-ის შენახვა recurring payment-ებისთვის
+      save_card: orderData.save_card ?? false, // ✅ Card token-ის შენახვა recurring payment-ებისთვის (თუ save_card არის true)
     };
   }
 
   /**
-   * რეკურინგ გადახდის განხორციელება BOG iPay API-ს გამოყენებით
-   * გამოიყენება წარმატებული გადახდის order_id, რომელიც გამოიყენება რეკურინგ გადახდებისთვის
+   * რეკურინგ გადახდის განხორციელება BOG API-ს გამოყენებით
+   * გამოიყენება წარმატებული გადახდის parent_order_id, რომელზეც მოხდა ბარათის დამახსოვრება
    *
-   * @see https://api.bog.ge/docs/ipay/recurring-payments
+   * @see https://api.bog.ge/docs/payments/recurring-payments
    */
   async processRecurringPayment(
     recurringPaymentData: BOGRecurringPaymentDto,
   ): Promise<BOGRecurringPaymentResponseDto> {
     try {
+      // parent_order_id-ის მიღება (legacy order_id-დან თუ არ არის parent_order_id)
+      const parentOrderId =
+        recurringPaymentData.parent_order_id ||
+        recurringPaymentData.order_id ||
+        '';
+
+      if (!parentOrderId) {
+        throw new HttpException(
+          'parent_order_id აუცილებელია',
+          HttpStatus.BAD_REQUEST,
+        );
+      }
+
       this.logger.log('🔄 რეკურინგ გადახდის დაწყება...', {
-        order_id: recurringPaymentData.order_id,
-        amount: recurringPaymentData.amount,
-        shop_order_id: recurringPaymentData.shop_order_id,
+        parent_order_id: parentOrderId,
+        callback_url: recurringPaymentData.callback_url,
+        external_order_id:
+          recurringPaymentData.external_order_id ||
+          recurringPaymentData.shop_order_id,
       });
 
       // OAuth Token-ის მიღება
@@ -296,37 +365,38 @@ export class BOGPaymentService {
         );
       }
 
-      // BOG iPay API-ზე რეკურინგ გადახდის მოთხოვნა
-      // Endpoint: POST /opay/api/v1/checkout/payment/subscription
-      // Base URL: https://ipay.ge/opay/api/v1 (documentation-ის მიხედვით)
-      // Recurring payment-ისთვის საჭიროა წარმატებული გადახდის order_id
-      const requestBody = {
-        order_id: recurringPaymentData.order_id, // წარმატებული გადახდის order_id რომელიც გამოიყენება როგორც token
-        amount: {
-          currency_code: recurringPaymentData.currency || 'GEL',
-          value: recurringPaymentData.amount.toString(),
-        },
-        shop_order_id: recurringPaymentData.shop_order_id,
-        purchase_description: recurringPaymentData.purchase_description,
-      };
+      // BOG API-ზე რეკურინგ გადახდის მოთხოვნა
+      // Endpoint: POST /payments/v1/ecommerce/orders/:parent_order_id/subscribe
+      // BOG API დოკუმენტაციის მიხედვით, body-ში optional-ია callback_url და external_order_id
+      // სხვა პარამეტრები (თანხა, ვალუტა, მყიდველის ინფორმაცია) ავტომატურად იღება parent_order_id-დან
+      const requestBody: {
+        callback_url?: string;
+        external_order_id?: string;
+      } = {};
+
+      if (recurringPaymentData.callback_url) {
+        requestBody.callback_url = recurringPaymentData.callback_url;
+      }
+
+      if (
+        recurringPaymentData.external_order_id ||
+        recurringPaymentData.shop_order_id
+      ) {
+        requestBody.external_order_id =
+          recurringPaymentData.external_order_id ||
+          recurringPaymentData.shop_order_id;
+      }
+
+      const endpoint = `${this.BOG_API_BASE_URL}/ecommerce/orders/${parentOrderId}/subscribe`;
 
       this.logger.log(
         '═══════════════════════════════════════════════════════',
       );
-      this.logger.log(
-        '📤 Sending recurring payment request to BOG iPay API...',
-      );
+      this.logger.log('📤 Sending recurring payment request to BOG API...');
       this.logger.log(
         '═══════════════════════════════════════════════════════',
       );
-      this.logger.log(`   • Base URL: ${this.BOG_IPAY_BASE_URL}`);
-      // თუ BOG_IPAY_BASE_URL უკვე შეიცავს full path-ს, არ ვამატებთ /checkout/payment/subscription
-      const endpoint = this.BOG_IPAY_BASE_URL.includes(
-        '/checkout/payment/subscription',
-      )
-        ? this.BOG_IPAY_BASE_URL
-        : `${this.BOG_IPAY_BASE_URL}/checkout/payment/subscription`;
-      this.logger.log(`   • Full Endpoint: ${endpoint}`);
+      this.logger.log(`   • Endpoint: ${endpoint}`);
       this.logger.log(`   • Method: POST`);
       this.logger.log(
         `   • Authorization: Bearer ${token.substring(0, 20)}...`,
@@ -429,7 +499,13 @@ export class BOGPaymentService {
       }
 
       // ვამოწმებთ რომ response არის JSON
-      if (!contentType || !contentType.includes('application/json')) {
+      // BOG API შეიძლება დააბრუნოს application/json ან application/hal+json (HAL - Hypertext Application Language)
+      const isJsonContentType =
+        contentType &&
+        (contentType.includes('application/json') ||
+          contentType.includes('application/hal+json'));
+
+      if (!isJsonContentType) {
         const responseText = await response.text();
         this.logger.error(
           `❌ Unexpected content type: ${contentType}. Response: ${responseText.substring(0, 500)}`,
@@ -440,22 +516,30 @@ export class BOGPaymentService {
         );
       }
 
+      // BOG API დოკუმენტაციის მიხედვით, response არის:
+      // { id: string, _links: { details: { href: string } } }
       const responseData = (await response.json()) as {
-        order_id: string;
-        status: string;
-        message?: string;
+        id: string;
+        _links?: {
+          details?: {
+            href?: string;
+          };
+        };
       };
 
       this.logger.log('✅ რეკურინგ გადახდა წარმატებით განხორციელდა:', {
-        order_id: responseData.order_id,
-        status: responseData.status,
+        id: responseData.id,
+        details_href: responseData._links?.details?.href,
       });
 
+      // Response-ის ფორმატირება backward compatibility-ისთვის
       return {
-        order_id: responseData.order_id,
-        status: responseData.status,
-        message:
-          responseData.message || 'რეკურინგ გადახდა წარმატებით განხორციელდა',
+        id: responseData.id,
+        _links: responseData._links,
+        // Legacy fields for backward compatibility
+        order_id: responseData.id,
+        status: 'success', // BOG API არ აბრუნებს status-ს, მაგრამ თუ წარმატებით დასრულდა, ეს success-ია
+        message: 'რეკურინგ გადახდა წარმატებით განხორციელდა',
       };
     } catch (error: unknown) {
       this.logger.error(
@@ -469,6 +553,142 @@ export class BOGPaymentService {
 
       throw new HttpException(
         `რეკურინგ გადახდა ვერ მოხერხდა: ${
+          error instanceof Error ? error.message : 'Unknown error'
+        }`,
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
+  }
+
+  /**
+   * ბარათის დამახსოვრება ავტომატური გადახდებისთვის (subscription-ებისთვის)
+   * PUT /payments/v1/orders/:order_id/subscriptions
+   *
+   * @param orderId - შეკვეთის ID რომელიც ბრუნდება create-order response-ში
+   * @see https://api.bog.ge/docs/payments/saved-card/offline
+   */
+  async saveCardForRecurringPayments(orderId: string): Promise<void> {
+    try {
+      this.logger.log(
+        `💾 ბარათის დამახსოვრება ავტომატური გადახდებისთვის order_id: ${orderId}-ისთვის...`,
+      );
+
+      // ვამოწმებთ order-ის სტატუსს დამახსოვრებამდე (optional)
+      // BOG API დოკუმენტაციის მიხედვით, ბარათის დამახსოვრება უნდა მოხდეს
+      // შეკვეთის შექმნის შემდეგ, გადახდების გვერდზე მომხმარებლის გადამისამართებამდე
+      // ამ დროს order-ი შეიძლება pending-ში იყოს, რაც ნორმალურია
+      try {
+        const orderStatus = await this.getOrderStatus(orderId);
+        this.logger.log(
+          `🔍 Order სტატუსი: ${orderStatus.status} (${orderStatus.message})`,
+        );
+
+        // BOG API დოკუმენტაციის მიხედვით, ბარათის დამახსოვრება უნდა მოხდეს
+        // შეკვეთის შექმნის შემდეგ, ამ დროს order-ი შეიძლება pending-ში იყოს
+        // თუ order-ი უკვე completed/success-ია, ეს ასევე ნორმალურია
+        if (
+          orderStatus.status !== 'completed' &&
+          orderStatus.status !== 'success' &&
+          orderStatus.status !== 'pending'
+        ) {
+          this.logger.warn(
+            `⚠️ Order სტატუსი არ არის შესაფერისი ბარათის დამახსოვრებისთვის: ${orderStatus.status}`,
+          );
+          // არ ვაბრუნებთ შეცდომას, რადგან შეიძლება BOG API-მა მაინც მიიღოს მოთხოვნა
+        }
+      } catch (statusError) {
+        // თუ სტატუსის შემოწმება ვერ მოხერხდა, ვაგრძელებთ მაინც
+        // ეს არ არის კრიტიკული, რადგან BOG API-მა შეიძლება მაინც მიიღოს მოთხოვნა
+        this.logger.warn(
+          `⚠️ Order სტატუსის შემოწმება ვერ მოხერხდა, ვაგრძელებთ დამახსოვრებას: ${
+            statusError instanceof Error ? statusError.message : 'Unknown error'
+          }`,
+        );
+      }
+
+      // OAuth Token-ის მიღება
+      const token = await this.bogOAuthService.getAccessToken();
+      if (!token) {
+        throw new HttpException(
+          'BOG OAuth token ვერ მოიძებნა',
+          HttpStatus.UNAUTHORIZED,
+        );
+      }
+
+      // BOG API-ზე მოთხოვნის გაგზავნა
+      // Endpoint: PUT /payments/v1/orders/:order_id/subscriptions
+      // ეს endpoint გამოიყენება ავტომატური გადახდებისთვის (subscription-ებისთვის)
+      const response = await fetch(
+        `${this.BOG_API_BASE_URL}/orders/${orderId}/subscriptions`,
+        {
+          method: 'PUT',
+          headers: {
+            Authorization: `Bearer ${token}`,
+            'Accept-Language': 'ka',
+          },
+        },
+      );
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        let errorData: { message?: string; error?: string } = {};
+
+        try {
+          errorData = JSON.parse(errorText);
+        } catch {
+          errorData = {
+            message: errorText || `HTTP error! status: ${response.status}`,
+          };
+        }
+
+        const errorMessage =
+          errorData.message ||
+          errorData.error ||
+          `HTTP error! status: ${response.status}`;
+
+        // თუ order უკვე დამუშავებულია, ეს არ არის კრიტიკული შეცდომა
+        if (
+          errorMessage.includes('already processed') ||
+          errorMessage.includes('already exists') ||
+          errorMessage.includes('duplicate')
+        ) {
+          this.logger.warn(
+            `⚠️ Order უკვე დამუშავებულია, ბარათი შესაძლოა უკვე დამახსოვრებულია: ${errorMessage}`,
+          );
+          // არ ვაბრუნებთ შეცდომას, რადგან ეს არ არის კრიტიკული
+          return;
+        }
+
+        this.logger.error(`❌ ბარათის დამახსოვრების შეცდომა: ${errorMessage}`);
+
+        throw new HttpException(
+          `ბარათის დამახსოვრება ვერ მოხერხდა: ${errorMessage}`,
+          HttpStatus.BAD_REQUEST,
+        );
+      }
+
+      // 202 ACCEPTED status code-ის შემოწმება
+      if (response.status === 202) {
+        this.logger.log(
+          `✅ ბარათი წარმატებით დამახსოვრებულია ავტომატური გადახდებისთვის order_id: ${orderId}-ისთვის`,
+        );
+      } else {
+        this.logger.warn(
+          `⚠️ მოულოდნელი status code: ${response.status} order_id: ${orderId}-ისთვის (მოსალოდნელი იყო 202)`,
+        );
+      }
+    } catch (error: unknown) {
+      this.logger.error(
+        '❌ ბარათის დამახსოვრების შეცდომა:',
+        error instanceof Error ? error.message : 'Unknown error',
+      );
+
+      if (error instanceof HttpException) {
+        throw error;
+      }
+
+      throw new HttpException(
+        `ბარათის დამახსოვრება ვერ მოხერხდა: ${
           error instanceof Error ? error.message : 'Unknown error'
         }`,
         HttpStatus.INTERNAL_SERVER_ERROR,

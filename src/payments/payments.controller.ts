@@ -10,12 +10,16 @@ import {
 } from '@nestjs/common';
 import { PaymentsService } from './payments.service';
 import { CreatePaymentDto } from './dto/create-payment.dto';
+import { SubscriptionsService } from '../subscriptions/subscriptions.service';
 
 @Controller('api/payments')
 export class PaymentsController {
   private readonly logger = new Logger(PaymentsController.name);
 
-  constructor(private readonly paymentsService: PaymentsService) {}
+  constructor(
+    private readonly paymentsService: PaymentsService,
+    private readonly subscriptionsService: SubscriptionsService,
+  ) {}
 
   @Post()
   @HttpCode(HttpStatus.CREATED)
@@ -206,6 +210,43 @@ export class PaymentsController {
       return {
         success: false,
         message: 'Failed to retrieve payment token',
+        error: error.message,
+      };
+    }
+  }
+
+  /**
+   * User-ის subscription status-ის მიღება
+   * GET /api/payments/subscription/user/:userId/status
+   */
+  @Get('subscription/user/:userId/status')
+  async getUserSubscriptionStatus(@Param('userId') userId: string) {
+    try {
+      this.logger.log(`📊 Getting subscription status for user: ${userId}`);
+
+      const subscription = await this.subscriptionsService.getUserSubscription(userId);
+
+      if (!subscription) {
+        this.logger.log(`⚠️ No active subscription found for user ${userId}`);
+        return {
+          success: false,
+          message: 'No active subscription found',
+          data: null,
+        };
+      }
+
+      this.logger.log(`✅ Subscription found for user ${userId}`);
+
+      return {
+        success: true,
+        message: 'Subscription retrieved successfully',
+        data: subscription,
+      };
+    } catch (error) {
+      this.logger.error('❌ Failed to get user subscription status:', error);
+      return {
+        success: false,
+        message: 'Failed to retrieve subscription status',
         error: error.message,
       };
     }

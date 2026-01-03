@@ -13,7 +13,19 @@ export class Store {
 
   @Prop({
     type: String,
-    enum: ['ავტონაწილები', 'სამართ-დასახურებელი', 'რემონტი', 'სხვა'],
+    enum: [
+      'მაღაზიები',
+      'ნაწილები',
+      'დაშლილები',
+      'ზეთები',
+      'ხელოსნები',
+      'ავტოსერვისები',
+      'ევაკუატორი',
+      'ავტონაწილები', // backward compatibility
+      'სამართ-დასახურებელი', // backward compatibility
+      'რემონტი', // backward compatibility
+      'სხვა', // backward compatibility
+    ],
     required: true,
   })
   type: string;

@@ -120,12 +120,21 @@ export class AINotificationsService {
         const pModel = (part.vehicle?.model || part.model || '').toLowerCase();
         const pYearNum = parseInt(part.vehicle?.year || part.year || '');
 
-        const sameBrandModel = pMake && pModel && reqMake === pMake && reqModel === pModel;
-        const yearInRange = Number.isFinite(reqYearNum) && reqYearNum >= 2016 && reqYearNum <= 2019;
+        const sameBrandModel =
+          pMake && pModel && reqMake === pMake && reqModel === pModel;
+        const yearInRange =
+          Number.isFinite(reqYearNum) &&
+          reqYearNum >= 2016 &&
+          reqYearNum <= 2019;
 
         // ასევე დავუშვათ, რომ თუ ორივეს აქვს წელი და განსხვავება მცირეა, ჩავთვალოთ year match-ად დიაპაზონში
-        const bothYears = Number.isFinite(reqYearNum) && Number.isFinite(pYearNum);
-        const yearClose = bothYears && Math.abs(reqYearNum - pYearNum) <= 0 && reqYearNum >= 2016 && reqYearNum <= 2019;
+        const bothYears =
+          Number.isFinite(reqYearNum) && Number.isFinite(pYearNum);
+        const yearClose =
+          bothYears &&
+          Math.abs(reqYearNum - pYearNum) <= 0 &&
+          reqYearNum >= 2016 &&
+          reqYearNum <= 2019;
 
         if (sameBrandModel || yearInRange || yearClose) {
           const userId = request.userId?.toString();
@@ -231,7 +240,7 @@ export class AINotificationsService {
           [{ userId }],
           {
             title: '🎯 ვიპოვეთ შესატყვისი ნაწილები',
-            body: `${request.vehicle?.make || ''} ${request.vehicle?.model || ''}${request.vehicle?.year ? ' ' + request.vehicle?.year : ''} • ${request.partName} — ${highConfidenceMatches.length} ვარიანტი მზადაა` ,
+            body: `${request.vehicle?.make || ''} ${request.vehicle?.model || ''}${request.vehicle?.year ? ' ' + request.vehicle?.year : ''} • ${request.partName} — ${highConfidenceMatches.length} ვარიანტი მზადაა`,
             data: {
               type: 'ai_request_match',
               requestId: request._id?.toString(),
@@ -270,16 +279,21 @@ export class AINotificationsService {
       });
 
       // ფილტრავს მაღალი confidence-ის მქონე recommendations
+      // Lowered threshold from 0.7 to 0.5 to catch more matches (brand + model = 0.7, brand only = 0.4)
       const highConfidenceRecs = recommendations.filter(
-        (rec) => rec.confidence >= 0.7,
+        (rec) => rec.confidence >= 0.5,
+      );
+
+      console.log(
+        `🤖 [AI-NOTIFY] Found ${recommendations.length} total recommendations, ${highConfidenceRecs.length} with confidence >= 0.5`,
       );
 
       if (highConfidenceRecs.length > 0) {
         await this.notificationsService.sendPushToTargets(
           [{ userId }],
           {
-            title: '🤖 გიპოვეთ შესაძლო შეთავაზებები',
-            body: `${request.vehicle?.make || ''} ${request.vehicle?.model || ''}${request.vehicle?.year ? ' ' + request.vehicle?.year : ''} • ${request.partName} — ${highConfidenceRecs.length} ვარიანტი` ,
+            title: '🤖 მომხმარებელს ჭირდება ნაწილი',
+            body: `${request.vehicle?.make || ''} ${request.vehicle?.model || ''}${request.vehicle?.year ? ' ' + request.vehicle?.year : ''} • ${request.partName} — ${highConfidenceRecs.length} ვარიანტი`,
             data: {
               type: 'ai_recommendations',
               requestId: request._id?.toString(),
@@ -295,9 +309,7 @@ export class AINotificationsService {
           'system',
         );
 
-        console.log(
-          `✅ [AI-NOTIFY] Sent AI recommendations to user ${userId}`,
-        );
+        console.log(`✅ [AI-NOTIFY] Sent AI recommendations to user ${userId}`);
       }
     } catch (error) {
       console.error('❌ [AI-NOTIFY] Error sending AI recommendations:', error);

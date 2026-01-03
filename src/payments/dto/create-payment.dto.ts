@@ -50,6 +50,12 @@ export class CreatePaymentDto {
       phone?: string;
       email?: string;
     };
+    bogCallbackData?: any;
+    planId?: string;
+    planName?: string;
+    planPrice?: string;
+    planCurrency?: string;
+    planPeriod?: string;
   };
 
   @IsOptional()

@@ -19,9 +19,21 @@ export class UpdateStoreDto {
   description?: string;
 
   @IsString()
-  @IsIn(['ავტონაწილები', 'სამართ-დასახურებელი', 'რემონტი', 'სხვა'])
+  @IsIn([
+    'მაღაზიები',
+    'ნაწილები',
+    'დაშლილები',
+    'ზეთები',
+    'ხელოსნები',
+    'ავტოსერვისები',
+    'ევაკუატორი',
+    'ავტონაწილები', // backward compatibility
+    'სამართ-დასახურებელი', // backward compatibility
+    'რემონტი', // backward compatibility
+    'სხვა', // backward compatibility
+  ])
   @IsOptional()
-  type?: 'ავტონაწილები' | 'სამართ-დასახურებელი' | 'რემონტი' | 'სხვა';
+  type?: string;
 
   @IsArray()
   @IsOptional()

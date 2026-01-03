@@ -3,8 +3,12 @@ import { MongooseModule } from '@nestjs/mongoose';
 import { ScheduleModule } from '@nestjs/schedule';
 import { RecurringPaymentsService } from './recurring-payments.service';
 import { RecurringPaymentsController } from './recurring-payments.controller';
-import { Subscription, SubscriptionSchema } from '../schemas/subscription.schema';
+import {
+  Subscription,
+  SubscriptionSchema,
+} from '../schemas/subscription.schema';
 import { Payment, PaymentSchema } from '../schemas/payment.schema';
+import { User, UserSchema } from '../schemas/user.schema';
 import { BOGModule } from '../bog/bog.module';
 import { PaymentsModule } from '../payments/payments.module';
 
@@ -14,6 +18,7 @@ import { PaymentsModule } from '../payments/payments.module';
     MongooseModule.forFeature([
       { name: Subscription.name, schema: SubscriptionSchema },
       { name: Payment.name, schema: PaymentSchema },
+      { name: User.name, schema: UserSchema },
     ]),
     BOGModule,
     PaymentsModule,
@@ -23,4 +28,3 @@ import { PaymentsModule } from '../payments/payments.module';
   exports: [RecurringPaymentsService],
 })
 export class RecurringPaymentsModule {}
-

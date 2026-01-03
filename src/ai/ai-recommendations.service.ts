@@ -56,10 +56,12 @@ export class AIRecommendationsService {
 
     // 1. Search in Parts collection (direct parts)
     const parts = await this.findMatchingParts(vehicle, partName, location);
+    console.log(`🔍 [AI] Found ${parts.length} matching parts`);
     recommendations.push(...parts);
 
     // 2. Search in Stores collection (stores that might have this part)
     const stores = await this.findMatchingStores(vehicle, partName, location);
+    console.log(`🔍 [AI] Found ${stores.length} matching stores`);
     recommendations.push(...stores);
 
     // 3. Search in Dismantlers collection (dismantlers with matching cars)
@@ -68,6 +70,18 @@ export class AIRecommendationsService {
       partName,
       location,
     );
+    console.log(`🔍 [AI] Found ${dismantlers.length} matching dismantlers`);
+    if (dismantlers.length > 0) {
+      console.log(
+        `🔍 [AI] Dismantler details:`,
+        dismantlers.map((d) => ({
+          name: d.name,
+          brand: d.matchReasons.find((r) => r.includes('ბრენდი')),
+          model: d.matchReasons.find((r) => r.includes('მოდელი')),
+          confidence: d.confidence,
+        })),
+      );
+    }
     recommendations.push(...dismantlers);
 
     // Sort by confidence score
@@ -75,7 +89,9 @@ export class AIRecommendationsService {
       .sort((a, b) => b.confidence - a.confidence)
       .slice(0, 20); // Return top 20 recommendations
 
-    console.log(`🤖 Generated ${sortedRecommendations.length} recommendations`);
+    console.log(
+      `🤖 Generated ${sortedRecommendations.length} recommendations (${parts.length} parts, ${stores.length} stores, ${dismantlers.length} dismantlers)`,
+    );
     return sortedRecommendations;
   }
 
@@ -123,18 +139,15 @@ export class AIRecommendationsService {
   }> {
     const { userId, phone, make, model, year, debug } = params;
 
-    // Try to load authoritative phone from users collection
     let effectivePhone = phone;
     if (!effectivePhone) {
       const u = await this.userModel.findOne({ id: userId }).lean().exec();
       effectivePhone = u?.phone;
     }
 
-    // Match stores by ownerId OR phone as fallback
     const storeFilter: Record<string, any> = effectivePhone
       ? { $or: [{ ownerId: userId }, { phone: effectivePhone }] }
       : { ownerId: userId };
-    // Parts might be linked either by seller or ownerId depending on creator flow
     const partFilter: Record<string, any> = {
       $or: [{ seller: userId }, { ownerId: userId }],
     };
@@ -180,7 +193,6 @@ export class AIRecommendationsService {
 
     let matchingRequests: Request[] = [];
 
-    // Build predicates from owned inventory (parts + dismantlers)
     const orPredicates: any[] = [];
 
     const buildFlexRegex = (text: string) => {
@@ -542,39 +554,198 @@ export class AIRecommendationsService {
     });
   }
 
+  /**
+   * Helper function to normalize brand/model strings for matching
+   * Removes extra spaces, converts to lowercase, handles special characters
+   */
+  private normalizeForMatching(str: string): string {
+    return (str || '')
+      .trim()
+      .toLowerCase()
+      .replace(/\s+/g, ' ') // Multiple spaces to single space
+      .replace(/[-_]/g, ' ') // Dashes and underscores to spaces
+      .trim();
+  }
+
+  /**
+   * Helper function to create flexible RegExp for brand/model matching
+   * Handles variations like "Porsche Macan" vs "Porsche" + "Macan"
+   */
+  private createFlexibleRegex(text: string): RegExp | null {
+    if (!text || !text.trim()) return null;
+    const normalized = this.normalizeForMatching(text);
+    // Escape special regex characters but allow flexible matching
+    const escaped = normalized.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    // Allow optional spaces and dashes
+    const flexible = escaped.replace(/\s+/g, '[\\s\\-]*');
+    return new RegExp(`^${flexible}$`, 'i');
+  }
+
   private async findMatchingDismantlers(
     vehicle: PartsRequest['vehicle'],
     partName: string,
     location?: string,
   ): Promise<AIRecommendation[]> {
-    const brandRegex = new RegExp(vehicle.make, 'i');
-    const modelRegex = new RegExp(vehicle.model, 'i');
-
+    // Build query with proper RegExp
+    // Include all statuses: pending (default), approved, active
+    // Users add dismantlers with status: 'pending' by default
     const query: Record<string, any> = {
-      status: 'approved',
-      brand: brandRegex,
+      $or: [
+        { status: 'pending' }, // Default status when users add dismantlers
+        { status: 'approved' },
+        { status: 'active' },
+        { status: { $exists: false } }, // Backward compatibility
+      ],
     };
 
-    if (location) {
-      query.location = new RegExp(location, 'i');
+    // Add brand match if provided - use flexible matching
+    if (vehicle.make && vehicle.make.trim()) {
+      const brandRegex = this.createFlexibleRegex(vehicle.make);
+      if (brandRegex) {
+        query.brand = brandRegex;
+      }
+    }
+
+    // Add model match if provided - use flexible matching
+    if (vehicle.model && vehicle.model.trim()) {
+      const modelRegex = this.createFlexibleRegex(vehicle.model);
+      if (modelRegex) {
+        query.model = modelRegex;
+      }
+    }
+
+    // Add year range if provided
+    if (vehicle.year) {
+      const requestYear = parseInt(String(vehicle.year));
+      if (!Number.isNaN(requestYear)) {
+        query.$and = [
+          { yearFrom: { $lte: requestYear } },
+          { yearTo: { $gte: requestYear } },
+        ];
+      }
+    }
+
+    if (location && location.trim()) {
+      query.location = new RegExp(location.trim(), 'i');
+    }
+
+    // Log query with RegExp details
+    const queryForLog = { ...query };
+    if (queryForLog.brand instanceof RegExp) {
+      queryForLog.brand = `RegExp(${queryForLog.brand.source}, ${queryForLog.brand.flags})`;
+    }
+    if (queryForLog.model instanceof RegExp) {
+      queryForLog.model = `RegExp(${queryForLog.model.source}, ${queryForLog.model.flags})`;
+    }
+    console.log(
+      '🔍 [AI] Dismantler query:',
+      JSON.stringify(queryForLog, null, 2),
+    );
+    console.log('🔍 [AI] Vehicle:', {
+      make: vehicle.make,
+      model: vehicle.model,
+      year: vehicle.year,
+    });
+    console.log(
+      '🔍 [AI] Query has brand:',
+      !!query.brand,
+      'model:',
+      !!query.model,
+    );
+
+    // Debug: Check total dismantlers with this brand/model in DB
+    const debugQuery = {
+      brand: query.brand,
+      model: query.model,
+    };
+    const allMatchingBrandModel = await this.dismantlerModel
+      .find(debugQuery)
+      .select({ brand: 1, model: 1, status: 1, yearFrom: 1, yearTo: 1 })
+      .lean();
+    console.log(
+      `🔍 [AI] Total dismantlers with brand/model match (any status): ${allMatchingBrandModel.length}`,
+    );
+    if (allMatchingBrandModel.length > 0) {
+      console.log(
+        `🔍 [AI] Status breakdown:`,
+        allMatchingBrandModel.reduce((acc: any, d: any) => {
+          const status = d.status || 'no-status';
+          acc[status] = (acc[status] || 0) + 1;
+          return acc;
+        }, {}),
+      );
     }
 
     const dismantlers = await this.dismantlerModel.find(query).exec();
+    console.log(
+      `🔍 [AI] Found ${dismantlers.length} dismantlers matching full query`,
+    );
+
+    // Use flexible matching for confidence calculation
+    const brandRegex = vehicle.make
+      ? this.createFlexibleRegex(vehicle.make)
+      : null;
+    const modelRegex = vehicle.model
+      ? this.createFlexibleRegex(vehicle.model)
+      : null;
 
     return dismantlers.map((dismantler) => {
-      let confidence = 0.4; // Base confidence for brand match
-      const matchReasons: string[] = [`ბრენდი ემთხვევა: ${dismantler.brand}`];
+      let confidence = 0;
+      const matchReasons: string[] = [];
 
-      // Check if model matches
-      if (modelRegex.test(dismantler.model)) {
-        confidence += 0.3;
-        matchReasons.push(`მოდელი ემთხვევა: ${dismantler.model}`);
+      // Check brand match with flexible matching
+      const dismantlerBrandNorm = this.normalizeForMatching(
+        dismantler.brand || '',
+      );
+      const requestBrandNorm = vehicle.make
+        ? this.normalizeForMatching(vehicle.make)
+        : '';
+
+      if (requestBrandNorm && dismantlerBrandNorm) {
+        if (dismantlerBrandNorm === requestBrandNorm) {
+          confidence += 0.5; // Exact match
+          matchReasons.push(`ბრენდი ზუსტად ემთხვევა: ${dismantler.brand}`);
+        } else if (
+          dismantlerBrandNorm.includes(requestBrandNorm) ||
+          requestBrandNorm.includes(dismantlerBrandNorm)
+        ) {
+          confidence += 0.4; // Partial match
+          matchReasons.push(`ბრენდი ნაწილობრივ ემთხვევა: ${dismantler.brand}`);
+        } else if (brandRegex && brandRegex.test(dismantler.brand)) {
+          confidence += 0.4; // Regex match
+          matchReasons.push(`ბრენდი ემთხვევა: ${dismantler.brand}`);
+        }
+      }
+
+      // Check model match with flexible matching
+      const dismantlerModelNorm = this.normalizeForMatching(
+        dismantler.model || '',
+      );
+      const requestModelNorm = vehicle.model
+        ? this.normalizeForMatching(vehicle.model)
+        : '';
+
+      if (requestModelNorm && dismantlerModelNorm) {
+        if (dismantlerModelNorm === requestModelNorm) {
+          confidence += 0.3; // Exact match
+          matchReasons.push(`მოდელი ზუსტად ემთხვევა: ${dismantler.model}`);
+        } else if (
+          dismantlerModelNorm.includes(requestModelNorm) ||
+          requestModelNorm.includes(dismantlerModelNorm)
+        ) {
+          confidence += 0.2; // Partial match
+          matchReasons.push(`მოდელი ნაწილობრივ ემთხვევა: ${dismantler.model}`);
+        } else if (modelRegex && modelRegex.test(dismantler.model)) {
+          confidence += 0.2; // Regex match
+          matchReasons.push(`მოდელი ემთხვევა: ${dismantler.model}`);
+        }
       }
 
       // Check year range
       if (vehicle.year) {
-        const requestYear = parseInt(vehicle.year);
+        const requestYear = parseInt(String(vehicle.year));
         if (
+          !Number.isNaN(requestYear) &&
           requestYear >= dismantler.yearFrom &&
           requestYear <= dismantler.yearTo
         ) {

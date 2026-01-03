@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-unsafe-member-access */
 import { Injectable, Logger, HttpException, HttpStatus } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
@@ -125,6 +126,18 @@ export class CarFAXService {
         `CarFAX API პასუხი VIN: ${vin} status: ${response.status}`,
       );
 
+      // თუ 500 შეცდომაა, დავაბრუნოთ შესაბამისი შეტყობინება
+      if (response.status === 500) {
+        this.logger.error(
+          `CarFAX API-დან 500 შეცდომა VIN: ${vin}`,
+          response.data,
+        );
+        return {
+          success: false,
+          error: 'CarFAX API-სთან შეცდომა მოხდა. გთხოვთ სცადოთ მოგვიანებით.',
+        };
+      }
+
       const contentType = response.headers['content-type'] || '';
       const body = response.data as string;
 
@@ -201,6 +214,11 @@ export class CarFAXService {
           return {
             success: false,
             error: 'CarFAX API-სთან ავტორიზაციის შეცდომა',
+          };
+        } else if (error.response?.status === 500) {
+          return {
+            success: false,
+            error: 'CarFAX API-სთან შეცდომა მოხდა. გთხოვთ სცადოთ მოგვიანებით.',
           };
         } else if (error.code === 'ECONNABORTED') {
           return {

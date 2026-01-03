@@ -1,7 +1,10 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
-import { Subscription, SubscriptionDocument } from '../schemas/subscription.schema';
+import {
+  Subscription,
+  SubscriptionDocument,
+} from '../schemas/subscription.schema';
 
 @Injectable()
 export class SubscriptionsService {
@@ -34,6 +37,33 @@ export class SubscriptionsService {
   }
 
   /**
+   * User-ის active subscription-ის მიღება
+   */
+  async getUserSubscription(
+    userId: string,
+  ): Promise<SubscriptionDocument | null> {
+    try {
+      this.logger.log(`📊 Fetching subscription for user: ${userId}`);
+
+      const subscription = await this.subscriptionModel
+        .findOne({ userId, status: 'active' })
+        .sort({ createdAt: -1 })
+        .exec();
+
+      if (subscription) {
+        this.logger.log(`✅ Found active subscription for user ${userId}`);
+      } else {
+        this.logger.log(`⚠️ No active subscription found for user ${userId}`);
+      }
+
+      return subscription;
+    } catch (error) {
+      this.logger.error('❌ Failed to fetch user subscription:', error);
+      throw error;
+    }
+  }
+
+  /**
    * Subscription-ის შექმნა payment-ის შემდეგ
    */
   async createSubscriptionFromPayment(
@@ -42,6 +72,9 @@ export class SubscriptionsService {
     amount: number,
     currency: string = 'GEL',
     context: string = 'test',
+    planId?: string,
+    planName?: string,
+    planPeriod?: string,
   ): Promise<SubscriptionDocument> {
     try {
       this.logger.log('📝 Creating subscription from payment:', {
@@ -72,19 +105,65 @@ export class SubscriptionsService {
         return await existingSubscription.save();
       }
 
+      // Plan ID და Plan Name-ის განსაზღვრა
+      // თუ planId და planName გადაეცა, გამოვიყენოთ ისინი
+      // თუ არა, გამოვიყენოთ context-ის მიხედვით default მნიშვნელობები
+      let finalPlanId = planId;
+      let finalPlanName = planName;
+
+      if (!finalPlanId) {
+        // Plan ID-ის mapping frontend-ის planId-დან
+        if (context === 'test' || context === 'test_subscription') {
+          finalPlanId = 'test_plan';
+        } else if (context.includes('basic')) {
+          finalPlanId = 'basic';
+        } else if (context.includes('premium')) {
+          finalPlanId = 'premium';
+        } else {
+          finalPlanId = 'subscription_plan';
+        }
+      }
+
+      if (!finalPlanName) {
+        // Plan Name-ის default მნიშვნელობები
+        if (context === 'test' || context === 'test_subscription') {
+          finalPlanName = 'ტესტ საბსქრიფშენი';
+        } else if (finalPlanId === 'basic') {
+          finalPlanName = 'ძირითადი პაკეტი';
+        } else if (finalPlanId === 'premium') {
+          finalPlanName = 'პრემიუმ პაკეტი';
+        } else {
+          finalPlanName = 'პრემიუმ საბსქრიფშენი';
+        }
+      }
+
+      // Period-ის განსაზღვრა planPeriod-დან
+      let period = 'monthly'; // default
+      if (planPeriod) {
+        if (planPeriod.includes('თვეში') || planPeriod === 'monthly') {
+          period = 'monthly';
+        } else if (planPeriod.includes('წლ') || planPeriod === 'yearly') {
+          period = 'yearly';
+        } else if (planPeriod.includes('6') || planPeriod.includes('6-month')) {
+          period = 'monthly'; // 6 თვე ასევე monthly-ს განვიხილავთ, მაგრამ nextBillingDate 6 თვეში იქნება
+        } else {
+          period = 'monthly';
+        }
+      }
+
       // შევქმნათ ახალი subscription
       const subscriptionData = {
         userId,
-        planId: context === 'test' ? 'test_plan' : 'subscription_plan',
-        planName: context === 'test' ? 'ტესტ საბსქრიფშენი' : 'პრემიუმ საბსქრიფშენი',
+        planId: finalPlanId,
+        planName: finalPlanName,
         planPrice: amount,
         currency,
-        period: 'monthly', // default: monthly
+        period: period,
         status: 'active',
         startDate: new Date(),
-        nextBillingDate: this.calculateNextBillingDate('monthly', new Date()),
+        nextBillingDate: this.calculateNextBillingDate(period, new Date()),
         paymentMethod: 'BOG',
-        bogCardToken: paymentToken,
+        bogCardToken: paymentToken, // ეს არის create-order response-ის order_id (parent order_id)
         totalPaid: amount,
         billingCycles: 1,
       };
@@ -129,4 +208,3 @@ export class SubscriptionsService {
     return nextDate;
   }
 }
-

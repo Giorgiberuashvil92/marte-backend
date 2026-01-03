@@ -11,7 +11,11 @@ import {
   BadRequestException,
   NotFoundException,
 } from '@nestjs/common';
-import { ServicesService, ServiceItem } from './services.service';
+import {
+  ServicesService,
+  ServiceItem,
+  MapServiceItem,
+} from './services.service';
 import { AutoServicesService } from './auto-services.service';
 import { CreateServiceDto } from './dto/create-service.dto';
 import { UpdateServiceDto } from './dto/update-service.dto';
@@ -64,6 +68,34 @@ export class ServicesController {
     this.logger.log(`getPopularServices - limit: ${limitNum}`);
 
     return await this.servicesService.getPopularServices(limitNum);
+  }
+
+  @Get('map')
+  async getServicesForMap(): Promise<{
+    success: boolean;
+    message: string;
+    data: MapServiceItem[];
+    count: number;
+  }> {
+    this.logger.log('🗺️ Getting services for map');
+    try {
+      const services = await this.servicesService.getServicesForMap();
+      return {
+        success: true,
+        message: 'სერვისები წარმატებით ჩამოიტვირთა',
+        data: services,
+        count: services.length,
+      };
+    } catch (error) {
+      this.logger.error(`Error getting services for map: ${error}`);
+      throw new BadRequestException({
+        success: false,
+        message:
+          error instanceof Error
+            ? error.message
+            : 'სერვისების ჩამოტვირთვა ვერ მოხერხდა',
+      });
+    }
   }
 
   // Services CRUD endpoints
@@ -142,6 +174,30 @@ export class ServicesController {
     };
   }
 
+  // Generic GET /services endpoint for admin panel - must be BEFORE parameterized routes
+  @Get()
+  async findAll(
+    @Query('category') category?: string,
+    @Query('location') location?: string,
+    @Query('isOpen') isOpen?: string,
+    @Query('status') status?: string,
+  ) {
+    const filters: {
+      category?: string;
+      location?: string;
+      isOpen?: boolean;
+      status?: string;
+    } = {};
+
+    if (category) filters.category = category;
+    if (location) filters.location = location;
+    if (isOpen) filters.isOpen = isOpen === 'true';
+    if (status) filters.status = status;
+
+    const services = await this.autoServicesService.findAll(filters);
+    return services;
+  }
+
   @Get(':id')
   async findOneService(@Param('id') id: string) {
     try {
@@ -154,7 +210,8 @@ export class ServicesController {
     } catch (error) {
       throw new NotFoundException({
         success: false,
-        message: error instanceof Error ? error.message : 'სერვისი ვერ მოიძებნა',
+        message:
+          error instanceof Error ? error.message : 'სერვისი ვერ მოიძებნა',
       });
     }
   }
@@ -191,7 +248,8 @@ export class ServicesController {
     } catch (error) {
       throw new NotFoundException({
         success: false,
-        message: error instanceof Error ? error.message : 'სერვისი ვერ მოიძებნა',
+        message:
+          error instanceof Error ? error.message : 'სერვისი ვერ მოიძებნა',
       });
     }
   }
