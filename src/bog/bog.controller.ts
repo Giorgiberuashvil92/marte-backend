@@ -718,20 +718,31 @@ export class BOGController {
                 this.logger.log(`   • Context: ${context}`);
 
                 // Plan ID და Plan Name-ის მიღება payment metadata-დან
+                this.logger.log('🔍 Payment Metadata-დან Plan ინფორმაციის მიღება:');
+                this.logger.log(`   • Full metadata: ${JSON.stringify(payment.metadata || {}, null, 2)}`);
+                
                 const planId = payment.metadata?.planId;
                 const planName = payment.metadata?.planName;
                 const planPeriodFromMetadata = payment.metadata?.planPeriod;
 
                 if (planId) {
-                  this.logger.log(`   • Plan ID: ${planId}`);
+                  this.logger.log(`   ✅ Plan ID ნაპოვნია metadata-ში: ${planId}`);
+                } else {
+                  this.logger.warn(`   ⚠️ Plan ID არ არის metadata-ში! ეს შეიძლება გამოიწვიოს default plan-ის გამოყენება.`);
                 }
+                
                 if (planName) {
-                  this.logger.log(`   • Plan Name: ${planName}`);
+                  this.logger.log(`   ✅ Plan Name ნაპოვნია metadata-ში: ${planName}`);
+                } else {
+                  this.logger.warn(`   ⚠️ Plan Name არ არის metadata-ში! ეს შეიძლება გამოიწვიოს default plan-ის გამოყენება.`);
                 }
+                
                 if (planPeriodFromMetadata) {
                   this.logger.log(
-                    `   • Plan Period: ${planPeriodFromMetadata}`,
+                    `   ✅ Plan Period ნაპოვნია metadata-ში: ${planPeriodFromMetadata}`,
                   );
+                } else {
+                  this.logger.warn(`   ⚠️ Plan Period არ არის metadata-ში! გამოყენებული იქნება default: monthly`);
                 }
 
                 const subscription =

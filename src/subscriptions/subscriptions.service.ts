@@ -108,34 +108,74 @@ export class SubscriptionsService {
       // Plan ID და Plan Name-ის განსაზღვრა
       // თუ planId და planName გადაეცა, გამოვიყენოთ ისინი
       // თუ არა, გამოვიყენოთ context-ის მიხედვით default მნიშვნელობები
+      this.logger.log('🔍 Plan ID და Plan Name-ის განსაზღვრა:');
+      this.logger.log(`   • Received planId: ${planId || 'NOT PROVIDED'}`);
+      this.logger.log(`   • Received planName: ${planName || 'NOT PROVIDED'}`);
+      this.logger.log(`   • Context: ${context}`);
+
       let finalPlanId = planId;
       let finalPlanName = planName;
 
       if (!finalPlanId) {
+        this.logger.warn(
+          '⚠️ planId არ გადაეცა! გამოვიყენებთ context-ის მიხედვით default მნიშვნელობას',
+        );
         // Plan ID-ის mapping frontend-ის planId-დან
         if (context === 'test' || context === 'test_subscription') {
           finalPlanId = 'test_plan';
+          this.logger.log('   → Setting planId to: test_plan (from context)');
         } else if (context.includes('basic')) {
           finalPlanId = 'basic';
+          this.logger.log('   → Setting planId to: basic (from context)');
         } else if (context.includes('premium')) {
           finalPlanId = 'premium';
+          this.logger.log('   → Setting planId to: premium (from context)');
         } else {
-          finalPlanId = 'subscription_plan';
+          // ⚠️ DEFAULT: თუ planId არ გადაეცა და context-ში არ არის 'basic' ან 'premium',
+          // მაშინ default-ად ვაყენებთ 'basic'-ს, არა 'premium'-ს!
+          finalPlanId = 'basic';
+          this.logger.warn(
+            '   ⚠️ Context-ში არ არის planId ინფორმაცია, default-ად ვაყენებთ: basic',
+          );
         }
+      } else {
+        this.logger.log(`   ✅ Using provided planId: ${finalPlanId}`);
       }
 
       if (!finalPlanName) {
+        this.logger.warn(
+          '⚠️ planName არ გადაეცა! გამოვიყენებთ planId-ის მიხედვით default მნიშვნელობას',
+        );
         // Plan Name-ის default მნიშვნელობები
         if (context === 'test' || context === 'test_subscription') {
           finalPlanName = 'ტესტ საბსქრიფშენი';
+          this.logger.log(
+            '   → Setting planName to: ტესტ საბსქრიფშენი (from context)',
+          );
         } else if (finalPlanId === 'basic') {
           finalPlanName = 'ძირითადი პაკეტი';
+          this.logger.log(
+            '   → Setting planName to: ძირითადი პაკეტი (from planId)',
+          );
         } else if (finalPlanId === 'premium') {
           finalPlanName = 'პრემიუმ პაკეტი';
+          this.logger.log(
+            '   → Setting planName to: პრემიუმ პაკეტი (from planId)',
+          );
         } else {
-          finalPlanName = 'პრემიუმ საბსქრიფშენი';
+          // ⚠️ DEFAULT: თუ planName არ გადაეცა, default-ად ვაყენებთ 'ძირითადი პაკეტი'-ს
+          finalPlanName = 'ძირითადი პაკეტი';
+          this.logger.warn(
+            '   ⚠️ planId არ არის basic/premium, default-ად ვაყენებთ: ძირითადი პაკეტი',
+          );
         }
+      } else {
+        this.logger.log(`   ✅ Using provided planName: ${finalPlanName}`);
       }
+
+      this.logger.log('📋 Final Plan Configuration:');
+      this.logger.log(`   • Final planId: ${finalPlanId}`);
+      this.logger.log(`   • Final planName: ${finalPlanName}`);
 
       // Period-ის განსაზღვრა planPeriod-დან
       let period = 'monthly'; // default
