@@ -6,6 +6,7 @@ import {
   Subscription,
   SubscriptionSchema,
 } from '../schemas/subscription.schema';
+import { NotificationsModule } from '../notifications/notifications.module';
 
 @Module({
   imports: [
@@ -15,6 +16,7 @@ import {
         schema: SubscriptionSchema,
       },
     ]),
+    NotificationsModule,
   ],
   controllers: [SubscriptionsController],
   providers: [SubscriptionsService],

@@ -7,6 +7,7 @@ import {
   HttpCode,
   HttpStatus,
   Logger,
+  Query,
 } from '@nestjs/common';
 import { PaymentsService } from './payments.service';
 import { CreatePaymentDto } from './dto/create-payment.dto';
@@ -119,6 +120,42 @@ export class PaymentsController {
     }
   }
 
+  @Get()
+  async getAllPayments(
+    @Query('limit') limit?: string,
+    @Query('skip') skip?: string,
+  ) {
+    try {
+      const limitNum = limit ? parseInt(limit, 10) : 100;
+      const skipNum = skip ? parseInt(skip, 10) : 0;
+
+      this.logger.log(
+        `📊 Getting all payments (limit: ${limitNum}, skip: ${skipNum})`,
+      );
+
+      const payments = await this.paymentsService.getAllPayments(
+        limitNum,
+        skipNum,
+      );
+
+      this.logger.log(`✅ Found ${payments.length} payments`);
+
+      return {
+        success: true,
+        message: 'Payments retrieved successfully',
+        data: payments,
+        total: payments.length,
+      };
+    } catch (error) {
+      this.logger.error('❌ Failed to get all payments:', error);
+      return {
+        success: false,
+        message: 'Failed to retrieve payments',
+        error: error.message,
+      };
+    }
+  }
+
   @Get('stats')
   async getPaymentStats() {
     try {
@@ -138,6 +175,80 @@ export class PaymentsController {
       return {
         success: false,
         message: 'Failed to retrieve payment statistics',
+        error: error.message,
+      };
+    }
+  }
+
+  @Post('create-subscription')
+  @HttpCode(HttpStatus.CREATED)
+  async createSubscriptionFromPayment(@Body() body: { paymentId: string }) {
+    try {
+      this.logger.log(
+        `📝 Creating subscription from payment: ${body.paymentId}`,
+      );
+
+      const payment = await this.paymentsService.getPaymentById(body.paymentId);
+
+      if (!payment) {
+        return {
+          success: false,
+          message: 'Payment not found',
+          error: 'Payment not found',
+        };
+      }
+
+      // Extract plan info from payment metadata
+      const planId = payment.metadata?.planId;
+      const planName = payment.metadata?.planName;
+      const planPeriod = payment.metadata?.planPeriod;
+
+      // Use paymentToken or parentOrderId as BOG order_id for recurring payments
+      // paymentToken is the BOG order_id that was used for save_card
+      // parentOrderId is also a valid BOG order_id
+      // orderId might be a custom order_id, not a BOG order_id
+      const bogOrderId =
+        payment.paymentToken || payment.parentOrderId || payment.orderId;
+
+      this.logger.log(`📝 Using BOG order_id for subscription: ${bogOrderId}`);
+      if (!payment.paymentToken && !payment.parentOrderId) {
+        this.logger.warn(
+          `⚠️ payment.paymentToken და payment.parentOrderId არ არის, გამოვიყენებთ payment.orderId: ${payment.orderId}`,
+        );
+        this.logger.warn(
+          `⚠️ თუ ეს არ არის valid BOG order_id, recurring payment ვერ მოხერხდება`,
+        );
+      }
+
+      const subscription =
+        await this.subscriptionsService.createSubscriptionFromPayment(
+          payment.userId,
+          bogOrderId, // Use paymentToken or parentOrderId as paymentToken
+          payment.amount,
+          payment.currency,
+          payment.context || 'subscription',
+          planId,
+          planName,
+          planPeriod,
+        );
+
+      this.logger.log(
+        `✅ Subscription created successfully: ${String(subscription._id)}`,
+      );
+
+      return {
+        success: true,
+        message: 'Subscription created successfully from payment',
+        data: subscription,
+      };
+    } catch (error) {
+      this.logger.error(
+        '❌ Failed to create subscription from payment:',
+        error,
+      );
+      return {
+        success: false,
+        message: 'Failed to create subscription from payment',
         error: error.message,
       };
     }
@@ -224,7 +335,8 @@ export class PaymentsController {
     try {
       this.logger.log(`📊 Getting subscription status for user: ${userId}`);
 
-      const subscription = await this.subscriptionsService.getUserSubscription(userId);
+      const subscription =
+        await this.subscriptionsService.getUserSubscription(userId);
 
       if (!subscription) {
         this.logger.log(`⚠️ No active subscription found for user ${userId}`);

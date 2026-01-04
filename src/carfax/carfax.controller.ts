@@ -68,6 +68,20 @@ export class CarFAXController {
     res.end(pdfBuffer);
   }
 
+  @Get('usage')
+  async getCarFAXUsage(@Request() req: any) {
+    const userId =
+      (req.headers as Record<string, string>)['x-user-id'] || 'demo-user';
+    return await this.carfaxService.getCarFAXUsage(userId);
+  }
+
+  @Get('stats')
+  async getCarFAXStats(@Request() req: any) {
+    const userId =
+      (req.headers as Record<string, string>)['x-user-id'] || 'demo-user';
+    return await this.carfaxService.getCarFAXStats(userId);
+  }
+
   @Get('health')
   healthCheck() {
     return {

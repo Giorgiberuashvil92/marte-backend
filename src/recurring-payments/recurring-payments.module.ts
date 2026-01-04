@@ -11,6 +11,7 @@ import { Payment, PaymentSchema } from '../schemas/payment.schema';
 import { User, UserSchema } from '../schemas/user.schema';
 import { BOGModule } from '../bog/bog.module';
 import { PaymentsModule } from '../payments/payments.module';
+import { SubscriptionsModule } from '../subscriptions/subscriptions.module';
 
 @Module({
   imports: [
@@ -22,6 +23,7 @@ import { PaymentsModule } from '../payments/payments.module';
     ]),
     BOGModule,
     PaymentsModule,
+    SubscriptionsModule,
   ],
   controllers: [RecurringPaymentsController],
   providers: [RecurringPaymentsService],

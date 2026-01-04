@@ -584,17 +584,18 @@ export class BOGPaymentService {
         );
 
         // BOG API დოკუმენტაციის მიხედვით, ბარათის დამახსოვრება უნდა მოხდეს
-        // შეკვეთის შექმნის შემდეგ, ამ დროს order-ი შეიძლება pending-ში იყოს
-        // თუ order-ი უკვე completed/success-ია, ეს ასევე ნორმალურია
-        if (
-          orderStatus.status !== 'completed' &&
-          orderStatus.status !== 'success' &&
-          orderStatus.status !== 'pending'
-        ) {
+        // შეკვეთის შექმნის შემდეგ, ამ დროს order-ი შეიძლება created, pending, completed ან success-ში იყოს
+        // created status არის ნორმალური, რადგან order ახლახან შეიქმნა
+        const allowedStatuses = ['created', 'pending', 'completed', 'success'];
+        if (!allowedStatuses.includes(orderStatus.status)) {
           this.logger.warn(
             `⚠️ Order სტატუსი არ არის შესაფერისი ბარათის დამახსოვრებისთვის: ${orderStatus.status}`,
           );
           // არ ვაბრუნებთ შეცდომას, რადგან შეიძლება BOG API-მა მაინც მიიღოს მოთხოვნა
+        } else {
+          this.logger.log(
+            `✅ Order სტატუსი შესაფერისია ბარათის დამახსოვრებისთვის: ${orderStatus.status}`,
+          );
         }
       } catch (statusError) {
         // თუ სტატუსის შემოწმება ვერ მოხერხდა, ვაგრძელებთ მაინც

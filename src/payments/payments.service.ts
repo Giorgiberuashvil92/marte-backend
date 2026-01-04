@@ -1,8 +1,9 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Inject, forwardRef } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import { CreatePaymentDto } from './dto/create-payment.dto';
 import { Payment, PaymentDocument } from '../schemas/payment.schema';
+import { SubscriptionsService } from '../subscriptions/subscriptions.service';
 
 @Injectable()
 export class PaymentsService {
@@ -10,6 +11,8 @@ export class PaymentsService {
 
   constructor(
     @InjectModel(Payment.name) private paymentModel: Model<PaymentDocument>,
+    @Inject(forwardRef(() => SubscriptionsService))
+    private subscriptionsService: SubscriptionsService,
   ) {}
 
   async createPayment(
@@ -35,6 +38,89 @@ export class PaymentsService {
         userId: savedPayment.userId,
         amount: savedPayment.amount,
       });
+
+      // ავტომატურად შევქმნათ subscription, თუ payment-ი subscription-ისთვისაა
+      if (
+        savedPayment.context === 'subscription' &&
+        (savedPayment.status === 'completed' ||
+          savedPayment.status === 'success') &&
+        !savedPayment.isRecurring // არ გავაკეთოთ recurring payment-ებისთვის
+      ) {
+        this.logger.log(
+          `🔄 ავტომატურად ვქმნით subscription payment-იდან: ${String(savedPayment._id)}`,
+        );
+
+        try {
+          // Extract plan info from payment metadata
+          const planId = savedPayment.metadata?.planId;
+          const planName = savedPayment.metadata?.planName;
+          const planPeriod = savedPayment.metadata?.planPeriod;
+
+          // Use paymentToken or parentOrderId as BOG order_id for recurring payments
+          // paymentToken is the BOG order_id that was used for save_card
+          // parentOrderId is also a valid BOG order_id
+          // orderId might be a custom order_id, not a BOG order_id
+          const bogOrderId =
+            savedPayment.paymentToken ||
+            savedPayment.parentOrderId ||
+            savedPayment.orderId;
+
+          this.logger.log(
+            `📝 Using BOG order_id for subscription: ${bogOrderId}`,
+          );
+          if (!savedPayment.paymentToken && !savedPayment.parentOrderId) {
+            this.logger.warn(
+              `⚠️ payment.paymentToken და payment.parentOrderId არ არის, გამოვიყენებთ payment.orderId: ${savedPayment.orderId}`,
+            );
+            this.logger.warn(
+              `⚠️ თუ ეს არ არის valid BOG order_id, recurring payment ვერ მოხერხდება`,
+            );
+          }
+
+          // შევქმნათ subscription
+          const subscription =
+            await this.subscriptionsService.createSubscriptionFromPayment(
+              savedPayment.userId,
+              bogOrderId,
+              savedPayment.amount,
+              savedPayment.currency,
+              savedPayment.context || 'subscription',
+              planId,
+              planName,
+              planPeriod,
+            );
+
+          this.logger.log(
+            `✅ Subscription created automatically: ${String(subscription._id)}`,
+          );
+
+          // განვაახლოთ subscription-ის bogCardToken სწორი BOG order_id-ით
+          try {
+            const updatedSubscription =
+              await this.subscriptionsService.updateSubscriptionTokenFromPayment(
+                String(subscription._id),
+              );
+
+            if (updatedSubscription) {
+              this.logger.log(
+                `✅ Subscription bogCardToken განახლდა: ${updatedSubscription.bogCardToken}`,
+              );
+            }
+          } catch (tokenUpdateError) {
+            this.logger.error(
+              `⚠️ Failed to update subscription token, but subscription was created:`,
+              tokenUpdateError,
+            );
+            // არ ვაგდებთ error-ს, რადგან subscription უკვე შეიქმნა
+          }
+        } catch (subscriptionError) {
+          this.logger.error(
+            `❌ Failed to create subscription automatically from payment:`,
+            subscriptionError,
+          );
+          // არ ვაგდებთ error-ს, რადგან payment უკვე შეინახა
+        }
+      }
 
       return savedPayment;
     } catch (error: unknown) {
@@ -117,6 +203,33 @@ export class PaymentsService {
       this.logger.error('❌ Failed to calculate payment statistics:', error);
       throw new Error(
         `Failed to calculate payment statistics: ${error instanceof Error ? error.message : 'Unknown error'}`,
+      );
+    }
+  }
+
+  async getAllPayments(
+    limit: number = 100,
+    skip: number = 0,
+  ): Promise<PaymentDocument[]> {
+    try {
+      this.logger.log(
+        `📊 Retrieving all payments (limit: ${limit}, skip: ${skip})`,
+      );
+
+      const payments = await this.paymentModel
+        .find()
+        .sort({ paymentDate: -1 })
+        .limit(limit)
+        .skip(skip)
+        .exec();
+
+      this.logger.log(`✅ Found ${payments.length} payments`);
+
+      return payments;
+    } catch (error: unknown) {
+      this.logger.error('❌ Failed to get all payments:', error);
+      throw new Error(
+        `Failed to get all payments: ${error instanceof Error ? error.message : 'Unknown error'}`,
       );
     }
   }

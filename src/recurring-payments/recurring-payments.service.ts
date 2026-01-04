@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, HttpException } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import { Cron, CronExpression } from '@nestjs/schedule';
@@ -10,6 +10,7 @@ import { Payment, PaymentDocument } from '../schemas/payment.schema';
 import { User, UserDocument } from '../schemas/user.schema';
 import { BOGPaymentService } from '../bog/bog-payment.service';
 import { PaymentsService } from '../payments/payments.service';
+import { SubscriptionsService } from '../subscriptions/subscriptions.service';
 
 @Injectable()
 export class RecurringPaymentsService {
@@ -24,6 +25,7 @@ export class RecurringPaymentsService {
     private userModel: Model<UserDocument>,
     private bogPaymentService: BOGPaymentService,
     private paymentsService: PaymentsService,
+    private subscriptionsService: SubscriptionsService,
   ) {}
 
   @Cron(CronExpression.EVERY_HOUR, {
@@ -188,26 +190,97 @@ export class RecurringPaymentsService {
     // BOG recurring payment-ის განხორციელება
     // BOG API დოკუმენტაციის მიხედვით, parent_order_id არის წარმატებული გადახდის order_id
     // სხვა პარამეტრები (თანხა, ვალუტა) ავტომატურად იღება parent_order_id-დან
-    const recurringPaymentResult =
-      await this.bogPaymentService.processRecurringPayment({
-        parent_order_id: subscription.bogCardToken, // ეს არის წარმატებული გადახდის order_id
-        external_order_id: shopOrderId, // shop order ID (userId-ს ჩართვით)
-        // Legacy fields for backward compatibility (not used in API request)
-        order_id: subscription.bogCardToken,
-        amount: subscription.planPrice,
-        currency: subscription.currency || 'GEL',
-        shop_order_id: shopOrderId,
-        purchase_description: `${subscription.planName} - ${subscription.period} subscription`,
-      });
+    let recurringPaymentResult;
+    try {
+      recurringPaymentResult =
+        await this.bogPaymentService.processRecurringPayment({
+          parent_order_id: subscription.bogCardToken, // ეს არის წარმატებული გადახდის order_id
+          external_order_id: shopOrderId, // shop order ID (userId-ს ჩართვით)
+          // Legacy fields for backward compatibility (not used in API request)
+          order_id: subscription.bogCardToken,
+          amount: subscription.planPrice,
+          currency: subscription.currency || 'GEL',
+          shop_order_id: shopOrderId,
+          purchase_description: `${subscription.planName} - ${subscription.period} subscription`,
+        });
+    } catch (error: unknown) {
+      const errorMessage =
+        error instanceof Error ? error.message : String(error);
+
+      // თუ error-ი არის "Error during getting saved card info", ეს ნიშნავს რომ
+      // bogCardToken არ არის valid saved card ID BOG-ში
+      // ვცდილობთ განვაახლოთ subscription-ის bogCardToken სწორი BOG order_id-ით
+      if (
+        errorMessage.includes('Error during getting saved card info') ||
+        errorMessage.includes('cardId') ||
+        (error instanceof HttpException && error.getStatus() === 404)
+      ) {
+        this.logger.warn(
+          `⚠️ BOG card არ მოიძებნა subscription-ისთვის ${subscriptionId}, ვცდილობთ bogCardToken-ის განახლებას...`,
+        );
+
+        try {
+          // forceUpdate: true - ვეძებთ payment-ს მიუხედავად იმისა რომ bogCardToken valid UUID-ა
+          // რადგან BOG API-დან მოდის error რომ card-ი არ არის saved
+          const updatedSubscription =
+            await this.subscriptionsService.updateSubscriptionTokenFromPayment(
+              subscriptionId,
+              true, // forceUpdate
+            );
+
+          if (
+            updatedSubscription &&
+            updatedSubscription.bogCardToken &&
+            updatedSubscription.bogCardToken !== subscription.bogCardToken
+          ) {
+            this.logger.log(
+              `✅ Subscription bogCardToken განახლდა: ${subscription.bogCardToken} -> ${updatedSubscription.bogCardToken}`,
+            );
+
+            // ვცდილობთ კვლავ recurring payment-ის განხორციელებას ახალი bogCardToken-ით
+            this.logger.log(
+              `🔄 ვცდილობთ recurring payment-ის განხორციელებას ახალი bogCardToken-ით...`,
+            );
+            recurringPaymentResult =
+              await this.bogPaymentService.processRecurringPayment({
+                parent_order_id: updatedSubscription.bogCardToken,
+                external_order_id: shopOrderId,
+                order_id: updatedSubscription.bogCardToken,
+                amount: subscription.planPrice,
+                currency: subscription.currency || 'GEL',
+                shop_order_id: shopOrderId,
+                purchase_description: `${subscription.planName} - ${subscription.period} subscription`,
+              });
+          } else {
+            // თუ bogCardToken-ის განახლება ვერ მოხერხდა, ვაგდებთ original error-ს
+            throw error;
+          }
+        } catch (updateError) {
+          this.logger.error(
+            `❌ Failed to update subscription token or retry payment:`,
+            updateError,
+          );
+          // ვაგდებთ original error-ს
+          throw error;
+        }
+      } else {
+        // სხვა error-ებისთვის, ვაგდებთ error-ს როგორც არის
+        throw error;
+      }
+    }
 
     // BOG API დოკუმენტაციის მიხედვით, response არის: { id: string, _links: { details: { href: string } } }
     // თუ response მიღებულია, ეს ნიშნავს რომ მოთხოვნა წარმატებით გაიგზავნა
-    const newOrderId =
-      recurringPaymentResult.id || recurringPaymentResult.order_id;
+    const paymentResult = recurringPaymentResult as {
+      id?: string;
+      order_id?: string;
+      message?: string;
+    };
+    const newOrderId = paymentResult.id || paymentResult.order_id;
 
     if (!newOrderId) {
       throw new Error(
-        `BOG recurring payment ვერ მოხერხდა: ${recurringPaymentResult.message || 'Unknown error'}`,
+        `BOG recurring payment ვერ მოხერხდა: ${paymentResult.message || 'Unknown error'}`,
       );
     }
 
@@ -254,8 +327,9 @@ export class RecurringPaymentsService {
       nextBillingDate,
       billingCycles: subscription.billingCycles + 1,
       totalPaid: subscription.totalPaid + subscription.planPrice,
-      orderId: recurringPaymentResult.order_id,
-      transactionId: recurringPaymentResult.order_id,
+      orderId: paymentResult.order_id || paymentResult.id || newOrderId,
+      transactionId: paymentResult.order_id || paymentResult.id || newOrderId,
+      carfaxRequestsUsed: 0, // Reset CarFAX counter for new billing period
       updatedAt: new Date(),
     });
 

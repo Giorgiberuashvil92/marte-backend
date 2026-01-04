@@ -59,6 +59,9 @@ export class Subscription {
     [key: string]: any;
   };
 
+  @Prop({ default: 0 })
+  carfaxRequestsUsed: number; // პრემიუმ იუზერებისთვის გამოყენებული CarFAX მოთხოვნების რაოდენობა (მაქს 5)
+
   @Prop({ default: Date.now })
   createdAt: Date;
 
