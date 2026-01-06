@@ -16,9 +16,10 @@ export class StoresService {
     return createdStore.save();
   }
 
-  async findAll(ownerId?: string): Promise<Store[]> {
+  async findAll(ownerId?: string, location?: string): Promise<Store[]> {
     const filter: Record<string, any> = {};
     if (ownerId) filter.ownerId = ownerId;
+    if (location) filter.location = location;
     return this.storeModel.find(filter).sort({ createdAt: -1 }).exec();
   }
 
@@ -39,5 +40,16 @@ export class StoresService {
   async remove(id: string): Promise<void> {
     const result = await this.storeModel.findByIdAndDelete(id).exec();
     if (!result) throw new NotFoundException('მაღაზია ვერ მოიძებნა');
+  }
+
+  async getLocations(): Promise<string[]> {
+    const stores = await this.storeModel
+      .find({ location: { $exists: true, $ne: '' } })
+      .exec();
+    const locations = stores
+      .map((store) => store.location)
+      .filter((loc) => loc && loc.trim() !== '');
+    // Return unique locations, sorted alphabetically
+    return Array.from(new Set(locations)).sort();
   }
 }

@@ -7,12 +7,14 @@ import { BOGOAuthService } from './bog-oauth.service';
 import { PaymentsService } from '../payments/payments.service';
 import { Payment, PaymentSchema } from '../schemas/payment.schema';
 import { SubscriptionsModule } from '../subscriptions/subscriptions.module';
+import { CarFAXModule } from '../carfax/carfax.module';
 
 @Module({
   imports: [
     ConfigModule,
     MongooseModule.forFeature([{ name: Payment.name, schema: PaymentSchema }]),
     SubscriptionsModule,
+    CarFAXModule,
   ],
   controllers: [BOGController],
   providers: [BOGPaymentService, BOGOAuthService, PaymentsService],

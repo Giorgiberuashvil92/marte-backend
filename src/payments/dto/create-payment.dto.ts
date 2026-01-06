@@ -56,6 +56,7 @@ export class CreatePaymentDto {
     planPrice?: string;
     planCurrency?: string;
     planPeriod?: string;
+    credits?: number;
   };
 
   @IsOptional()

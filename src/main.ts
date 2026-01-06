@@ -109,17 +109,14 @@ async function bootstrap() {
   ].filter(Boolean);
 
   app.enableCors({
-    origin: true, // Development mode-ში ყველა origin დასაშვებია
-    methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS', 'HEAD'],
-    allowedHeaders: '*', // ყველა header-ს იღებს
-    exposedHeaders: '*', // ყველა header-ს აბრუნებს
+    origin: corsOrigins,
+    methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization'],
     credentials: true,
   });
 
   console.log('CORS enabled for origins:', corsOrigins);
 
-  const port = process.env.PORT ?? 3000;
-  await app.listen(port);
-  console.log(`🚀 Backend running on port ${port}`);
+  await app.listen(process.env.PORT ?? 3000);
 }
 void bootstrap();

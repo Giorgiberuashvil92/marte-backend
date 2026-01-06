@@ -67,6 +67,8 @@ export class Payment {
       planPrice: { type: String, required: false },
       planCurrency: { type: String, required: false },
       planPeriod: { type: String, required: false },
+      // CarFAX პაკეტის credits
+      credits: { type: Number, required: false },
     },
   })
   metadata?: {
@@ -89,6 +91,8 @@ export class Payment {
     planPrice?: string;
     planCurrency?: string;
     planPeriod?: string;
+    // CarFAX პაკეტის credits
+    credits?: number;
   };
 
   // BOG payment detail-ის დამატებითი ველები

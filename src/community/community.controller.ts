@@ -76,4 +76,14 @@ export class CommunityController {
   deleteComment(@Param('commentId') commentId: string) {
     return this.communityService.deleteComment(commentId);
   }
+
+  @Get('posts/:id/likes')
+  getPostLikes(@Param('id') postId: string) {
+    return this.communityService.getPostLikes(postId);
+  }
+
+  @Get('admin/posts')
+  getAdminPosts() {
+    return this.communityService.getAdminPosts();
+  }
 }

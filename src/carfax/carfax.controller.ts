@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-unsafe-member-access */
 import {
   Controller,
   Post,
@@ -73,6 +74,24 @@ export class CarFAXController {
     const userId =
       (req.headers as Record<string, string>)['x-user-id'] || 'demo-user';
     return await this.carfaxService.getCarFAXUsage(userId);
+  }
+
+  @Post('increment-usage')
+  async incrementCarFAXUsage(@Request() req: any) {
+    const userId =
+      (req.headers as Record<string, string>)['x-user-id'] || 'demo-user';
+    return await this.carfaxService.incrementUsage(userId);
+  }
+
+  @Post('add-package')
+  async addCarFAXPackage(
+    @Request() req: any,
+    @Body() body: { credits?: number },
+  ) {
+    const userId =
+      (req.headers as Record<string, string>)['x-user-id'] || 'demo-user';
+    const credits = body.credits || 5;
+    return await this.carfaxService.addCarFAXPackage(userId, credits);
   }
 
   @Get('stats')

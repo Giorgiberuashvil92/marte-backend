@@ -140,4 +140,15 @@ export class PartsService {
       .sort({ createdAt: -1 })
       .exec();
   }
+
+  async getLocations(): Promise<string[]> {
+    const parts = await this.partModel
+      .find({ location: { $exists: true, $ne: '' } })
+      .exec();
+    const locations = parts
+      .map((part) => part.location)
+      .filter((loc) => loc && loc.trim() !== '');
+    // Return unique locations, sorted alphabetically
+    return Array.from(new Set(locations)).sort();
+  }
 }

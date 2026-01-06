@@ -127,6 +127,16 @@ export class PartsController {
     };
   }
 
+  @Get('locations')
+  async getLocations() {
+    const locations = await this.partsService.getLocations();
+    return {
+      success: true,
+      message: 'ლოკაციები წარმატებით ჩამოიტვირთა',
+      data: locations,
+    };
+  }
+
   @Get(':id')
   async findOne(@Param('id') id: string) {
     try {

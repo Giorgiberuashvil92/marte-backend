@@ -165,8 +165,11 @@ export class CommunityService {
       const obj: any = this.mapPost(d) || {};
       const u = mapByCustom.get(d.userId) || mapByObject.get(d.userId);
       if (u) {
-        obj.userName = obj.userName || u.firstName || u.email || u.phone || 'მომხმარებელი';
-        obj.userInitial = obj.userInitial || (obj.userName ? String(obj.userName).charAt(0).toUpperCase() : '?');
+        obj.userName =
+          obj.userName || u.firstName || u.email || u.phone || 'მომხმარებელი';
+        obj.userInitial =
+          obj.userInitial ||
+          (obj.userName ? String(obj.userName).charAt(0).toUpperCase() : '?');
       }
       return obj;
     });
@@ -260,8 +263,11 @@ export class CommunityService {
       const obj: any = this.mapComment(d) || {};
       const u = mapCustom.get(d.userId) || mapObject.get(d.userId);
       if (u) {
-        obj.userName = obj.userName || u.firstName || u.email || u.phone || 'მომხმარებელი';
-        obj.userInitial = obj.userInitial || (obj.userName ? String(obj.userName).charAt(0).toUpperCase() : '?');
+        obj.userName =
+          obj.userName || u.firstName || u.email || u.phone || 'მომხმარებელი';
+        obj.userInitial =
+          obj.userInitial ||
+          (obj.userName ? String(obj.userName).charAt(0).toUpperCase() : '?');
       }
       return obj;
     });
@@ -325,5 +331,168 @@ export class CommunityService {
       .exec()
       .catch(() => undefined);
     return { success: true };
+  }
+
+  async getPostLikes(postId: string) {
+    const likes = await this.postLikeModel.find({ postId }).exec();
+    const userIds = likes.map((l) => (l as any).userId).filter(Boolean);
+
+    // Enrich with user info
+    const objectIds = userIds
+      .filter((v) => Types.ObjectId.isValid(v))
+      .map((v) => new Types.ObjectId(v));
+    const customIds = userIds.filter((v) => !Types.ObjectId.isValid(v));
+
+    const users = userIds.length
+      ? await this.userModel
+          .find({
+            $or: [
+              ...(customIds.length ? [{ id: { $in: customIds } }] : []),
+              ...(objectIds.length ? [{ _id: { $in: objectIds } }] : []),
+            ],
+          })
+          .exec()
+      : [];
+
+    const mapByCustom = new Map(users.map((u: any) => [u.id, u]));
+    const mapByObject = new Map(users.map((u: any) => [String(u._id), u]));
+
+    return likes.map((like: any) => {
+      const userId = like.userId;
+      const user = mapByCustom.get(userId) || mapByObject.get(userId);
+      return {
+        userId,
+        userName:
+          user?.firstName || user?.email || user?.phone || 'მომხმარებელი',
+        userEmail: user?.email,
+        userPhone: user?.phone,
+        likedAt: like.createdAt || like.created_at,
+      };
+    });
+  }
+
+  async getAdminPosts() {
+    // Get all posts (including inactive)
+    const posts = await this.postModel.find({}).sort({ createdAt: -1 }).exec();
+
+    // Get all likes for all posts
+    const postIds = posts.map((p) => String(p._id));
+    const allLikes = await this.postLikeModel
+      .find({ postId: { $in: postIds } })
+      .exec();
+
+    // Group likes by postId
+    const likesByPostId = new Map<string, any[]>();
+    allLikes.forEach((like: any) => {
+      const postId = like.postId;
+      if (!likesByPostId.has(postId)) {
+        likesByPostId.set(postId, []);
+      }
+      likesByPostId.get(postId)!.push(like);
+    });
+
+    // Get all unique user IDs from posts and likes
+    const postUserIds = Array.from(
+      new Set(posts.map((p: any) => p.userId).filter(Boolean)),
+    );
+    const likeUserIds = Array.from(
+      new Set(allLikes.map((l: any) => l.userId).filter(Boolean)),
+    );
+    const allUserIds = Array.from(new Set([...postUserIds, ...likeUserIds]));
+
+    // Fetch user info for all users (post authors and users who liked)
+    const objectIds = allUserIds
+      .filter((v) => Types.ObjectId.isValid(v))
+      .map((v) => new Types.ObjectId(v));
+    const customIds = allUserIds.filter((v) => !Types.ObjectId.isValid(v));
+
+    const users = allUserIds.length
+      ? await this.userModel
+          .find({
+            $or: [
+              ...(customIds.length ? [{ id: { $in: customIds } }] : []),
+              ...(objectIds.length ? [{ _id: { $in: objectIds } }] : []),
+            ],
+          })
+          .exec()
+      : [];
+
+    const mapByCustom = new Map(users.map((u: any) => [u.id, u]));
+    const mapByObject = new Map(users.map((u: any) => [String(u._id), u]));
+    // Also map by phone and email for additional matching
+    const mapByPhone = new Map(users.map((u: any) => [u.phone, u]));
+    const mapByEmail = new Map(
+      users
+        .filter((u: any) => u.email)
+        .map((u: any) => [u.email, u]),
+    );
+
+    // Map posts with likes and enrich post author info
+    return posts.map((post: any) => {
+      const postId = String(post._id);
+      const likes = likesByPostId.get(postId) || [];
+
+      // Enrich post author info - try multiple matching strategies
+      const postUserId = String(post.userId || '');
+      let postAuthor =
+        mapByCustom.get(postUserId) ||
+        mapByObject.get(postUserId) ||
+        null;
+
+      // If not found by ID, try to find user by other means
+      if (!postAuthor && post.userName) {
+        // Try to match by phone or email if userName contains them
+        postAuthor =
+          mapByPhone.get(post.userName) || mapByEmail.get(post.userName);
+      }
+
+      const mappedPost: any = this.mapPost(post) || {};
+
+      // Set userName from post author if found
+      if (postAuthor) {
+        const authorName =
+          postAuthor.firstName || postAuthor.email || postAuthor.phone;
+        if (authorName) {
+          mappedPost.userName = authorName;
+          mappedPost.userInitial = String(authorName).charAt(0).toUpperCase();
+        }
+      }
+
+      // Fallback: if still no userName, try to get from post object itself
+      if (!mappedPost.userName || mappedPost.userName === 'მომხმარებელი') {
+        // Only use post.userName if it's not empty and not equal to userId
+        if (
+          post.userName &&
+          post.userName !== postUserId &&
+          post.userName !== 'მომხმარებელი'
+        ) {
+          mappedPost.userName = post.userName;
+          mappedPost.userInitial = String(post.userName).charAt(0).toUpperCase();
+        } else {
+          // Last resort: show userId or default
+          mappedPost.userName = postUserId || 'მომხმარებელი';
+          mappedPost.userInitial = '?';
+        }
+      }
+
+      const likesWithUserInfo = likes.map((like: any) => {
+        const userId = like.userId;
+        const user = mapByCustom.get(userId) || mapByObject.get(userId);
+        return {
+          userId,
+          userName:
+            user?.firstName || user?.email || user?.phone || 'მომხმარებელი',
+          userEmail: user?.email,
+          userPhone: user?.phone,
+          likedAt: like.createdAt || like.created_at,
+        };
+      });
+
+      return {
+        ...mappedPost,
+        likesList: likesWithUserInfo,
+        likesCount: likes.length,
+      };
+    });
   }
 }

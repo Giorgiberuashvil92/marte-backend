@@ -26,6 +26,7 @@ import {
 } from './dto/bog-payment.dto';
 import { Payment, PaymentDocument } from '../schemas/payment.schema';
 import { SubscriptionsService } from '../subscriptions/subscriptions.service';
+import { CarFAXService } from '../carfax/carfax.service';
 
 @Controller('bog')
 export class BOGController {
@@ -36,6 +37,7 @@ export class BOGController {
     private readonly bogOAuthService: BOGOAuthService,
     private readonly paymentsService: PaymentsService,
     private readonly subscriptionsService: SubscriptionsService,
+    private readonly carfaxService: CarFAXService,
     @InjectModel(Payment.name) private paymentModel: Model<PaymentDocument>,
   ) {}
 
@@ -248,15 +250,66 @@ export class BOGController {
         );
 
         try {
+          // Context-ის განსაზღვრა (subscription-ის შემთხვევაში external_order_id-დან)
+          // ეს უნდა იყოს განსაზღვრული payment-ის შემოწმებამდე, რომ იყოს ხელმისაწვდომი ორივე block-ში
+          let context =
+            (callbackData.product_id as string) ||
+            (callbackData.body?.purchase_units?.items?.[0]
+              ?.external_item_id as string) ||
+            '';
+
+          // თუ context არ არის, შევამოწმოთ external_order_id-ში
+          if (!context && external_order_id) {
+            if (
+              external_order_id.includes('subscription') ||
+              external_order_id.includes('test_subscription')
+            ) {
+              context = 'subscription';
+            } else if (
+              external_order_id.includes('carfax_package') ||
+              external_order_id.includes('carfax-package')
+            ) {
+              context = 'carfax-package';
+            } else if (external_order_id.includes('test_payment')) {
+              context = 'test';
+            }
+          }
+
+          // Default context
+          if (!context) {
+            context = 'test';
+          }
+
           this.logger.log('🔍 ვპოულობთ payment-ს database-ში...');
-          // ვპოულობთ payment-ს ამ orderId-ით
+          // ვპოულობთ payment-ს ამ orderId-ით (BOG order_id)
           let payment: PaymentDocument | null = await this.paymentModel
             .findOne({ orderId: order_id })
             .exec();
 
+          // თუ payment არ მოიძებნა, შევამოწმოთ external_order_id-ით (frontend-იდან შექმნილი payment-ი)
+          if (!payment && external_order_id) {
+            this.logger.log(
+              `   🔍 Payment არ მოიძებნა orderId-ით, ვცდილობთ external_order_id-ით: ${external_order_id}`,
+            );
+            payment = await this.paymentModel
+              .findOne({ externalOrderId: external_order_id })
+              .exec();
+
+            if (payment) {
+              this.logger.log(`   ✅ Payment ნაპოვნია external_order_id-ით!`);
+              // განვაახლოთ orderId BOG-ის order_id-ით, რომ მომავალში სწორად მოიძებნოს
+              await this.paymentModel
+                .findByIdAndUpdate(payment._id, { orderId: order_id })
+                .exec();
+              this.logger.log(
+                `   ✅ Payment orderId განახლებულია: ${order_id}`,
+              );
+            }
+          }
+
           if (payment) {
             this.logger.log(`✅ Payment ნაპოვნია database-ში:`);
-            this.logger.log(`   • Payment ID: ${payment._id}`);
+            this.logger.log(`   • Payment ID: ${String(payment._id)}`);
             this.logger.log(`   • User ID: ${payment.userId}`);
             this.logger.log(
               `   • Amount: ${payment.amount} ${payment.currency}`,
@@ -442,28 +495,15 @@ export class BOGController {
               callbackData.body?.buyer ||
               callbackData.buyer;
 
-            // Context-ის განსაზღვრა (subscription-ის შემთხვევაში external_order_id-დან)
-            let context =
-              (callbackData.product_id as string) ||
-              (callbackData.body?.purchase_units?.items?.[0]
-                ?.external_item_id as string) ||
-              '';
-
-            // თუ context არ არის, შევამოწმოთ external_order_id-ში
-            if (!context && external_order_id) {
-              if (
-                external_order_id.includes('subscription') ||
-                external_order_id.includes('test_subscription')
-              ) {
-                context = 'subscription';
-              } else if (external_order_id.includes('test_payment')) {
-                context = 'test';
-              }
-            }
-
-            // Default context
-            if (!context) {
-              context = 'test';
+            // CarFAX პაკეტის credits-ის განსაზღვრა
+            let credits: number | undefined;
+            if (context === 'carfax-package') {
+              // Credits-ის მიღება external_order_id-დან ან default 5
+              // external_order_id format: carfax_package_userId_timestamp
+              credits = 5; // Default credits for CarFAX package
+              this.logger.log(
+                `   📦 CarFAX პაკეტი გამოვლინდა, credits: ${credits}`,
+              );
             }
 
             // Plan ID და Plan Name-ის მოძებნა external_order_id-დან ან არსებული payment-იდან
@@ -586,6 +626,8 @@ export class BOGController {
                 planPrice: planPrice,
                 planCurrency: planCurrency,
                 planPeriod: planPeriod,
+                // CarFAX პაკეტის credits (თუ context არის carfax-package)
+                ...(credits !== undefined && { credits }),
                 // BOG callback-ის სრული მონაცემები
                 bogCallbackData: {
                   payment_detail: paymentDetail,
@@ -695,12 +737,67 @@ export class BOGController {
             // BOG API დოკუმენტაციის მიხედვით, ბარათის დამახსოვრება უნდა მოხდეს
             // შეკვეთის შექმნის შემდეგ, გადახდების გვერდზე მომხმარებლის გადამისამართებამდე
 
+            // CarFAX პაკეტის დამატება (თუ context არის 'carfax-package')
+            // გამოვიყენოთ payment-ის context, მაგრამ თუ ის არ არის სწორი, გამოვიყენოთ განსაზღვრული context
+            const paymentContext = payment.context || context || '';
+            this.logger.log(
+              `   🔍 Payment Context: ${paymentContext}, განსაზღვრული Context: ${context}`,
+            );
+            if (paymentContext === 'carfax-package') {
+              try {
+                this.logger.log(
+                  '═══════════════════════════════════════════════════════',
+                );
+                this.logger.log('📦 CarFAX პაკეტის დამატება payment-ის შემდეგ');
+                this.logger.log(
+                  '═══════════════════════════════════════════════════════',
+                );
+                this.logger.log(`   • User ID: ${payment.userId}`);
+                this.logger.log(
+                  `   • Amount: ${payment.amount} ${payment.currency}`,
+                );
+                this.logger.log(`   • Context: ${context}`);
+
+                // Credits-ის მიღება metadata-დან
+                const credits: number = payment.metadata?.credits || 5;
+                this.logger.log(`   • Credits: ${credits}`);
+
+                const packageResult = await this.carfaxService.addCarFAXPackage(
+                  payment.userId,
+                  credits,
+                );
+
+                this.logger.log(
+                  '═══════════════════════════════════════════════════════',
+                );
+                this.logger.log(`✅ CarFAX პაკეტი წარმატებით დაემატა!`);
+                this.logger.log(
+                  '═══════════════════════════════════════════════════════',
+                );
+                this.logger.log(`   • User ID: ${payment.userId}`);
+                this.logger.log(
+                  `   • Total Limit: ${packageResult.totalLimit}`,
+                );
+                this.logger.log(`   • Used: ${packageResult.used}`);
+                this.logger.log(`   • Remaining: ${packageResult.remaining}`);
+                this.logger.log(
+                  '═══════════════════════════════════════════════════════',
+                );
+              } catch (error) {
+                this.logger.error(
+                  '❌ CarFAX პაკეტის დამატების შეცდომა:',
+                  error,
+                );
+              }
+            }
+
             // Subscription-ის შექმნა (თუ context არის 'subscription' ან 'test_subscription' ან 'test')
-            const context = payment.context || '';
+            // გამოვიყენოთ payment-ის context, მაგრამ თუ ის არ არის სწორი, გამოვიყენოთ განსაზღვრული context
+            const subscriptionContext = paymentContext || context || '';
             if (
-              context === 'subscription' ||
-              context === 'test_subscription' ||
-              context === 'test'
+              subscriptionContext === 'subscription' ||
+              subscriptionContext === 'test_subscription' ||
+              subscriptionContext === 'test'
             ) {
               try {
                 this.logger.log(
@@ -718,31 +815,45 @@ export class BOGController {
                 this.logger.log(`   • Context: ${context}`);
 
                 // Plan ID და Plan Name-ის მიღება payment metadata-დან
-                this.logger.log('🔍 Payment Metadata-დან Plan ინფორმაციის მიღება:');
-                this.logger.log(`   • Full metadata: ${JSON.stringify(payment.metadata || {}, null, 2)}`);
-                
+                this.logger.log(
+                  '🔍 Payment Metadata-დან Plan ინფორმაციის მიღება:',
+                );
+                this.logger.log(
+                  `   • Full metadata: ${JSON.stringify(payment.metadata || {}, null, 2)}`,
+                );
+
                 const planId = payment.metadata?.planId;
                 const planName = payment.metadata?.planName;
                 const planPeriodFromMetadata = payment.metadata?.planPeriod;
 
                 if (planId) {
-                  this.logger.log(`   ✅ Plan ID ნაპოვნია metadata-ში: ${planId}`);
+                  this.logger.log(
+                    `   ✅ Plan ID ნაპოვნია metadata-ში: ${planId}`,
+                  );
                 } else {
-                  this.logger.warn(`   ⚠️ Plan ID არ არის metadata-ში! ეს შეიძლება გამოიწვიოს default plan-ის გამოყენება.`);
+                  this.logger.warn(
+                    `   ⚠️ Plan ID არ არის metadata-ში! ეს შეიძლება გამოიწვიოს default plan-ის გამოყენება.`,
+                  );
                 }
-                
+
                 if (planName) {
-                  this.logger.log(`   ✅ Plan Name ნაპოვნია metadata-ში: ${planName}`);
+                  this.logger.log(
+                    `   ✅ Plan Name ნაპოვნია metadata-ში: ${planName}`,
+                  );
                 } else {
-                  this.logger.warn(`   ⚠️ Plan Name არ არის metadata-ში! ეს შეიძლება გამოიწვიოს default plan-ის გამოყენება.`);
+                  this.logger.warn(
+                    `   ⚠️ Plan Name არ არის metadata-ში! ეს შეიძლება გამოიწვიოს default plan-ის გამოყენება.`,
+                  );
                 }
-                
+
                 if (planPeriodFromMetadata) {
                   this.logger.log(
                     `   ✅ Plan Period ნაპოვნია metadata-ში: ${planPeriodFromMetadata}`,
                   );
                 } else {
-                  this.logger.warn(`   ⚠️ Plan Period არ არის metadata-ში! გამოყენებული იქნება default: monthly`);
+                  this.logger.warn(
+                    `   ⚠️ Plan Period არ არის metadata-ში! გამოყენებული იქნება default: monthly`,
+                  );
                 }
 
                 const subscription =

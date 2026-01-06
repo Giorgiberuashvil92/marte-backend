@@ -61,7 +61,7 @@ export class CarFAXService {
               existingReport.lastServiceDate ||
               new Date().toISOString().split('T')[0],
             reportId: existingReport.reportId,
-            reportData: existingReport.reportData || null as any,
+            reportData: existingReport.reportData || (null as any),
           },
           message: 'CarFAX მოხსენება ნაპოვნია ბაზაში',
         };
@@ -155,19 +155,32 @@ export class CarFAXService {
 
   private async callCarFAXAPI(vin: string): Promise<CarFAXResponseDto> {
     try {
-      this.logger.log(`CarFAX API-სთან დაკავშირება VIN: ${vin}`);
+      console.log(`CarFAX API-სთან დაკავშირება VIN: ${vin}`);
 
-      const response = await axios.get(
-        `${this.CARFAX_API_URL}/carfax?vin=${vin}`,
-        {
-          headers: {
-            'api-key': this.CARFAX_API_KEY,
-            'Content-Type': 'application/json',
-            Accept: 'text/html,application/json',
-          },
-          responseType: 'text',
-          timeout: 10000, // 30 წამი timeout
+      // URL-ის ფორმატირება - PHP-ის მსგავსად
+      // PHP: https://cai.autoimports.ge/api/report/carfax?vin=...
+      const url = `${this.CARFAX_API_URL}carfax?vin=${encodeURIComponent(vin)}`;
+      console.log(`🔗 CarFAX API URL: ${url}`);
+      console.log(
+        `🔑 CarFAX API Key: ${this.CARFAX_API_KEY.substring(0, 8)}...${this.CARFAX_API_KEY.substring(this.CARFAX_API_KEY.length - 4)}`,
+      );
+
+      const response = await axios.get(url, {
+        headers: {
+          'api-key': this.CARFAX_API_KEY,
+          'Content-Type': 'application/json',
+          Accept: 'text/html,application/json',
+          'User-Agent':
+            'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
         },
+        responseType: 'text',
+        timeout: 30000, // 30 წამი timeout (PHP-ში 0 = unlimited, მაგრამ უსაფრთხოებისთვის 30s)
+        maxRedirects: 10, // PHP-ში FOLLOWLOCATION = true, maxRedirects = 10
+        validateStatus: (status) => status >= 200 && status < 300, // მხოლოდ success status codes
+      });
+
+      console.log(
+        `📥 CarFAX API Response: Status ${response.status}, Content-Type: ${response.headers['content-type']}, Size: ${response.data?.length || 0} bytes`,
       );
 
       if (response.status === 200 && response.data) {
@@ -184,8 +197,8 @@ export class CarFAXService {
 
         if (isHtml) {
           // HTML პასუხი - დავაბრუნოთ HTML კონტენტი
-          this.logger.log(
-            `CarFAX API-მა HTML დააბრუნა VIN: ${vin}, სიგრძე: ${responseData.length}`,
+          console.log(
+            `🔍 CarFAX API-მა HTML დააბრუნა VIN: ${vin}, სიგრძე: ${responseData.length}`,
           );
 
           return {
@@ -496,6 +509,115 @@ export class CarFAXService {
       );
       throw new HttpException(
         'CarFAX გამოყენების ინფორმაციის მიღებისას მოხდა შეცდომა',
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
+  }
+
+  /**
+   * CarFAX usage-ის გაზრდა (increment) მომხმარებლისთვის
+   */
+  async incrementUsage(userId: string): Promise<{
+    success: boolean;
+    totalLimit: number;
+    used: number;
+    remaining: number;
+    message: string;
+  }> {
+    try {
+      let usage = await this.carfaxUsageModel.findOne({ userId }).exec();
+
+      // თუ არ არსებობს, შევქმნათ
+      if (!usage) {
+        usage = (await this.initializeUsage(userId)) as any;
+      }
+
+      // გავზარდოთ გამოყენებული რაოდენობა
+      if (usage) {
+        usage.used += 1;
+        usage.updatedAt = new Date();
+        await usage.save();
+
+        this.logger.log(
+          `CarFAX გამოყენება გაზრდილია მომხმარებლისთვის: ${userId}, გამოყენებული: ${usage.used}/${usage.totalLimit}`,
+        );
+
+        return {
+          success: true,
+          totalLimit: usage.totalLimit,
+          used: usage.used,
+          remaining: usage.totalLimit - usage.used,
+          message: 'CarFAX გამოყენება წარმატებით გაიზარდა',
+        };
+      }
+
+      throw new HttpException(
+        'CarFAX გამოყენების გაზრდისას მოხდა შეცდომა',
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    } catch (error) {
+      this.logger.error(
+        `CarFAX გამოყენების გაზრდის შეცდომა მომხმარებლისთვის: ${userId}`,
+        error,
+      );
+      throw new HttpException(
+        'CarFAX გამოყენების გაზრდისას მოხდა შეცდომა',
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
+  }
+
+  /**
+   * CarFAX usage-ის გაზრდა პაკეტით (5 შემოწმება)
+   */
+  async addCarFAXPackage(
+    userId: string,
+    credits: number = 5,
+  ): Promise<{
+    success: boolean;
+    totalLimit: number;
+    used: number;
+    remaining: number;
+    message: string;
+  }> {
+    try {
+      let usage = await this.carfaxUsageModel.findOne({ userId }).exec();
+
+      // თუ არ არსებობს, შევქმნათ
+      if (!usage) {
+        usage = (await this.initializeUsage(userId)) as any;
+      }
+
+      // გავზარდოთ totalLimit-ი credits-ით
+      if (usage) {
+        usage.totalLimit += credits;
+        usage.updatedAt = new Date();
+        await usage.save();
+
+        this.logger.log(
+          `CarFAX პაკეტი დაემატა მომხმარებლისთვის: ${userId}, დამატებული: ${credits} შემოწმება, ახალი ლიმიტი: ${usage.totalLimit}`,
+        );
+
+        return {
+          success: true,
+          totalLimit: usage.totalLimit,
+          used: usage.used,
+          remaining: usage.totalLimit - usage.used,
+          message: `${credits} CarFAX შემოწმება წარმატებით დაემატა`,
+        };
+      }
+
+      throw new HttpException(
+        'CarFAX პაკეტის დამატებისას მოხდა შეცდომა',
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    } catch (error) {
+      this.logger.error(
+        `CarFAX პაკეტის დამატების შეცდომა მომხმარებლისთვის: ${userId}`,
+        error,
+      );
+      throw new HttpException(
+        'CarFAX პაკეტის დამატებისას მოხდა შეცდომა',
         HttpStatus.INTERNAL_SERVER_ERROR,
       );
     }

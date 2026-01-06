@@ -79,22 +79,35 @@ export class BOGPaymentService {
         '═══════════════════════════════════════════════════════',
       );
       this.logger.log(
-        `💾 save_card: ${bogOrderData.save_card ? '✅ true' : '❌ false'}`,
+        `💾 save_card: ${orderData.save_card ? '✅ true' : '❌ false'}`,
       );
       this.logger.log(
         '═══════════════════════════════════════════════════════',
       );
+
+      // Headers-ის მომზადება BOG API-ისთვის
+      const headers: Record<string, string> = {
+        Authorization: `Bearer ${token}`,
+        'Content-Type': 'application/json',
+        'Accept-Language': orderData.accept_language || 'ka', // Default: ka
+      };
+
+      // Idempotency-Key (optional) - UUID v4
+      if (orderData.idempotency_key) {
+        headers['Idempotency-Key'] = orderData.idempotency_key;
+      }
+
+      // Theme (optional) - light | dark
+      if (orderData.theme) {
+        headers['Theme'] = orderData.theme;
+      }
 
       // BOG API-ზე მოთხოვნის გაგზავნა
       const response = await fetch(
         `${this.BOG_API_BASE_URL}/ecommerce/orders`,
         {
           method: 'POST',
-          headers: {
-            Authorization: `Bearer ${token}`,
-            'Content-Type': 'application/json',
-            'Accept-Language': 'ka',
-          },
+          headers,
           body: JSON.stringify(bogOrderData),
         },
       );
@@ -113,7 +126,7 @@ export class BOGPaymentService {
       // ბარათის დამახსოვრება (თუ save_card არის true)
       // BOG API დოკუმენტაციის მიხედვით, ბარათის დამახსოვრება უნდა მოხდეს
       // შეკვეთის შექმნის შემდეგ, გადახდების გვერდზე მომხმარებლის გადამისამართებამდე
-      if (bogOrderData.save_card) {
+      if (orderData.save_card) {
         try {
           this.logger.log(
             `💾 ბარათის დამახსოვრება order_id: ${responseData.id}-ისთვის...`,
@@ -264,6 +277,7 @@ export class BOGPaymentService {
 
   /**
    * CarApp-ის მონაცემების BOG API ფორმატში გადაყვანა
+   * BOG API დოკუმენტაციის შესაბამისად
    */
   private prepareBOGOrderData(
     orderData: BOGOrderRequestDto,
@@ -300,11 +314,93 @@ export class BOGPaymentService {
       );
     }
 
-    return {
-      application_type: 'mobile',
-      callback_url: callbackUrl,
-      external_order_id: orderData.external_order_id,
-      purchase_units: {
+    // BOG API-ისთვის request body-ის მომზადება
+    const requestBody: Record<string, any> = {};
+
+    // application_type (optional)
+    if (orderData.application_type) {
+      requestBody.application_type = orderData.application_type;
+    } else {
+      // Default: mobile (CarApp არის მობილური აპლიკაცია)
+      requestBody.application_type = 'mobile';
+    }
+
+    // buyer (optional)
+    if (orderData.buyer) {
+      const buyer: Record<string, string> = {};
+      if (orderData.buyer.full_name) {
+        buyer.full_name = orderData.buyer.full_name;
+      }
+      if (orderData.buyer.masked_email) {
+        buyer.masked_email = orderData.buyer.masked_email;
+      }
+      if (orderData.buyer.masked_phone) {
+        buyer.masked_phone = orderData.buyer.masked_phone;
+      }
+      requestBody.buyer = buyer;
+    }
+
+    // callback_url (required)
+    requestBody.callback_url = callbackUrl;
+
+    // external_order_id (optional)
+    if (orderData.external_order_id) {
+      requestBody.external_order_id = orderData.external_order_id;
+    }
+
+    // capture (optional)
+    if (orderData.capture) {
+      requestBody.capture = orderData.capture;
+    }
+
+    // purchase_units (required)
+    if (orderData.purchase_units) {
+      // თუ purchase_units გადმოცემულია, გამოვიყენოთ ის
+      requestBody.purchase_units = {
+        currency: orderData.purchase_units.currency || 'GEL',
+        total_amount: orderData.purchase_units.total_amount,
+        basket: orderData.purchase_units.basket.map((item) => ({
+          product_id: item.product_id,
+          ...(item.description && { description: item.description }),
+          quantity: item.quantity,
+          unit_price: item.unit_price,
+          ...(item.unit_discount_price !== undefined && {
+            unit_discount_price: item.unit_discount_price,
+          }),
+          ...(item.vat !== undefined && { vat: item.vat }),
+          ...(item.vat_percent !== undefined && {
+            vat_percent: item.vat_percent,
+          }),
+          ...(item.total_price !== undefined && {
+            total_price: item.total_price,
+          }),
+          ...(item.image && { image: item.image }),
+          ...(item.package_code && { package_code: item.package_code }),
+          ...(item.tin && { tin: item.tin }),
+          ...(item.pinfl && { pinfl: item.pinfl }),
+          ...(item.product_discount_id && {
+            product_discount_id: item.product_discount_id,
+          }),
+        })),
+        ...(orderData.purchase_units.delivery && {
+          delivery: {
+            ...(orderData.purchase_units.delivery.amount !== undefined && {
+              amount: orderData.purchase_units.delivery.amount,
+            }),
+          },
+        }),
+        ...(orderData.purchase_units.total_discount_amount !== undefined && {
+          total_discount_amount: orderData.purchase_units.total_discount_amount,
+        }),
+      };
+    } else {
+      // Legacy: თუ purchase_units არ არის გადმოცემული, გამოვიყენოთ legacy fields
+      if (!orderData.total_amount) {
+        throw new Error(
+          'total_amount ან purchase_units აუცილებელია BOG შეკვეთის შექმნისთვის',
+        );
+      }
+      requestBody.purchase_units = {
         currency: orderData.currency || 'GEL',
         total_amount: orderData.total_amount,
         basket: [
@@ -315,14 +411,102 @@ export class BOGPaymentService {
             unit_price: orderData.total_amount,
           },
         ],
-      },
-      redirect_urls: {
-        success: orderData.success_url || `${baseUrl}/payment/success`,
-        fail: orderData.fail_url || `${baseUrl}/payment/fail`,
-      },
-      ttl: 15, // 15 წუთი
-      save_card: orderData.save_card ?? false, // ✅ Card token-ის შენახვა recurring payment-ებისთვის (თუ save_card არის true)
-    };
+      };
+    }
+
+    // redirect_urls (optional)
+    if (orderData.redirect_urls) {
+      const redirectUrls: Record<string, string> = {};
+      if (orderData.redirect_urls.success) {
+        redirectUrls.success = orderData.redirect_urls.success;
+      }
+      if (orderData.redirect_urls.fail) {
+        redirectUrls.fail = orderData.redirect_urls.fail;
+      }
+      requestBody.redirect_urls = redirectUrls;
+    } else if (orderData.success_url || orderData.fail_url) {
+      // Legacy: თუ redirect_urls არ არის გადმოცემული, გამოვიყენოთ legacy fields
+      const redirectUrls: Record<string, string> = {
+        ...(orderData.success_url && { success: orderData.success_url }),
+        ...(orderData.fail_url && { fail: orderData.fail_url }),
+      };
+      // თუ არც ერთი არ არის, დავამატოთ default values
+      if (!redirectUrls.success) {
+        redirectUrls.success = `${baseUrl}/payment/success`;
+      }
+      if (!redirectUrls.fail) {
+        redirectUrls.fail = `${baseUrl}/payment/fail`;
+      }
+      requestBody.redirect_urls = redirectUrls;
+    }
+
+    // ttl (optional, default: 15 minutes)
+    if (orderData.ttl !== undefined) {
+      requestBody.ttl = orderData.ttl;
+    } else {
+      requestBody.ttl = 15; // Default: 15 წუთი
+    }
+
+    // payment_method (optional)
+    if (orderData.payment_method && orderData.payment_method.length > 0) {
+      requestBody.payment_method = orderData.payment_method;
+    }
+
+    // config (optional)
+    if (orderData.config) {
+      const config: Record<string, any> = {};
+      if (orderData.config.loan) {
+        const loan: Record<string, any> = {};
+        if (orderData.config.loan.type) {
+          loan.type = orderData.config.loan.type;
+        }
+        if (orderData.config.loan.month !== undefined) {
+          loan.month = orderData.config.loan.month;
+        }
+        config.loan = loan;
+      }
+      if (orderData.config.campaign) {
+        const campaign: Record<string, any> = {};
+        if (orderData.config.campaign.card) {
+          campaign.card = orderData.config.campaign.card;
+        }
+        if (orderData.config.campaign.type) {
+          campaign.type = orderData.config.campaign.type;
+        }
+        config.campaign = campaign;
+      }
+      if (orderData.config.google_pay) {
+        const googlePay: Record<string, any> = {};
+        if (orderData.config.google_pay.google_pay_token) {
+          googlePay.google_pay_token =
+            orderData.config.google_pay.google_pay_token;
+        }
+        if (orderData.config.google_pay.external !== undefined) {
+          googlePay.external = orderData.config.google_pay.external;
+        }
+        config.google_pay = googlePay;
+      }
+      if (orderData.config.apple_pay) {
+        const applePay: Record<string, any> = {};
+        if (orderData.config.apple_pay.external !== undefined) {
+          applePay.external = orderData.config.apple_pay.external;
+        }
+        config.apple_pay = applePay;
+      }
+      if (orderData.config.account) {
+        const account: Record<string, any> = {};
+        if (orderData.config.account.tag) {
+          account.tag = orderData.config.account.tag;
+        }
+        config.account = account;
+      }
+      requestBody.config = config;
+    }
+
+    // save_card არ არის BOG API-ში, მაგრამ გამოიყენება saveCardForRecurringPayments-ისთვის
+    // ეს არ გადაეცემა BOG API-ში, მაგრამ შენახულია orderData-ში
+
+    return requestBody;
   }
 
   /**

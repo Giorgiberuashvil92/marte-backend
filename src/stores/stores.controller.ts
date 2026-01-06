@@ -36,13 +36,26 @@ export class StoresController {
   }
 
   @Get()
-  async findAll(@Query('ownerId') ownerId?: string) {
-    const stores = await this.storesService.findAll(ownerId);
+  async findAll(
+    @Query('ownerId') ownerId?: string,
+    @Query('location') location?: string,
+  ) {
+    const stores = await this.storesService.findAll(ownerId, location);
     return {
       success: true,
       message: 'მაღაზიები წარმატებით ჩამოიტვირთა',
       data: stores,
       count: stores.length,
+    };
+  }
+
+  @Get('locations')
+  async getLocations() {
+    const locations = await this.storesService.getLocations();
+    return {
+      success: true,
+      message: 'ქალაქები წარმატებით ჩამოიტვირთა',
+      data: locations,
     };
   }
 
