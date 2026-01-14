@@ -335,6 +335,19 @@ export class AIRecommendationsService {
         location: s.location,
         address: s.address,
         images: Array.isArray(s.images) ? s.images : [],
+        createdAt: s.createdAt
+          ? new Date(s.createdAt).toISOString()
+          : undefined,
+        nextPaymentDate: s.nextPaymentDate
+          ? new Date(s.nextPaymentDate).toISOString()
+          : undefined,
+        lastPaymentDate: s.lastPaymentDate
+          ? new Date(s.lastPaymentDate).toISOString()
+          : undefined,
+        paymentStatus: s.paymentStatus,
+        paymentAmount: s.paymentAmount,
+        paymentPeriod: s.paymentPeriod,
+        totalPaid: s.totalPaid,
       })),
       ownedParts: (partDocs || []).map((p: any) => ({
         id: String(p._id || p.id),
@@ -505,7 +518,8 @@ export class AIRecommendationsService {
     const modelRegex = new RegExp(vehicle.model, 'i');
 
     const query: Record<string, any> = {
-      type: { $in: ['ავტონაწილები', 'სამართ-დასახურებელი'] }, // Auto parts or service stores
+      type: { $in: ['ავტონაწილები', 'სამართ-დასახურებელი'] }, 
+      status: 'active', // მხოლოდ active მაღაზიები
     };
 
     if (location) {

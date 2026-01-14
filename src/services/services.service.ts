@@ -190,7 +190,8 @@ export class ServicesService {
   }
 
   private async getStoreServices(): Promise<ServiceItem[]> {
-    const stores = await this.storeModel.find({}).exec();
+    // მხოლოდ active მაღაზიები
+    const stores = await this.storeModel.find({ status: 'active' }).exec();
     return stores.map((store) => ({
       id: store._id.toString(),
       title: store.title,
@@ -371,6 +372,7 @@ export class ServicesService {
       .find({
         latitude: { $exists: true, $ne: null },
         longitude: { $exists: true, $ne: null },
+        status: 'active', // მხოლოდ active მაღაზიები რუკაზე
       })
       .exec();
 

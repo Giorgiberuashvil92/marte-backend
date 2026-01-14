@@ -27,6 +27,7 @@ export class UsersService {
         { firstName: { $regex: q, $options: 'i' } },
         { lastName: { $regex: q, $options: 'i' } },
         { id: { $regex: q, $options: 'i' } },
+        { idNumber: { $regex: q, $options: 'i' } },
       ];
     }
     if (params.role) filter.role = params.role;
@@ -48,6 +49,7 @@ export class UsersService {
       email: u.email,
       firstName: u.firstName,
       lastName: u.lastName,
+      idNumber: u.idNumber,
       role: u.role,
       isActive: u.isActive,
       createdAt: u.createdAt,
@@ -92,6 +94,7 @@ export class UsersService {
       lastName?: string;
       email?: string;
       phone?: string;
+      idNumber?: string;
       role?: string;
       isActive?: boolean;
       profileImage?: string;
@@ -109,6 +112,7 @@ export class UsersService {
       'lastName',
       'email',
       'phone',
+      'idNumber',
       'role',
       'isActive',
       'profileImage',
@@ -125,7 +129,10 @@ export class UsersService {
 
     // Only update allowed fields
     for (const field of allowedFields) {
-      if (field in updates && updates[field as keyof typeof updates] !== undefined) {
+      if (
+        field in updates &&
+        updates[field as keyof typeof updates] !== undefined
+      ) {
         updateData[field] = updates[field as keyof typeof updates];
       }
     }

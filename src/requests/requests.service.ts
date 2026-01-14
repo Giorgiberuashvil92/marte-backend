@@ -1,4 +1,9 @@
-import { Injectable, NotFoundException, Inject, forwardRef } from '@nestjs/common';
+import {
+  Injectable,
+  NotFoundException,
+  Inject,
+  forwardRef,
+} from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import { Request, RequestDocument } from '../schemas/request.schema';
@@ -35,15 +40,17 @@ export class RequestsService {
     const savedRequest = await doc.save();
 
     // Send push notifications to relevant stores/dismantlers
-    if ((dto as any).vehicle && (dto as any).partName && (dto as any).userId) {
+    if (dto.vehicle && dto.partName && dto.userId) {
       try {
-        await this.notificationsService.sendRequestNotificationToRelevantStores({
-          partName: (dto as any).partName,
-          vehicle: (dto as any).vehicle,
-          location: (dto as any).location,
-          userId: (dto as any).userId,
-          requestId: savedRequest._id?.toString(),
-        });
+        await this.notificationsService.sendRequestNotificationToRelevantStores(
+          {
+            partName: dto.partName,
+            vehicle: dto.vehicle,
+            location: dto.location,
+            userId: dto.userId,
+            requestId: savedRequest._id?.toString(),
+          },
+        );
         console.log(
           '📱 Push notifications sent for request:',
           savedRequest._id,
@@ -55,7 +62,7 @@ export class RequestsService {
 
       try {
         await this.aiNotificationsService.sendAIRecommendationNotification(
-          (dto as any).userId,
+          dto.userId,
           savedRequest,
         );
         console.log(

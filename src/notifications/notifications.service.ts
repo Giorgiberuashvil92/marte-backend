@@ -470,12 +470,18 @@ export class NotificationsService {
       storeQuery.push({ $or: storeSpecializations });
     }
 
+    // დავამატოთ status: 'active' ფილტრი
+    const baseStoreQuery = storeSpecializations.length > 0
+      ? { $and: storeQuery }
+      : { type: { $in: ['ავტონაწილები', 'სამართ-დასახურებელი'] } };
+    
+    const finalStoreQuery = {
+      ...baseStoreQuery,
+      status: 'active', // მხოლოდ active მაღაზიები
+    };
+
     const stores = await this.storeModel
-      .find(
-        storeSpecializations.length > 0
-          ? { $and: storeQuery }
-          : { type: { $in: ['ავტონაწილები', 'სამართ-დასახურებელი'] } },
-      )
+      .find(finalStoreQuery)
       .select({ _id: 1, ownerId: 1 })
       .lean();
 

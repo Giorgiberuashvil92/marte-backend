@@ -12,9 +12,7 @@ import { TrackLoginDto } from './dto/track-login.dto';
 
 @Controller('login-history')
 export class LoginHistoryController {
-  constructor(
-    private readonly loginHistoryService: LoginHistoryService,
-  ) {}
+  constructor(private readonly loginHistoryService: LoginHistoryService) {}
 
   @Get()
   async getAll(
@@ -120,4 +118,3 @@ export class LoginHistoryController {
     };
   }
 }
-

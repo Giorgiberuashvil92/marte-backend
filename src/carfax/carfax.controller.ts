@@ -52,10 +52,7 @@ export class CarFAXController {
     @Res() res: Response,
   ) {
     if (!body?.html || body.html.trim().length === 0) {
-      throw new HttpException(
-        'html ველი აუცილებელია',
-        HttpStatus.BAD_REQUEST,
-      );
+      throw new HttpException('html ველი აუცილებელია', HttpStatus.BAD_REQUEST);
     }
 
     const pdfBuffer = await this.carfaxService.htmlToPdf(

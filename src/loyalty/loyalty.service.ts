@@ -341,11 +341,14 @@ export class LoyaltyService {
   // Referral: invitee applies code
   async applyReferral(inviteeId: string, code: string) {
     const inviterId = code;
-    if (!inviterId || inviterId === inviteeId)
-      throw new Error('invalid_code');
+    if (!inviterId || inviterId === inviteeId) throw new Error('invalid_code');
     const existing = await this.referralModel.findOne({ inviteeId }).lean();
     if (existing) return { ok: true, already: true };
-    await this.referralModel.create({ inviteeId, inviterId, appliedAt: Date.now() });
+    await this.referralModel.create({
+      inviteeId,
+      inviterId,
+      appliedAt: Date.now(),
+    });
     return { ok: true };
   }
 
@@ -362,12 +365,16 @@ export class LoyaltyService {
   // On first booking: award if subscription enabled and not rewarded yet
   async handleFirstBookingRewards(userId: string) {
     const ref = await this.referralModel.findOne({ inviteeId: userId }).lean();
-    if (!ref || !ref.subscriptionEnabled || ref.rewardsGranted) return { ok: true };
+    if (!ref || !ref.subscriptionEnabled || ref.rewardsGranted)
+      return { ok: true };
 
     // invitee +200, inviter +300
     await this.loyaltyModel.updateOne(
       { userId },
-      { $setOnInsert: { userId, points: 0, streakDays: 0 }, $inc: { points: 200 } },
+      {
+        $setOnInsert: { userId, points: 0, streakDays: 0 },
+        $inc: { points: 200 },
+      },
       { upsert: true },
     );
     await this.txModel.create({
@@ -381,7 +388,10 @@ export class LoyaltyService {
 
     await this.loyaltyModel.updateOne(
       { userId: ref.inviterId },
-      { $setOnInsert: { userId: ref.inviterId, points: 0, streakDays: 0 }, $inc: { points: 300 } },
+      {
+        $setOnInsert: { userId: ref.inviterId, points: 0, streakDays: 0 },
+        $inc: { points: 300 },
+      },
       { upsert: true },
     );
     await this.txModel.create({

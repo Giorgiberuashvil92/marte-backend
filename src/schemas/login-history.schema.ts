@@ -68,4 +68,3 @@ LoginHistorySchema.set('toJSON', {
     return ret;
   },
 });
-

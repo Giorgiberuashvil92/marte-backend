@@ -114,9 +114,7 @@ export class FuelPricesService {
   async getBestPriceForFuelType(fuelType: string): Promise<LowestPrice | null> {
     try {
       const lowestPrices = await this.getLowestPrices();
-      return (
-        lowestPrices.find((p) => p.fuel_type === fuelType) || null
-      );
+      return lowestPrices.find((p) => p.fuel_type === fuelType) || null;
     } catch (error) {
       throw new HttpException(
         'საუკეთესო ფასის მიღება ვერ მოხერხდა',
@@ -132,7 +130,9 @@ export class FuelPricesService {
     try {
       const allPrices = await this.getCurrentPrices();
       return (
-        allPrices.find((p) => p.provider.toLowerCase() === provider.toLowerCase()) || null
+        allPrices.find(
+          (p) => p.provider.toLowerCase() === provider.toLowerCase(),
+        ) || null
       );
     } catch (error) {
       throw new HttpException(
@@ -203,4 +203,3 @@ export class FuelPricesService {
     }
   }
 }
-

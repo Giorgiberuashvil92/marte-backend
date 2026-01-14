@@ -25,4 +25,3 @@ export class CarFAXUsage {
 }
 
 export const CarFAXUsageSchema = SchemaFactory.createForClass(CarFAXUsage);
-

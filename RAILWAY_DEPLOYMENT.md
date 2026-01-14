@@ -25,7 +25,12 @@ BOG_API_BASE_URL=https://api.bog.ge
 BOG_IPAY_BASE_URL=https://ipay.ge/opay/api/v1
 ```
 
-### 4. Firebase (Optional - Push Notifications)
+### 4. SMS Service (Sender.ge)
+```env
+SENDER_GE_API_KEY=your_sender_ge_api_key
+```
+
+### 5. Firebase (Optional - Push Notifications)
 ```env
 # Option 1: Base64 encoded JSON
 FIREBASE_SERVICE_ACCOUNT_JSON=base64_encoded_json_string
@@ -36,7 +41,7 @@ FIREBASE_PRIVATE_KEY=your_private_key
 FIREBASE_CLIENT_EMAIL=your_client_email
 ```
 
-### 5. Port (Railway automatically sets this)
+### 6. Port (Railway automatically sets this)
 ```env
 PORT=3000  # Railway automatically sets this, but you can override
 ```
@@ -72,6 +77,7 @@ Backend automatically allows:
 2. **ან Railway CLI-ით:**
    ```bash
    railway variables set MONGODB_URI="your_mongodb_uri"
+   railway variables set SENDER_GE_API_KEY="your_sender_ge_api_key"
    railway variables set ADMIN_ORIGIN="https://free-nextjs-admin-dashboard-omega-green.vercel.app"
    railway variables set ALLOWED_ORIGINS="https://your-domain.com"
    ```

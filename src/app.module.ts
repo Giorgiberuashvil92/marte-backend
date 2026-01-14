@@ -30,6 +30,10 @@ import { CarRentalModule } from './car-rental/car-rental.module';
 import { FuelPricesModule } from './fuel-prices/fuel-prices.module';
 import { RecurringPaymentsModule } from './recurring-payments/recurring-payments.module';
 import { SubscriptionsModule } from './subscriptions/subscriptions.module';
+import { SmsModule } from './sms/sms.module';
+import { FeedbackModule } from './feedback/feedback.module';
+import { EngagementModule } from './engagement/engagement.module';
+import { SpecialOffersModule } from './special-offers/special-offers.module';
 import databaseConfig from './config/database.config';
 
 // Schemas
@@ -145,6 +149,10 @@ import {
     FuelPricesModule,
     RecurringPaymentsModule,
     SubscriptionsModule,
+    SmsModule,
+    FeedbackModule,
+    EngagementModule,
+    SpecialOffersModule,
   ],
   controllers: [AppController],
   providers: [AppService],

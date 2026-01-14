@@ -10,6 +10,10 @@ export class CompleteAuthDto {
   firstName?: string;
 
   @IsOptional()
+  @IsString()
+  personalId?: string;
+
+  @IsOptional()
   @IsIn(['user', 'partner'])
   role?: 'user' | 'partner';
 }

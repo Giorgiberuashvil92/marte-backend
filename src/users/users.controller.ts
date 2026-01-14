@@ -64,6 +64,7 @@ export class UsersController {
       lastName?: string;
       email?: string;
       phone?: string;
+      idNumber?: string;
       role?: string;
       isActive?: boolean;
       profileImage?: string;

@@ -156,4 +156,10 @@ export class GarageController {
     const userId = (req.headers['x-user-id'] as string) || 'demo-user';
     return await this.garageService.listFuelEntriesByCar(userId, carId);
   }
+
+  // Reminder notifications (manual trigger for testing)
+  @Post('reminders/notifications/run')
+  async runReminderNotifications(@Query('test') test?: string) {
+    return this.garageService.sendReminderNotifications(test === 'true');
+  }
 }

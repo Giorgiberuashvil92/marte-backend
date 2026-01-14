@@ -7,8 +7,10 @@ export class FeedbackController {
 
   @Post()
   async create(@Body() body: any) {
+    console.log('📝 [FEEDBACK] POST request received:', body);
     const message = (body?.message || '').trim();
     if (!message) {
+      console.log('❌ [FEEDBACK] Message is required');
       return { success: false, error: 'message_required' };
     }
 
@@ -20,15 +22,17 @@ export class FeedbackController {
       source: body?.source || 'unknown',
     };
 
+    console.log('📝 [FEEDBACK] Payload:', payload);
     const created = await this.feedbackService.create(payload);
-    return { success: true, data: created };
+    console.log('✅ [FEEDBACK] Created:', created);
+
+    // Convert mongoose document to plain object
+    const result = created.toJSON ? created.toJSON() : created;
+    return { success: true, data: result };
   }
 
   @Get()
-  async list(
-    @Query('limit') limit?: string,
-    @Query('offset') offset?: string,
-  ) {
+  async list(@Query('limit') limit?: string, @Query('offset') offset?: string) {
     const parsedLimit = limit ? Number(limit) : undefined;
     const parsedOffset = offset ? Number(offset) : undefined;
     const result = await this.feedbackService.list({

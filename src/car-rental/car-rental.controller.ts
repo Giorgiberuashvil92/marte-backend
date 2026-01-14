@@ -85,7 +85,9 @@ export class CarRentalController {
    * მიიღე პოპულარული გასაქირავებელი მანქანები
    */
   @Get('popular')
-  async getPopularRentalCars(@Query('limit') limit?: string): Promise<CarRental[]> {
+  async getPopularRentalCars(
+    @Query('limit') limit?: string,
+  ): Promise<CarRental[]> {
     try {
       const parsedLimit = limit ? parseInt(limit, 10) : 10;
       return await this.carRentalService.getPopularRentalCars(parsedLimit);
@@ -103,7 +105,9 @@ export class CarRentalController {
    * მიიღე ბოლოს დამატებული გასაქირავებელი მანქანები
    */
   @Get('recent')
-  async getRecentRentalCars(@Query('limit') limit?: string): Promise<CarRental[]> {
+  async getRecentRentalCars(
+    @Query('limit') limit?: string,
+  ): Promise<CarRental[]> {
     try {
       const parsedLimit = limit ? parseInt(limit, 10) : 10;
       return await this.carRentalService.getRecentRentalCars(parsedLimit);
@@ -277,4 +281,3 @@ export class CarRentalController {
     }
   }
 }
-

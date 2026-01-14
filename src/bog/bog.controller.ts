@@ -27,6 +27,7 @@ import {
 import { Payment, PaymentDocument } from '../schemas/payment.schema';
 import { SubscriptionsService } from '../subscriptions/subscriptions.service';
 import { CarFAXService } from '../carfax/carfax.service';
+import { StoresService } from '../stores/stores.service';
 
 @Controller('bog')
 export class BOGController {
@@ -38,6 +39,7 @@ export class BOGController {
     private readonly paymentsService: PaymentsService,
     private readonly subscriptionsService: SubscriptionsService,
     private readonly carfaxService: CarFAXService,
+    private readonly storesService: StoresService,
     @InjectModel(Payment.name) private paymentModel: Model<PaymentDocument>,
   ) {}
 
@@ -270,6 +272,8 @@ export class BOGController {
               external_order_id.includes('carfax-package')
             ) {
               context = 'carfax-package';
+            } else if (external_order_id.includes('store_payment')) {
+              context = 'store-payment';
             } else if (external_order_id.includes('test_payment')) {
               context = 'test';
             }
@@ -425,7 +429,7 @@ export class BOGController {
 
             let userId = 'unknown';
 
-            // Pattern: test_payment_1234567890_userId, test_subscription_1234567890_userId, carapp_1234567890_userId
+            // Pattern: test_payment_1234567890_userId, test_subscription_1234567890_userId, carapp_1234567890_userId, store_payment_storeId_timestamp_userId
             this.logger.log(
               `   🔍 Pattern matching-ის ცდა: ${externalOrderId}`,
             );
@@ -434,6 +438,7 @@ export class BOGController {
               externalOrderId.match(/test_subscription_\d+_(.+)/) ||
               externalOrderId.match(/carapp_\d+_(.+)/) ||
               externalOrderId.match(/subscription_\w+_\d+_(.+)/) || // subscription_basic_1234567890_userId
+              externalOrderId.match(/store_payment_\w+_\d+_(.+)/) || // store_payment_storeId_timestamp_userId
               externalOrderId.match(/recurring_.*_(\d+)$/); // recurring_orderId_timestamp_userId
 
             if (userIdMatch && userIdMatch[1]) {
@@ -788,6 +793,82 @@ export class BOGController {
                   '❌ CarFAX პაკეტის დამატების შეცდომა:',
                   error,
                 );
+              }
+            }
+
+            // Store-ის განახლება (თუ context არის 'store-payment')
+            if (
+              paymentContext === 'store-payment' ||
+              external_order_id.includes('store_payment')
+            ) {
+              try {
+                this.logger.log(
+                  '═══════════════════════════════════════════════════════',
+                );
+                this.logger.log('🏪 Store-ის განახლება payment-ის შემდეგ');
+                this.logger.log(
+                  '═══════════════════════════════════════════════════════',
+                );
+
+                // Store ID-ის მოძებნა external_order_id-დან
+                // Format: store_payment_storeId_timestamp_userId
+                const storeIdMatch = external_order_id.match(
+                  /store_payment_(\w+)_\d+_/,
+                );
+                if (storeIdMatch && storeIdMatch[1]) {
+                  const storeId = storeIdMatch[1];
+                  this.logger.log(`   • Store ID: ${storeId}`);
+                  this.logger.log(`   • Payment Amount: ${amount} ${currency}`);
+
+                  const now = new Date();
+                  const nextPaymentDate = new Date(now);
+                  nextPaymentDate.setMonth(nextPaymentDate.getMonth() + 1);
+
+                  // Store-ის მოძებნა და განახლება
+                  const store = await this.storesService.findOne(storeId);
+                  if (store) {
+                    const currentTotalPaid = store.totalPaid || 0;
+                    const paymentAmount = amount || store.paymentAmount || 9.99;
+
+                    await this.storesService.update(storeId, {
+                      lastPaymentDate: now.toISOString(),
+                      nextPaymentDate: nextPaymentDate.toISOString(),
+                      paymentStatus: 'paid',
+                      totalPaid: currentTotalPaid + paymentAmount,
+                    });
+
+                    this.logger.log(
+                      '═══════════════════════════════════════════════════════',
+                    );
+                    this.logger.log(`✅ Store განახლებულია!`);
+                    this.logger.log(
+                      '═══════════════════════════════════════════════════════',
+                    );
+                    this.logger.log(`   • Store ID: ${storeId}`);
+                    this.logger.log(
+                      `   • Last Payment Date: ${now.toISOString()}`,
+                    );
+                    this.logger.log(
+                      `   • Next Payment Date: ${nextPaymentDate.toISOString()}`,
+                    );
+                    this.logger.log(
+                      `   • Total Paid: ${currentTotalPaid + paymentAmount}`,
+                    );
+                    this.logger.log(
+                      '═══════════════════════════════════════════════════════',
+                    );
+                  } else {
+                    this.logger.error(
+                      `❌ Store ვერ მოიძებნა ID-ით: ${storeId}`,
+                    );
+                  }
+                } else {
+                  this.logger.error(
+                    `❌ Store ID ვერ მოიძებნა external_order_id-დან: ${external_order_id}`,
+                  );
+                }
+              } catch (error) {
+                this.logger.error('❌ Store-ის განახლების შეცდომა:', error);
               }
             }
 

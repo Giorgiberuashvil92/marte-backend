@@ -20,5 +20,3 @@ export class UpdateServiceDto {
   ownerId?: string;
   status?: string;
 }
-
-

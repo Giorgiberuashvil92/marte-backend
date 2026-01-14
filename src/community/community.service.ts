@@ -422,9 +422,7 @@ export class CommunityService {
     // Also map by phone and email for additional matching
     const mapByPhone = new Map(users.map((u: any) => [u.phone, u]));
     const mapByEmail = new Map(
-      users
-        .filter((u: any) => u.email)
-        .map((u: any) => [u.email, u]),
+      users.filter((u: any) => u.email).map((u: any) => [u.email, u]),
     );
 
     // Map posts with likes and enrich post author info
@@ -435,9 +433,7 @@ export class CommunityService {
       // Enrich post author info - try multiple matching strategies
       const postUserId = String(post.userId || '');
       let postAuthor =
-        mapByCustom.get(postUserId) ||
-        mapByObject.get(postUserId) ||
-        null;
+        mapByCustom.get(postUserId) || mapByObject.get(postUserId) || null;
 
       // If not found by ID, try to find user by other means
       if (!postAuthor && post.userName) {
@@ -467,7 +463,9 @@ export class CommunityService {
           post.userName !== 'მომხმარებელი'
         ) {
           mappedPost.userName = post.userName;
-          mappedPost.userInitial = String(post.userName).charAt(0).toUpperCase();
+          mappedPost.userInitial = String(post.userName)
+            .charAt(0)
+            .toUpperCase();
         } else {
           // Last resort: show userId or default
           mappedPost.userName = postUserId || 'მომხმარებელი';

@@ -99,6 +99,32 @@ export class Store {
 
   @Prop({ required: true })
   ownerId: string;
+
+  @Prop({
+    type: String,
+    enum: ['pending', 'active', 'inactive'],
+    default: 'pending',
+  })
+  status?: string;
+
+  // Payment information
+  @Prop()
+  lastPaymentDate?: Date;
+
+  @Prop()
+  nextPaymentDate?: Date;
+
+  @Prop({ default: 0 })
+  totalPaid?: number;
+
+  @Prop()
+  paymentStatus?: string; // 'paid', 'pending', 'overdue'
+
+  @Prop()
+  paymentAmount?: number; // Monthly payment amount
+
+  @Prop()
+  paymentPeriod?: string; // 'monthly', 'yearly'
 }
 
 export const StoreSchema = SchemaFactory.createForClass(Store);

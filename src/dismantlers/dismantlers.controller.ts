@@ -20,13 +20,16 @@ export class DismantlersController {
   constructor(private readonly dismantlersService: DismantlersService) {}
 
   @Post()
-  async create(@Request() req: any, @Body() createDismantlerDto: CreateDismantlerDto) {
+  async create(
+    @Request() req: any,
+    @Body() createDismantlerDto: CreateDismantlerDto,
+  ) {
     console.log('🚀 DismantlersController.create called');
-    
+
     // Get userId from headers (sent by frontend)
     const userId = req.headers['x-user-id'] || 'demo-user';
     console.log('👤 User ID from headers:', userId);
-    
+
     console.log(
       '📝 Request body:',
       JSON.stringify(createDismantlerDto, null, 2),

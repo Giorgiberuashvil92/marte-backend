@@ -1,10 +1,11 @@
-import { Body, Controller, Post, Put } from '@nestjs/common';
+import { Body, Controller, Get, Param, Post, Put } from '@nestjs/common';
 import { AuthService } from './auth.service';
 import { StartAuthDto } from './dto/start-auth.dto';
 import { VerifyOtpDto } from './dto/verify-otp.dto';
 import { CompleteAuthDto } from './dto/complete-auth.dto';
 import { UpdateRoleDto } from './dto/update-role.dto';
 import { UpdateOwnedCarwashesDto } from './dto/update-owned-carwashes.dto';
+import { UpdateOwnedStoresDto } from './dto/update-owned-stores.dto';
 
 @Controller('auth')
 export class AuthController {
@@ -30,6 +31,7 @@ export class AuthController {
   complete(@Body() dto: CompleteAuthDto) {
     return this.authService.complete(dto.userId, {
       firstName: dto.firstName,
+      personalId: dto.personalId,
       role: dto.role,
     });
   }
@@ -46,5 +48,22 @@ export class AuthController {
       dto.carwashId,
       dto.action,
     );
+  }
+
+  @Put('update-owned-stores')
+  async updateOwnedStores(@Body() dto: UpdateOwnedStoresDto) {
+    console.log(
+      `🔍 [AUTH_CONTROLLER] updateOwnedStores called with userId: ${dto.userId}, storeId: ${dto.storeId}, action: ${dto.action}`,
+    );
+    return await this.authService.updateOwnedStores(
+      dto.userId,
+      dto.storeId,
+      dto.action,
+    );
+  }
+
+  @Get('verify-user/:userId')
+  async verifyUser(@Param('userId') userId: string) {
+    return await this.authService.verifyUser(userId);
   }
 }

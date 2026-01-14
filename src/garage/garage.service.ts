@@ -3,9 +3,10 @@
 /* eslint-disable @typescript-eslint/no-unnecessary-type-assertion */
 /* eslint-disable @typescript-eslint/no-unsafe-assignment */
 /* eslint-disable @typescript-eslint/no-unsafe-member-access */
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, NotFoundException, Logger } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
+import { Cron } from '@nestjs/schedule';
 import { Car, CarDocument } from '../schemas/car.schema';
 import { Reminder, ReminderDocument } from '../schemas/reminder.schema';
 import { FuelEntry, FuelEntryDocument } from '../schemas/fuel-entry.schema';
@@ -14,14 +15,18 @@ import { UpdateCarDto } from './dto/update-car.dto';
 import { CreateReminderDto } from './dto/create-reminder.dto';
 import { UpdateReminderDto } from './dto/update-reminder.dto';
 import { CreateFuelEntryDto } from './dto/create-fuel-entry.dto';
+import { NotificationsService } from '../notifications/notifications.service';
 
 @Injectable()
 export class GarageService {
+  private readonly logger = new Logger(GarageService.name);
+
   constructor(
     @InjectModel(Car.name) private carModel: Model<CarDocument>,
     @InjectModel(Reminder.name) private reminderModel: Model<ReminderDocument>,
     @InjectModel(FuelEntry.name)
     private fuelEntryModel: Model<FuelEntryDocument>,
+    private notificationsService: NotificationsService,
   ) {}
 
   private toPlain<T = any>(doc: any): T {
@@ -282,5 +287,209 @@ export class GarageService {
       upcomingReminders,
       completedReminders,
     };
+  }
+
+  /**
+   * Cron job: გაიგზავნება push notifications reminder-ებისთვის
+   * გაშვება: დილით 9:00 და საღამოს 18:00 (Asia/Tbilisi timezone)
+   * ლოგიკა: იგზავნება notification, თუ reminderDate არის:
+   * - დღეს (0 დღე) - დილით 9:00 და საღამოს 18:00
+   * - 1 დღეში - დილით 9:00 და საღამოს 18:00
+   * - 3 დღეში (urgent reminders-ისთვის) - დილით 9:00 და საღამოს 18:00
+   */
+  @Cron('0 9,18 * * *', {
+    name: 'send-reminder-notifications',
+    timeZone: 'Asia/Tbilisi',
+  })
+  async sendReminderNotifications(testMode = false): Promise<{ sent: number }> {
+    this.logger.log(
+      '🔔 შეხსენებების push notifications-ის გაგზავნა დაწყებულია...',
+    );
+
+    try {
+      const now = Date.now();
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      const todayStart = today.getTime();
+
+      const todayEnd = todayStart + 24 * 60 * 60 * 1000;
+
+      const threeDaysStart = todayEnd + 2 * 24 * 60 * 60 * 1000;
+      const threeDaysEnd = threeDaysStart + 24 * 60 * 60 * 1000;
+
+      const todayStr = today.toISOString().split('T')[0];
+
+      const candidates = await this.reminderModel
+        .find({
+          isActive: true,
+          isCompleted: false,
+          $or: [
+            { notificationSentAt: { $exists: false } },
+            { notificationSentDate: { $ne: todayStr } },
+            {
+              notificationSentDate: todayStr,
+              notificationSentAt: { $lt: todayStart + 12 * 60 * 60 * 1000 }, // დილით გაიგზავნა (12 საათამდე)
+            },
+          ],
+          reminderDate: {
+            $gte: new Date(todayStart),
+            $lte: new Date(threeDaysEnd),
+          },
+        })
+        .limit(500)
+        .lean()
+        .exec();
+
+      this.logger.log(
+        `📊 ნაპოვნია ${candidates.length} reminder notification-ისთვის`,
+      );
+
+      let sent = 0;
+      const currentHour = new Date().getHours();
+
+      for (const reminder of candidates) {
+        try {
+          const reminderDate = new Date(reminder.reminderDate);
+          const reminderTimestamp = reminderDate.getTime();
+          const diffMs = reminderTimestamp - now;
+          const diffDays = Math.ceil(diffMs / (1000 * 60 * 60 * 24));
+
+          let shouldSend = false;
+          let notificationTitle = '';
+          let notificationBody = '';
+
+          // შემოწმება, რომ დღეს უკვე გაიგზავნა თუ არა notification
+          const reminderSentDate = (reminder as any).notificationSentDate;
+          const alreadySentToday = reminderSentDate === todayStr;
+          const sentInMorning =
+            alreadySentToday &&
+            (reminder as any).notificationSentAt &&
+            (reminder as any).notificationSentAt <
+              todayStart + 12 * 60 * 60 * 1000;
+
+          // Test mode: გაიგზავნოს ნებისმიერ დროს
+          if (testMode) {
+            if (diffDays === 0) {
+              shouldSend = true;
+              notificationTitle = '⏰ შეხსენება დღეს';
+              notificationBody = `${reminder.title} • დღეს უნდა შესრულდეს`;
+            } else if (diffDays === 1) {
+              shouldSend = true;
+              notificationTitle = '📅 შეხსენება ხვალ';
+              notificationBody = `${reminder.title} • ხვალ უნდა შესრულდეს`;
+            } else if (diffDays === 3 && reminder.isUrgent) {
+              shouldSend = true;
+              notificationTitle = '🚨 გადაუდებელი შეხსენება';
+              notificationBody = `${reminder.title} • 3 დღეში უნდა შესრულდეს`;
+            }
+          }
+          // დღეს (0 დღე) - იგზავნება დილით 9:00 და საღამოს 18:00
+          else if (diffDays === 0) {
+            if (currentHour === 9 && !alreadySentToday) {
+              shouldSend = true;
+              notificationTitle = '⏰ შეხსენება დღეს';
+              notificationBody = `${reminder.title} • დღეს უნდა შესრულდეს`;
+            } else if (
+              currentHour === 18 &&
+              (sentInMorning || !alreadySentToday)
+            ) {
+              shouldSend = true;
+              notificationTitle = '⏰ შეხსენება დღეს';
+              notificationBody = `${reminder.title} • დღეს უნდა შესრულდეს`;
+            }
+          }
+          // 1 დღეში - იგზავნება დილით 9:00 და საღამოს 18:00
+          else if (diffDays === 1) {
+            if (currentHour === 9 && !alreadySentToday) {
+              shouldSend = true;
+              notificationTitle = '📅 შეხსენება ხვალ';
+              notificationBody = `${reminder.title} • ხვალ უნდა შესრულდეს`;
+            } else if (
+              currentHour === 18 &&
+              (sentInMorning || !alreadySentToday)
+            ) {
+              shouldSend = true;
+              notificationTitle = '📅 შეხსენება ხვალ';
+              notificationBody = `${reminder.title} • ხვალ უნდა შესრულდეს`;
+            }
+          }
+          // 3 დღეში (urgent reminders-ისთვის) - იგზავნება დილით 9:00 და საღამოს 18:00
+          else if (diffDays === 3 && reminder.isUrgent) {
+            if (currentHour === 9 && !alreadySentToday) {
+              shouldSend = true;
+              notificationTitle = '🚨 გადაუდებელი შეხსენება';
+              notificationBody = `${reminder.title} • 3 დღეში უნდა შესრულდეს`;
+            } else if (
+              currentHour === 18 &&
+              (sentInMorning || !alreadySentToday)
+            ) {
+              shouldSend = true;
+              notificationTitle = '🚨 გადაუდებელი შეხსენება';
+              notificationBody = `${reminder.title} • 3 დღეში უნდა შესრულდეს`;
+            }
+          }
+
+          if (shouldSend) {
+            // მოძებნა მანქანის ინფორმაცია
+            const car = await this.carModel
+              .findById(reminder.carId)
+              .lean()
+              .exec();
+            const carLabel = car
+              ? `${car.make || ''} ${car.model || ''}`.trim() || 'მანქანა'
+              : 'მანქანა';
+
+            // Push notification-ის გაგზავნა
+            await this.notificationsService.sendPushToTargets(
+              [{ userId: String(reminder.userId) }],
+              {
+                title: notificationTitle,
+                body: notificationBody,
+                data: {
+                  type: 'garage_reminder',
+                  screen: 'Garage',
+                  reminderId: String(
+                    (reminder as any)._id || reminder.id || '',
+                  ),
+                  carId: String(reminder.carId),
+                  reminderType: reminder.type,
+                },
+                sound: 'default',
+                badge: 1,
+              },
+              'system',
+            );
+
+            // მონიშვნა, რომ notification გაიგზავნა
+            await this.reminderModel.updateOne(
+              { _id: (reminder as any)._id },
+              {
+                $set: {
+                  notificationSentAt: now,
+                  notificationSentDate: todayStr,
+                },
+              },
+            );
+
+            sent += 1;
+            this.logger.log(
+              `✅ Notification გაიგზავნა reminder-ისთვის: ${reminder.title} (${carLabel})`,
+            );
+          }
+        } catch (error) {
+          this.logger.error(
+            `❌ შეცდომა reminder notification-ის გაგზავნისას: ${(error as Error).message}`,
+          );
+        }
+      }
+
+      this.logger.log(`✅ სულ გაიგზავნა ${sent} reminder notification`);
+      return { sent };
+    } catch (error) {
+      this.logger.error(
+        `❌ შეცდომა reminder notifications cron job-ში: ${(error as Error).message}`,
+      );
+      return { sent: 0 };
+    }
   }
 }

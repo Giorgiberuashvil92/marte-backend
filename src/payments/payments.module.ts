@@ -15,4 +15,3 @@ import { SubscriptionsModule } from '../subscriptions/subscriptions.module';
   exports: [PaymentsService],
 })
 export class PaymentsModule {}
-

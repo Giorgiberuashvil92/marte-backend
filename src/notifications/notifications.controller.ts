@@ -298,4 +298,292 @@ export class NotificationsController {
       });
     }
   }
+
+  // Test endpoints for notification navigation testing
+  @Post('test/garage-reminder')
+  async testGarageReminder(@Body() body: { userId: string }) {
+    try {
+      await this.notificationsService.sendPushToTargets(
+        [{ userId: body.userId }],
+        {
+          title: '⏰ შეხსენება დღეს',
+          body: 'ზეთის შეცვლა • დღეს უნდა შესრულდეს',
+          data: {
+            type: 'garage_reminder',
+            screen: 'Garage',
+            reminderId: 'test_reminder_123',
+            carId: 'test_car_456',
+            reminderType: 'maintenance',
+          },
+          sound: 'default',
+          badge: 1,
+        },
+        'system',
+      );
+      return {
+        success: true,
+        message: 'Garage reminder test notification sent',
+      };
+    } catch (error) {
+      throw new BadRequestException({
+        success: false,
+        message: 'Test notification-ის გაგზავნა ვერ მოხერხდა',
+        error: error instanceof Error ? error.message : 'Unknown error',
+      });
+    }
+  }
+
+  @Post('test/chat-message')
+  async testChatMessage(@Body() body: { userId: string; offerId?: string }) {
+    try {
+      await this.notificationsService.sendPushToTargets(
+        [{ userId: body.userId }],
+        {
+          title: '💬 ახალი მესიჯი',
+          body: 'გამარჯობა, როგორ ხარ?',
+          data: {
+            type: 'chat_message',
+            screen: 'Chat',
+            chatId: body.offerId || 'test_offer_123',
+            requestId: body.offerId || 'test_offer_123',
+            offerId: body.offerId || 'test_offer_123',
+          },
+          sound: 'default',
+          badge: 1,
+        },
+        'message',
+      );
+      return { success: true, message: 'Chat message test notification sent' };
+    } catch (error) {
+      throw new BadRequestException({
+        success: false,
+        message: 'Test notification-ის გაგზავნა ვერ მოხერხდა',
+        error: error instanceof Error ? error.message : 'Unknown error',
+      });
+    }
+  }
+
+  @Post('test/carwash-booking')
+  async testCarwashBooking(
+    @Body() body: { userId: string; carwashId?: string },
+  ) {
+    try {
+      await this.notificationsService.sendPushToTargets(
+        [{ userId: body.userId }],
+        {
+          title: '⏰ შეხსენება ჯავშანზე',
+          body: 'სამრეცხაო • დაწყება 14:00',
+          data: {
+            type: 'carwash_booking_reminder',
+            screen: 'Bookings',
+            carwashId: body.carwashId || 'test_carwash_123',
+            bookingId: 'test_booking_456',
+          },
+          sound: 'default',
+          badge: 1,
+        },
+        'system',
+      );
+      return {
+        success: true,
+        message: 'Carwash booking test notification sent',
+      };
+    } catch (error) {
+      throw new BadRequestException({
+        success: false,
+        message: 'Test notification-ის გაგზავნა ვერ მოხერხდა',
+        error: error instanceof Error ? error.message : 'Unknown error',
+      });
+    }
+  }
+
+  @Post('test/new-request')
+  async testNewRequest(@Body() body: { userId: string; requestId?: string }) {
+    try {
+      await this.notificationsService.sendPushToTargets(
+        [{ userId: body.userId }],
+        {
+          title: '🆕 ახალი მოთხოვნა',
+          body: 'ახალი მოთხოვნა მიღებულია',
+          data: {
+            type: 'new_request',
+            screen: 'RequestDetails',
+            requestId: body.requestId || 'test_request_123',
+          },
+          sound: 'default',
+          badge: 1,
+        },
+        'request',
+      );
+      return { success: true, message: 'New request test notification sent' };
+    } catch (error) {
+      throw new BadRequestException({
+        success: false,
+        message: 'Test notification-ის გაგზავნა ვერ მოხერხდა',
+        error: error instanceof Error ? error.message : 'Unknown error',
+      });
+    }
+  }
+
+  @Post('test/new-offer')
+  async testNewOffer(@Body() body: { userId: string }) {
+    try {
+      await this.notificationsService.sendPushToTargets(
+        [{ userId: body.userId }],
+        {
+          title: '💰 ახალი შეთავაზება',
+          body: 'თქვენ გაქვთ ახალი შეთავაზება',
+          data: {
+            type: 'new_offer',
+            screen: 'OfferDetails',
+          },
+          sound: 'default',
+          badge: 1,
+        },
+        'offer',
+      );
+      return { success: true, message: 'New offer test notification sent' };
+    } catch (error) {
+      throw new BadRequestException({
+        success: false,
+        message: 'Test notification-ის გაგზავნა ვერ მოხერხდა',
+        error: error instanceof Error ? error.message : 'Unknown error',
+      });
+    }
+  }
+
+  @Post('test/subscription')
+  async testSubscription(@Body() body: { userId: string }) {
+    try {
+      await this.notificationsService.sendPushToTargets(
+        [{ userId: body.userId }],
+        {
+          title: '⭐ Premium აქტივირებულია',
+          body: 'გილოცავთ! თქვენი Premium გამოწერა აქტივირებულია',
+          data: {
+            type: 'subscription_activated',
+            screen: 'Premium',
+          },
+          sound: 'default',
+          badge: 1,
+        },
+        'system',
+      );
+      return { success: true, message: 'Subscription test notification sent' };
+    } catch (error) {
+      throw new BadRequestException({
+        success: false,
+        message: 'Test notification-ის გაგზავნა ვერ მოხერხდა',
+        error: error instanceof Error ? error.message : 'Unknown error',
+      });
+    }
+  }
+
+  @Post('test/ai-recommendation')
+  async testAIRecommendation(
+    @Body() body: { userId: string; requestId?: string },
+  ) {
+    try {
+      await this.notificationsService.sendPushToTargets(
+        [{ userId: body.userId }],
+        {
+          title: '🤖 AI რეკომენდაცია',
+          body: 'გვაქვს რეკომენდაცია თქვენი მოთხოვნისთვის',
+          data: {
+            type: 'ai_recommendation',
+            screen: 'AIRecommendations',
+            requestId: body.requestId || 'test_request_123',
+          },
+          sound: 'default',
+          badge: 1,
+        },
+        'system',
+      );
+      return {
+        success: true,
+        message: 'AI recommendation test notification sent',
+      };
+    } catch (error) {
+      throw new BadRequestException({
+        success: false,
+        message: 'Test notification-ის გაგზავნა ვერ მოხერხდა',
+        error: error instanceof Error ? error.message : 'Unknown error',
+      });
+    }
+  }
+
+  @Post('test/business-offer')
+  async testBusinessOffer(
+    @Body() body: { partnerId: string; requestId?: string; offerId?: string },
+  ) {
+    try {
+      await this.notificationsService.sendPushToTargets(
+        [{ partnerId: body.partnerId }],
+        {
+          title: '💼 ახალი შეთავაზება',
+          body: 'თქვენ გაქვთ ახალი შეთავაზება',
+          data: {
+            type: 'offer',
+            screen: 'OfferDetails',
+            requestId: body.requestId || 'test_request_123',
+            offerId: body.offerId || 'test_offer_123',
+            target: {
+              partnerId: body.partnerId,
+              role: 'partner',
+            },
+          },
+          sound: 'default',
+          badge: 1,
+        },
+        'offer',
+      );
+      return {
+        success: true,
+        message: 'Business offer test notification sent',
+      };
+    } catch (error) {
+      throw new BadRequestException({
+        success: false,
+        message: 'Test notification-ის გაგზავნა ვერ მოხერხდა',
+        error: error instanceof Error ? error.message : 'Unknown error',
+      });
+    }
+  }
+
+  @Post('test/business-request')
+  async testBusinessRequest(
+    @Body() body: { partnerId: string; requestId?: string },
+  ) {
+    try {
+      await this.notificationsService.sendPushToTargets(
+        [{ partnerId: body.partnerId }],
+        {
+          title: '📋 ახალი მოთხოვნა',
+          body: 'თქვენ გაქვთ ახალი მოთხოვნა',
+          data: {
+            type: 'request',
+            screen: 'RequestDetails',
+            requestId: body.requestId || 'test_request_123',
+            target: {
+              partnerId: body.partnerId,
+              role: 'partner',
+            },
+          },
+          sound: 'default',
+          badge: 1,
+        },
+        'request',
+      );
+      return {
+        success: true,
+        message: 'Business request test notification sent',
+      };
+    } catch (error) {
+      throw new BadRequestException({
+        success: false,
+        message: 'Test notification-ის გაგზავნა ვერ მოხერხდა',
+        error: error instanceof Error ? error.message : 'Unknown error',
+      });
+    }
+  }
 }

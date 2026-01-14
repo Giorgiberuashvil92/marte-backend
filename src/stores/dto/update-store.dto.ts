@@ -7,6 +7,7 @@ import {
   IsNumber,
   Matches,
   IsIn,
+  IsDateString,
 } from 'class-validator';
 
 export class UpdateStoreDto {
@@ -130,4 +131,33 @@ export class UpdateStoreDto {
   @IsOptional()
   @IsUrl()
   internalImage?: string;
+
+  @IsOptional()
+  @IsString()
+  @IsIn(['pending', 'active', 'inactive'])
+  status?: string;
+
+  @IsOptional()
+  @IsDateString()
+  lastPaymentDate?: string;
+
+  @IsOptional()
+  @IsDateString()
+  nextPaymentDate?: string;
+
+  @IsOptional()
+  @IsNumber()
+  totalPaid?: number;
+
+  @IsOptional()
+  @IsString()
+  paymentStatus?: string;
+
+  @IsOptional()
+  @IsNumber()
+  paymentAmount?: number;
+
+  @IsOptional()
+  @IsString()
+  paymentPeriod?: string;
 }

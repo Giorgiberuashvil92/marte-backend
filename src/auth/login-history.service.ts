@@ -1,7 +1,10 @@
 import { Injectable } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
-import { LoginHistory, LoginHistoryDocument } from '../schemas/login-history.schema';
+import {
+  LoginHistory,
+  LoginHistoryDocument,
+} from '../schemas/login-history.schema';
 
 @Injectable()
 export class LoginHistoryService {
@@ -95,7 +98,12 @@ export class LoginHistoryService {
     failedLogins: number;
     loginsToday: number;
     uniqueUsersToday: number;
-    loginsPerUserToday: Array<{ userId: string; phone: string; firstName?: string; count: number }>;
+    loginsPerUserToday: Array<{
+      userId: string;
+      phone: string;
+      firstName?: string;
+      count: number;
+    }>;
   }> {
     const query: any = {};
     if (startDate || endDate) {
@@ -128,7 +136,10 @@ export class LoginHistoryService {
       loginsPerUserTodayData,
     ] = await Promise.all([
       this.loginHistoryModel.countDocuments(query).exec(),
-      this.loginHistoryModel.distinct('userId', query).exec().then((r) => r.length),
+      this.loginHistoryModel
+        .distinct('userId', query)
+        .exec()
+        .then((r) => r.length),
       this.loginHistoryModel
         .countDocuments({ ...query, status: 'success' })
         .exec(),
@@ -175,4 +186,3 @@ export class LoginHistoryService {
     };
   }
 }
-

@@ -1,6 +1,3 @@
-/* eslint-disable @typescript-eslint/no-unsafe-assignment */
-/* eslint-disable @typescript-eslint/no-unsafe-member-access */
-/* eslint-disable @typescript-eslint/no-unsafe-return */
 /* eslint-disable @typescript-eslint/no-unsafe-return */
 /* eslint-disable @typescript-eslint/no-unsafe-assignment */
 /* eslint-disable @typescript-eslint/no-unsafe-member-access */
@@ -45,6 +42,12 @@ export class Reminder {
 
   @Prop({ default: true })
   isActive: boolean;
+
+  @Prop()
+  notificationSentAt?: number;
+
+  @Prop()
+  notificationSentDate?: string; // YYYY-MM-DD format, რომ დავადგინოთ დღეში რამდენჯერ გაიგზავნა
 }
 
 export const ReminderSchema = SchemaFactory.createForClass(Reminder);

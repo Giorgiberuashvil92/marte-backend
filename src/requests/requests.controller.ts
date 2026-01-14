@@ -1,4 +1,14 @@
-import { Controller, Get, Post, Body, Patch, Param, Delete, Query, Request } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Post,
+  Body,
+  Patch,
+  Param,
+  Delete,
+  Query,
+  Request,
+} from '@nestjs/common';
 import type { Request as ExpressRequest } from 'express';
 import { RequestsService } from './requests.service';
 
@@ -8,7 +18,8 @@ export class RequestsController {
 
   @Post()
   create(@Request() req: ExpressRequest, @Body() dto: any) {
-    const userId = (req.headers['x-user-id'] as string) || dto.userId || 'demo-user';
+    const userId =
+      (req.headers['x-user-id'] as string) || dto.userId || 'demo-user';
     return this.requestsService.create({ ...dto, userId });
   }
 
@@ -32,5 +43,3 @@ export class RequestsController {
     return this.requestsService.remove(id);
   }
 }
-
-

@@ -16,8 +16,11 @@ export class FeedbackService {
     phone?: string;
     source?: string;
   }) {
+    console.log('📝 [FEEDBACK_SERVICE] Creating feedback with payload:', payload);
     const doc = new this.feedbackModel(payload);
-    return doc.save();
+    const saved = await doc.save();
+    console.log('✅ [FEEDBACK_SERVICE] Feedback saved:', saved);
+    return saved;
   }
 
   async list(params?: { limit?: number; offset?: number }) {

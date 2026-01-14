@@ -24,6 +24,9 @@ export class User {
   lastName?: string;
 
   @Prop()
+  personalId?: string;
+
+  @Prop()
   profileImage?: string;
 
   @Prop({ required: true, default: false })

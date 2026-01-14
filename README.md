@@ -17,13 +17,29 @@ CarApp-ის განახლებული backend სერვისი Ne
 npm install
 \`\`\`
 
-### 2. Development რეჟიმში გაშვება
+### 2. Environment Variables-ის კონფიგურაცია
+შექმენით `.env` ფაილი `marte-backend` დირექტორიაში:
+\`\`\`env
+# Database
+MONGODB_URI=mongodb+srv://username:password@cluster.mongodb.net/carapp-v2?retryWrites=true&w=majority
+
+# SMS Service (Sender.ge)
+SENDER_GE_API_KEY=your_api_key_here
+
+# Port
+PORT=3000
+
+# Node Environment
+NODE_ENV=development
+\`\`\`
+
+### 3. Development რეჟიმში გაშვება
 \`\`\`bash
-# Port 4000-ზე (frontend-თან შესაბამისობისთვის)
+# Port 3000-ზე
 npm run start:dev
 \`\`\`
 
-### 3. Production რეჟიმში გაშვება
+### 4. Production რეჟიმში გაშვება
 \`\`\`bash
 npm run build
 npm run start:prod
@@ -57,6 +73,15 @@ npm run start:prod
 ### Messages
 - WebSocket: `/messages` - Real-time chat
 
+### SMS Service
+- `POST /sms/send` - SMS-ის გაგზავნა (Sender.ge API)
+  - Body: `{ phoneNumber: string, message: string, smsno?: number }`
+  - `smsno`: 1 = with SmsNo (advertising), 2 = without SmsNo (informational, default)
+
+### Authentication
+- `POST /auth/start` - OTP კოდის გაგზავნა
+- `POST /auth/verify` - OTP კოდის ვერიფიკაცია
+
 ## 🗄️ Database
 
 MongoDB Atlas-ზე დაფუძნებული:
@@ -76,13 +101,27 @@ npm run test
 npm run start:debug
 \`\`\`
 
+## 📱 SMS Service (Sender.ge)
+
+Backend იყენებს Sender.ge API-ს SMS-ის გასაგზავნად. OTP კოდები ავტომატურად იგზავნება authentication-ის დროს.
+
+### კონფიგურაცია:
+1. მიიღეთ API key [sender.ge](https://sender.ge)-დან
+2. დაამატეთ `.env` ფაილში: `SENDER_GE_API_KEY=your_api_key`
+3. Development რეჟიმში SMS არ იგზავნება, კოდი console-ში იჩვენება
+
+### გამოყენება:
+- **OTP გაგზავნა**: ავტომატურად `/auth/start` endpoint-ზე
+- **სხვა SMS**: `POST /sms/send` endpoint-ის გამოყენებით
+
 ## 📝 ცვლილებები v1-დან
 
-1. ✅ **პორტი 4000** - frontend-თან შესაბამისობისთვის
+1. ✅ **პორტი 3000** - სტანდარტული NestJS პორტი
 2. ✅ **პოპულარული სერვისების ალგორითმი** - რთული scoring system
 3. ✅ **კეშირება** - performance გაუმჯობესებისთვის
 4. ✅ **CORS მხარდაჭერა** - frontend integration-ისთვის
 5. ✅ **WebSocket** - real-time ფუნქციონალობისთვის
+6. ✅ **SMS Service** - Sender.ge API ინტეგრაცია OTP-ისთვის
 
 ## 🤝 Development
 

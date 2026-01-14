@@ -1,18 +1,24 @@
-import { Injectable, BadRequestException } from '@nestjs/common';
+import {
+  Injectable,
+  BadRequestException,
+  NotFoundException,
+} from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, UpdateQuery } from 'mongoose';
 import { User, UserDocument } from '../schemas/user.schema';
 import { Otp, OtpDocument } from '../schemas/otp.schema';
+import { Store, StoreDocument } from '../schemas/store.schema';
 import { LoginHistoryService } from './login-history.service';
-// Firebase phone auth support removed in favor of Twilio OTP
-import twilio, { Twilio } from 'twilio';
+import { SenderAPIService } from '../sms/sender-api.service';
 
 @Injectable()
 export class AuthService {
   constructor(
     @InjectModel(User.name) private userModel: Model<UserDocument>,
     @InjectModel(Otp.name) private otpModel: Model<OtpDocument>,
+    @InjectModel(Store.name) private storeModel: Model<StoreDocument>,
     private loginHistoryService: LoginHistoryService,
+    private senderAPIService: SenderAPIService,
   ) {}
 
   normalizeGePhone(input: string): string {
@@ -56,26 +62,21 @@ export class AuthService {
       return { id: otpId, intent, mockCode: code };
     }
 
-    // Production: Send SMS via Twilio if configured
-    try {
-      const sid = process.env.TWILIO_ACCOUNT_SID;
-      const token = process.env.TWILIO_AUTH_TOKEN;
-      const from = process.env.TWILIO_FROM; // E.164, e.g. +15005550006
-      if (sid && token && from) {
-        const client: Twilio = twilio(sid, token);
-        const body = `შეყვანეთ კოდი: ${code}`;
-        await client.messages.create({ to: phone, from, body });
-        console.log(`📱 [PROD] SMS გაიგზავნა ${phone}-ზე`);
-        return { id: otpId, intent };
-      }
-    } catch (error) {
-      console.error('❌ [TWILIO] SMS გაგზავნის შეცდომა:', error);
-      // fallthrough to mock code
-    }
+    // Production: Send SMS via sender.ge API
+    const smsMessage = `თქვენი ვერიფიკაციის კოდია: ${code}`;
+    const smsResult = await this.senderAPIService.sendSMS(phone, smsMessage, 2);
 
-    // If Twilio is not configured, expose mockCode
-    console.log(`📱 [FALLBACK] SMS კოდი ${phone}-ზე: ${code}`);
-    return { id: otpId, intent, mockCode: code };
+    if (smsResult.success) {
+      console.log(
+        `📱 [PROD] SMS გაიგზავნა ${phone}-ზე via sender.ge (messageId: ${smsResult.messageId})`,
+      );
+      return { id: otpId, intent };
+    } else {
+      console.error(`❌ [SENDER.GE] SMS გაგზავნის შეცდომა: ${smsResult.error}`);
+      // Fallback: expose mockCode if SMS sending fails
+      console.log(`📱 [FALLBACK] SMS კოდი ${phone}-ზე: ${code}`);
+      return { id: otpId, intent, mockCode: code };
+    }
   }
 
   async verify(otpId: string, code: string) {
@@ -94,7 +95,6 @@ export class AuthService {
 
     // upsert user
     let user = await this.userModel.findOne({ phone: otp.phone }).exec();
-    let intent: 'login' | 'register';
 
     if (!user) {
       const userId = `usr_${Date.now()}`;
@@ -133,7 +133,11 @@ export class AuthService {
 
   async complete(
     userId: string,
-    payload: { firstName?: string; role?: 'user' | 'partner' },
+    payload: {
+      firstName?: string;
+      personalId?: string;
+      role?: 'user' | 'partner';
+    },
   ) {
     if (!userId) throw new BadRequestException('invalid_user');
 
@@ -144,6 +148,10 @@ export class AuthService {
 
     if (payload?.firstName && payload.firstName.trim().length > 0) {
       updates.firstName = payload.firstName.trim();
+    }
+
+    if (payload?.personalId && payload.personalId.trim().length > 0) {
+      updates.personalId = payload.personalId.trim();
     }
 
     if (payload?.role === 'user' || payload?.role === 'partner') {
@@ -250,5 +258,96 @@ export class AuthService {
       message: `Carwash ${action}ed successfully`,
       user: updatedUser,
     };
+  }
+
+  async updateOwnedStores(
+    userId: string,
+    storeId: string,
+    action: 'add' | 'remove',
+  ) {
+    console.log(
+      `🔍 [AUTH_SERVICE] updateOwnedStores called with userId: ${userId}, storeId: ${storeId}, action: ${action}`,
+    );
+
+    if (!userId) throw new BadRequestException('invalid_user');
+    if (!storeId) throw new BadRequestException('invalid_store_id');
+    if (!action) throw new BadRequestException('invalid_action');
+
+    const user = await this.userModel.findOne({ id: userId }).exec();
+    console.log(`🔍 [AUTH_SERVICE] User found:`, user ? 'YES' : 'NO');
+    if (!user) {
+      console.log(`❌ [AUTH_SERVICE] User not found with id: ${userId}`);
+      throw new BadRequestException('user_not_found');
+    }
+
+    // Verify store exists
+    const store = await this.storeModel.findById(storeId).exec();
+    if (!store) {
+      throw new NotFoundException('store_not_found');
+    }
+
+    const currentOwnedStores = user.ownedStores || [];
+    let updatedOwnedStores: string[];
+
+    if (action === 'add') {
+      if (currentOwnedStores.includes(storeId)) {
+        throw new BadRequestException('store_already_owned');
+      }
+      updatedOwnedStores = [...currentOwnedStores, storeId];
+
+      // Update store's ownerId to this user's ID
+      await this.storeModel
+        .findByIdAndUpdate(storeId, {
+          ownerId: userId,
+        })
+        .exec();
+
+      console.log(
+        `✅ [AUTH_SERVICE] Store ${storeId} ownerId updated to ${userId}`,
+      );
+    } else {
+      updatedOwnedStores = currentOwnedStores.filter((id) => id !== storeId);
+    }
+
+    const updatedUser = await this.userModel
+      .findOneAndUpdate(
+        { id: userId },
+        {
+          ownedStores: updatedOwnedStores,
+          updatedAt: Date.now(),
+        },
+        { new: true },
+      )
+      .exec();
+
+    console.log(
+      `✅ [AUTH_SERVICE] User ${userId} ownedStores ${action}ed: ${storeId}`,
+    );
+    console.log(`✅ [AUTH_SERVICE] Updated ownedStores:`, updatedOwnedStores);
+
+    return {
+      success: true,
+      message: `Store ${action}ed successfully`,
+      user: updatedUser,
+    };
+  }
+
+  async verifyUser(userId: string) {
+    if (!userId) {
+      return { exists: false, valid: false };
+    }
+
+    const user = await this.userModel.findOne({ id: userId }).exec();
+
+    if (!user) {
+      return { exists: false, valid: false };
+    }
+
+    // Check if user role is 'customer' - should logout
+    if (user.role === 'customer') {
+      return { exists: true, valid: false, reason: 'customer_role' };
+    }
+
+    return { exists: true, valid: true, user };
   }
 }

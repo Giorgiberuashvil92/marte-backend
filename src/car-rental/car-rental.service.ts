@@ -36,18 +36,30 @@ export class CarRentalService {
       // მიიღე ყველა აქტიური მანქანა
       const cars = await this.carRentalModel
         .find({ isActive: true })
-        .select('category location brand transmission fuelType seats pricePerDay')
+        .select(
+          'category location brand transmission fuelType seats pricePerDay',
+        )
         .exec();
 
       // გამოთვალე უნიკალური მნიშვნელობები
-      const categories = [...new Set(cars.map((c) => c.category).filter(Boolean))];
-      const locations = [...new Set(cars.map((c) => c.location).filter(Boolean))];
-      const brands = [...new Set(cars.map((c) => c.brand).filter(Boolean))].sort();
-      const transmissions = [...new Set(cars.map((c) => c.transmission).filter(Boolean))];
-      const fuelTypes = [...new Set(cars.map((c) => c.fuelType).filter(Boolean))];
-      const seatOptions = [...new Set(cars.map((c) => c.seats).filter(Boolean))].sort(
-        (a, b) => a - b,
-      );
+      const categories = [
+        ...new Set(cars.map((c) => c.category).filter(Boolean)),
+      ];
+      const locations = [
+        ...new Set(cars.map((c) => c.location).filter(Boolean)),
+      ];
+      const brands = [
+        ...new Set(cars.map((c) => c.brand).filter(Boolean)),
+      ].sort();
+      const transmissions = [
+        ...new Set(cars.map((c) => c.transmission).filter(Boolean)),
+      ];
+      const fuelTypes = [
+        ...new Set(cars.map((c) => c.fuelType).filter(Boolean)),
+      ];
+      const seatOptions = [
+        ...new Set(cars.map((c) => c.seats).filter(Boolean)),
+      ].sort((a, b) => a - b);
 
       // ფასის დიაპაზონი
       const prices = cars.map((c) => c.pricePerDay).filter(Boolean);
@@ -196,11 +208,7 @@ export class CarRentalService {
     this.logger.log(`🔄 Updating rental car: ${id}`);
 
     const updatedCar = await this.carRentalModel
-      .findByIdAndUpdate(
-        id,
-        { ...data, updatedAt: new Date() },
-        { new: true },
-      )
+      .findByIdAndUpdate(id, { ...data, updatedAt: new Date() }, { new: true })
       .exec();
 
     if (!updatedCar) {
@@ -269,7 +277,9 @@ export class CarRentalService {
     startDate: string,
     endDate: string,
   ): Promise<CarRental> {
-    this.logger.log(`📅 Booking rental car ${id} from ${startDate} to ${endDate}`);
+    this.logger.log(
+      `📅 Booking rental car ${id} from ${startDate} to ${endDate}`,
+    );
 
     const car = await this.carRentalModel.findById(id).exec();
 
@@ -377,4 +387,3 @@ export class CarRentalService {
     };
   }
 }
-

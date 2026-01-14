@@ -8,4 +8,3 @@ import { FuelPricesService } from './fuel-prices.service';
   exports: [FuelPricesService],
 })
 export class FuelPricesModule {}
-
