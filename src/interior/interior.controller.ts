@@ -11,25 +11,25 @@ import {
   NotFoundException,
   Request,
 } from '@nestjs/common';
-import { StoresService } from './stores.service';
-import { CreateStoreDto } from './dto/create-store.dto';
-import { UpdateStoreDto } from './dto/update-store.dto';
+import { InteriorService } from './interior.service';
+import { CreateStoreDto } from '../stores/dto/create-store.dto';
+import { UpdateStoreDto } from '../stores/dto/update-store.dto';
 import { EngagementService } from '../engagement/engagement.service';
 
-@Controller('stores')
-export class StoresController {
+@Controller('interior')
+export class InteriorController {
   constructor(
-    private readonly storesService: StoresService,
+    private readonly interiorService: InteriorService,
     private readonly engagementService: EngagementService,
   ) {}
 
   @Post()
   async create(@Body() createStoreDto: CreateStoreDto) {
     try {
-      const data = await this.storesService.create(createStoreDto);
+      const data = await this.interiorService.create(createStoreDto);
       return {
         success: true,
-        message: 'მაღაზია წარმატებით დაემატა',
+        message: 'ინტერიერის მაღაზია წარმატებით დაემატა',
         data,
       };
     } catch (error) {
@@ -45,17 +45,15 @@ export class StoresController {
     @Query('ownerId') ownerId?: string,
     @Query('location') location?: string,
     @Query('includeAll') includeAll?: string,
-    @Query('type') type?: string,
   ) {
-    const stores = await this.storesService.findAll(
+    const stores = await this.interiorService.findAll(
       ownerId,
       location,
       includeAll === 'true',
-      type,
     );
     return {
       success: true,
-      message: 'მაღაზიები წარმატებით ჩამოიტვირთა',
+      message: 'ინტერიერის მაღაზიები წარმატებით ჩამოიტვირთა',
       data: stores,
       count: stores.length,
     };
@@ -63,7 +61,7 @@ export class StoresController {
 
   @Get('locations')
   async getLocations() {
-    const locations = await this.storesService.getLocations();
+    const locations = await this.interiorService.getLocations();
     return {
       success: true,
       message: 'ქალაქები წარმატებით ჩამოიტვირთა',
@@ -75,8 +73,7 @@ export class StoresController {
   @Get(':storeId/stats')
   async getStoreStats(@Param('storeId') storeId: string) {
     try {
-      // Verify store exists
-      await this.storesService.findOne(storeId);
+      await this.interiorService.findOne(storeId);
       const stats = await this.engagementService.getStoreStats(storeId);
       return {
         success: true,
@@ -93,8 +90,7 @@ export class StoresController {
   @Get(':storeId/engagement')
   async getStoreEngagement(@Param('storeId') storeId: string) {
     try {
-      // Verify store exists
-      await this.storesService.findOne(storeId);
+      await this.interiorService.findOne(storeId);
       const engagement =
         await this.engagementService.getStoreEngagement(storeId);
       return {
@@ -116,8 +112,7 @@ export class StoresController {
     @Request() req: any,
   ) {
     try {
-      // Verify store exists
-      await this.storesService.findOne(storeId);
+      await this.interiorService.findOne(storeId);
       const userId =
         body?.userId ||
         (req.headers['x-user-id'] as string) ||
@@ -152,8 +147,7 @@ export class StoresController {
     @Request() req: any,
   ) {
     try {
-      // Verify store exists
-      await this.storesService.findOne(storeId);
+      await this.interiorService.findOne(storeId);
       const userId =
         body?.userId ||
         (req.headers['x-user-id'] as string) ||
@@ -166,7 +160,7 @@ export class StoresController {
         storeId,
         userId,
         'view',
-        true, // Prevent duplicate views
+        true,
       );
       return {
         success: true,
@@ -193,8 +187,7 @@ export class StoresController {
     @Request() req: any,
   ) {
     try {
-      // Verify store exists
-      await this.storesService.findOne(storeId);
+      await this.interiorService.findOne(storeId);
       const userId =
         body?.userId ||
         (req.headers['x-user-id'] as string) ||
@@ -225,10 +218,10 @@ export class StoresController {
   @Get(':id')
   async findOne(@Param('id') id: string) {
     try {
-      const data = await this.storesService.findOne(id);
+      const data = await this.interiorService.findOne(id);
       return {
         success: true,
-        message: 'მაღაზიის დეტალები',
+        message: 'ინტერიერის მაღაზიის დეტალები',
         data,
       };
     } catch (error) {
@@ -245,10 +238,10 @@ export class StoresController {
     @Body() updateStoreDto: UpdateStoreDto,
   ) {
     try {
-      const data = await this.storesService.update(id, updateStoreDto);
+      const data = await this.interiorService.update(id, updateStoreDto);
       return {
         success: true,
-        message: 'მაღაზია წარმატებით განახლდა',
+        message: 'ინტერიერის მაღაზია წარმატებით განახლდა',
         data,
       };
     } catch (error) {
@@ -270,10 +263,10 @@ export class StoresController {
   @Delete(':id')
   async remove(@Param('id') id: string) {
     try {
-      await this.storesService.remove(id);
+      await this.interiorService.remove(id);
       return {
         success: true,
-        message: 'მაღაზია წარმატებით წაიშალა',
+        message: 'ინტერიერის მაღაზია წარმატებით წაიშალა',
       };
     } catch (error) {
       throw new NotFoundException({
@@ -283,3 +276,4 @@ export class StoresController {
     }
   }
 }
+

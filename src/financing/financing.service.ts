@@ -103,4 +103,27 @@ export class FinancingService {
       createdAt: d.createdAt,
     }));
   }
+
+  async findAllRequests(limit = 200) {
+    const docs = await this.financingRequestModel
+      .find()
+      .sort({ createdAt: -1 })
+      .limit(limit)
+      .lean<
+        {
+          _id: unknown;
+          fullName: string;
+          phone: string;
+          note?: string;
+          createdAt: Date;
+        }[]
+      >();
+    return docs.map((d) => ({
+      id: String(d._id as any),
+      fullName: d.fullName,
+      phone: d.phone,
+      note: d.note ?? '',
+      createdAt: d.createdAt,
+    }));
+  }
 }

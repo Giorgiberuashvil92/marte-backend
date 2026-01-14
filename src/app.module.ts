@@ -11,6 +11,8 @@ import { RequestsModule } from './requests/requests.module';
 import { OffersModule } from './offers/offers.module';
 import { CommunityModule } from './community/community.module';
 import { StoresModule } from './stores/stores.module';
+import { DetailingModule } from './detailing/detailing.module';
+import { InteriorModule } from './interior/interior.module';
 import { MessagesModule } from './messages/messages.module';
 import { DismantlersModule } from './dismantlers/dismantlers.module';
 import { PartsModule } from './parts/parts.module';
@@ -130,6 +132,8 @@ import {
     OffersModule,
     CommunityModule,
     StoresModule,
+    DetailingModule,
+    InteriorModule,
     MessagesModule,
     DismantlersModule,
     PartsModule,

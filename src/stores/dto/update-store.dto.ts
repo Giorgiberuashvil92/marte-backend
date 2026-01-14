@@ -28,6 +28,9 @@ export class UpdateStoreDto {
     'ხელოსნები',
     'ავტოსერვისები',
     'ევაკუატორი',
+    'დითეილინგი',
+    'აქსესუარები',
+    'ავტომობილის ინტერიერი',
     'ავტონაწილები', // backward compatibility
     'სამართ-დასახურებელი', // backward compatibility
     'რემონტი', // backward compatibility

@@ -57,4 +57,10 @@ export class FinancingController {
     const parsed = Number(limit) || 200;
     return this.financingService.findAllLeads(parsed);
   }
+
+  @Get('requests')
+  getRequests(@Query('limit') limit?: string) {
+    const parsed = Number(limit) || 200;
+    return this.financingService.findAllRequests(parsed);
+  }
 }

@@ -2,24 +2,24 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import { Store, StoreDocument } from '../schemas/store.schema';
-import { CreateStoreDto } from './dto/create-store.dto';
-import { UpdateStoreDto } from './dto/update-store.dto';
+import { CreateStoreDto } from '../stores/dto/create-store.dto';
+import { UpdateStoreDto } from '../stores/dto/update-store.dto';
 
 @Injectable()
-export class StoresService {
+export class InteriorService {
   constructor(
     @InjectModel(Store.name) private readonly storeModel: Model<StoreDocument>,
   ) {}
 
   async create(createStoreDto: CreateStoreDto): Promise<Store> {
-    // ახალი მაღაზია იქმნება pending status-ით (თუ status არ არის მითითებული)
-    // შემდეგი გადახდის თარიღი ავტომატურად იქნება შექმნის თარიღის შემდეგ 1 თვეში
+    // ახალი interior მაღაზია იქმნება pending status-ით
     const now = new Date();
     const nextPaymentDate = new Date(now);
     nextPaymentDate.setMonth(nextPaymentDate.getMonth() + 1);
 
     const storeData = {
       ...createStoreDto,
+      type: 'ავტომობილის ინტერიერი', // Force interior type
       status: createStoreDto.status || 'pending',
       nextPaymentDate: createStoreDto.nextPaymentDate
         ? new Date(createStoreDto.nextPaymentDate)
@@ -35,32 +35,23 @@ export class StoresService {
     ownerId?: string,
     location?: string,
     includeAll: boolean = false,
-    type?: string,
   ): Promise<Store[]> {
-    console.log('🔍 [STORES SERVICE] findAll called with:', { ownerId, location, includeAll, type });
-    const filter: Record<string, any> = {};
+    const filter: Record<string, any> = {
+      type: 'ავტომობილის ინტერიერი',
+    };
+
     if (ownerId) {
-      // თუ ownerId არის მითითებული (პარტნიორის დეშბორდი), ყველა მაღაზია ჩანდეს
       filter.ownerId = ownerId;
     } else if (!includeAll) {
-      // თუ ownerId არ არის მითითებული და includeAll არ არის true (ზოგადი სია), მხოლოდ active მაღაზიები ჩანდეს
       filter.status = 'active';
     }
-    // თუ includeAll არის true (admin panel), ყველა მაღაზია ჩანდეს (ყველა status-ით)
+
     if (location) filter.location = location;
-    if (type) {
-      console.log('🔍 [STORES SERVICE] Filtering by type:', type);
-      filter.type = type;
-    }
-    console.log('🔍 [STORES SERVICE] Final filter:', JSON.stringify(filter, null, 2));
+
     const stores = await this.storeModel
       .find(filter)
       .sort({ createdAt: -1 })
       .exec();
-    console.log('🔍 [STORES SERVICE] Found stores:', stores.length);
-    if (stores.length > 0 && type) {
-      console.log('🔍 [STORES SERVICE] Store types found:', stores.map(s => s.type));
-    }
 
     // ავტომატურად განვაახლოთ paymentStatus თუ nextPaymentDate გავიდა
     const now = new Date();
@@ -81,8 +72,15 @@ export class StoresService {
   }
 
   async findOne(id: string): Promise<Store> {
-    const store = await this.storeModel.findById(id).exec();
-    if (!store) throw new NotFoundException('მაღაზია ვერ მოიძებნა');
+    const store = await this.storeModel
+      .findOne({
+        _id: id,
+        type: 'ავტომობილის ინტერიერი',
+      })
+      .exec();
+
+    if (!store)
+      throw new NotFoundException('ინტერიერის მაღაზია ვერ მოიძებნა');
 
     // ავტომატურად განვაახლოთ paymentStatus თუ nextPaymentDate გავიდა
     const now = new Date();
@@ -103,22 +101,37 @@ export class StoresService {
   }
 
   async update(id: string, updateStoreDto: UpdateStoreDto): Promise<Store> {
+    // Ensure it's an interior store
+    const existing = await this.findOne(id);
+    if (!existing)
+      throw new NotFoundException('ინტერიერის მაღაზია ვერ მოიძებნა');
+
     const updatedStore = await this.storeModel
-      .findByIdAndUpdate(id, updateStoreDto, { new: true })
+      .findByIdAndUpdate(
+        id,
+        { ...updateStoreDto, type: 'ავტომობილის ინტერიერი' },
+        { new: true },
+      )
       .exec();
-    if (!updatedStore) throw new NotFoundException('მაღაზია ვერ მოიძებნა');
+    if (!updatedStore)
+      throw new NotFoundException('ინტერიერის მაღაზია ვერ მოიძებნა');
     return updatedStore;
   }
 
   async remove(id: string): Promise<void> {
+    const existing = await this.findOne(id);
+    if (!existing)
+      throw new NotFoundException('ინტერიერის მაღაზია ვერ მოიძებნა');
+
     const result = await this.storeModel.findByIdAndDelete(id).exec();
-    if (!result) throw new NotFoundException('მაღაზია ვერ მოიძებნა');
+    if (!result)
+      throw new NotFoundException('ინტერიერის მაღაზია ვერ მოიძებნა');
   }
 
   async getLocations(): Promise<string[]> {
-    // მხოლოდ active მაღაზიების locations-ები
     const stores = await this.storeModel
       .find({
+        type: 'ავტომობილის ინტერიერი',
         location: { $exists: true, $ne: '' },
         status: 'active',
       })
@@ -126,7 +139,7 @@ export class StoresService {
     const locations = stores
       .map((store) => store.location)
       .filter((loc) => loc && loc.trim() !== '');
-    // Return unique locations, sorted alphabetically
     return Array.from(new Set(locations)).sort();
   }
 }
+
