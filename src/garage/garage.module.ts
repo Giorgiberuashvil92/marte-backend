@@ -6,6 +6,7 @@ import { GarageService } from './garage.service';
 import { Car, CarSchema } from '../schemas/car.schema';
 import { Reminder, ReminderSchema } from '../schemas/reminder.schema';
 import { FuelEntry, FuelEntrySchema } from '../schemas/fuel-entry.schema';
+import { User, UserSchema } from '../schemas/user.schema';
 import { NotificationsModule } from '../notifications/notifications.module';
 
 @Module({
@@ -14,6 +15,7 @@ import { NotificationsModule } from '../notifications/notifications.module';
       { name: Car.name, schema: CarSchema },
       { name: Reminder.name, schema: ReminderSchema },
       { name: FuelEntry.name, schema: FuelEntrySchema },
+      { name: User.name, schema: UserSchema },
     ]),
     ScheduleModule.forRoot(),
     NotificationsModule,

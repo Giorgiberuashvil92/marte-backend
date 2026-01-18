@@ -471,10 +471,11 @@ export class NotificationsService {
     }
 
     // დავამატოთ status: 'active' ფილტრი
-    const baseStoreQuery = storeSpecializations.length > 0
-      ? { $and: storeQuery }
-      : { type: { $in: ['ავტონაწილები', 'სამართ-დასახურებელი'] } };
-    
+    const baseStoreQuery =
+      storeSpecializations.length > 0
+        ? { $and: storeQuery }
+        : { type: { $in: ['ავტონაწილები', 'სამართ-დასახურებელი'] } };
+
     const finalStoreQuery = {
       ...baseStoreQuery,
       status: 'active', // მხოლოდ active მაღაზიები

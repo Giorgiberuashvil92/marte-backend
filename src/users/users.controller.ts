@@ -99,6 +99,20 @@ export class UsersController {
     };
   }
 
+  @Get('phones')
+  async getPhoneNumbers(
+    @Query('role') role?: string,
+    @Query('active') active?: string,
+  ) {
+    const act = active === undefined ? undefined : active === 'true';
+    const users = await this.users.getPhoneNumbers({ role, active: act });
+    return {
+      success: true,
+      data: users,
+      count: users.length,
+    };
+  }
+
   // Generic :id route must come last
   @Get(':id')
   async one(@Param('id') id: string) {

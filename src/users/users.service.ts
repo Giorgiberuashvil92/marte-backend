@@ -52,6 +52,7 @@ export class UsersService {
       idNumber: u.idNumber,
       role: u.role,
       isActive: u.isActive,
+      profileImage: u.profileImage,
       createdAt: u.createdAt,
       updatedAt: u.updatedAt,
     }));
@@ -157,5 +158,32 @@ export class UsersService {
     const deleted = await this.userModel.findOneAndDelete({ id }).lean();
     if (!deleted) throw new BadRequestException('user_not_found');
     return deleted;
+  }
+
+  /**
+   * აბრუნებს მომხმარებლების ტელეფონის ნომრებს და სახელებს
+   * @param filter - ფილტრი (role, active, etc.)
+   * @returns მომხმარებლების ინფორმაცია (phone, firstName, lastName)
+   */
+  async getPhoneNumbers(filter?: {
+    role?: string;
+    active?: boolean;
+  }): Promise<Array<{ phone: string; firstName?: string; lastName?: string }>> {
+    const queryFilter: any = {};
+    if (filter?.role) queryFilter.role = filter.role;
+    if (typeof filter?.active === 'boolean') queryFilter.isActive = filter.active;
+
+    const users = await this.userModel
+      .find(queryFilter)
+      .select('phone firstName lastName')
+      .lean();
+
+    return users
+      .filter((u: any) => u.phone)
+      .map((u: any) => ({
+        phone: u.phone,
+        firstName: u.firstName || undefined,
+        lastName: u.lastName || undefined,
+      }));
   }
 }

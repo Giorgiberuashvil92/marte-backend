@@ -1,6 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
 import * as https from 'https';
-import * as querystring from 'querystring';
 
 export interface SendSMSResult {
   success: boolean;
@@ -61,12 +60,23 @@ export class SenderAPIService {
     }
 
     const formattedPhone = this.formatPhoneNumber(phoneNumber);
-    const data = querystring.stringify({
-      apikey: this.apiKey,
-      smsno: smsno,
-      destination: formattedPhone,
-      content: message,
-    });
+
+    // Use URLSearchParams for better UTF-8 encoding support
+    const params = new URLSearchParams();
+    params.append('apikey', this.apiKey);
+    params.append('smsno', smsno.toString());
+    params.append('destination', formattedPhone);
+    params.append('content', message);
+
+    const data = params.toString();
+
+    // Debug logging
+    this.logger.debug(`📤 Sending SMS to ${formattedPhone}`);
+    this.logger.debug(`📝 Message: ${message.substring(0, 50)}...`);
+    this.logger.debug(`📝 Full Message: ${message}`);
+    this.logger.debug(`🔑 API Key: ${this.apiKey.substring(0, 10)}...`);
+    this.logger.debug(`📊 SMS Type: ${smsno}`);
+    this.logger.debug(`📦 Encoded Data: ${data.substring(0, 200)}...`);
 
     try {
       const response = await this.makeRequest('/api/send.php', data);
@@ -144,61 +154,78 @@ export class SenderAPIService {
    */
   private makeRequest(path: string, data: string): Promise<SenderAPIResponse> {
     return new Promise((resolve, reject) => {
+      const contentLength = Buffer.byteLength(data, 'utf8');
       const options = {
         hostname: this.baseUrl,
         path: path,
         method: 'POST',
         headers: {
-          'Content-Type': 'application/x-www-form-urlencoded',
-          'Content-Length': Buffer.byteLength(data),
+          'Content-Type': 'application/x-www-form-urlencoded; charset=utf-8',
+          'Content-Length': contentLength,
         },
         timeout: 30000, // 30 seconds
       };
 
+      this.logger.debug(`🌐 Request to: https://${this.baseUrl}${path}`);
+      this.logger.debug(`📏 Content-Length: ${contentLength}`);
+
       const req = https.request(options, (res) => {
         let responseBody = '';
+
+        this.logger.debug(`📥 Response status: ${res.statusCode}`);
 
         res.on('data', (chunk) => {
           responseBody += chunk;
         });
 
         res.on('end', () => {
+          this.logger.debug(`📥 Response body: ${responseBody}`);
           try {
             const result = JSON.parse(responseBody) as SenderAPIResponse;
 
             // Handle different HTTP response codes
             if (res.statusCode === 200) {
               // Success: {"data":[{"messageId":"123KUxuhiGyDN3","statusId":1,"qnt":1}]}
+              this.logger.debug(`✅ Success response:`, JSON.stringify(result));
               resolve(result);
             } else if (res.statusCode === 401) {
-              reject(new Error('Invalid API key'));
+              this.logger.error(`❌ 401 Unauthorized: ${result.message || 'Invalid API key'}`);
+              reject(new Error(result.message || 'Invalid API key'));
             } else if (res.statusCode === 402) {
-              reject(new Error('Insufficient balance'));
+              this.logger.error(`❌ 402 Payment Required: ${result.message || 'Insufficient balance'}`);
+              reject(new Error(result.message || 'Insufficient balance'));
             } else if (res.statusCode === 403) {
-              reject(new Error('Access denied'));
+              this.logger.error(`❌ 403 Forbidden: ${result.message || 'Access denied'}`);
+              reject(new Error(result.message || 'Access denied'));
             } else if (res.statusCode === 503) {
-              reject(new Error('Service temporarily unavailable'));
+              this.logger.error(`❌ 503 Service Unavailable: ${result.message || 'Service temporarily unavailable'}`);
+              reject(new Error(result.message || 'Service temporarily unavailable'));
             } else {
               const errorMessage =
                 result.message || `HTTP ${res.statusCode || 'Unknown'}`;
+              this.logger.error(`❌ HTTP ${res.statusCode}: ${errorMessage}`);
               reject(new Error(errorMessage));
             }
-          } catch {
+          } catch (parseError) {
+            this.logger.error(`❌ JSON Parse Error: ${parseError}`);
+            this.logger.error(`❌ Response body: ${responseBody}`);
             reject(new Error(`Invalid JSON response: ${responseBody}`));
           }
         });
       });
 
       req.on('error', (e) => {
+        this.logger.error(`❌ HTTP request error: ${e.message}`);
         reject(new Error(`HTTP request failed: ${e.message}`));
       });
 
       req.on('timeout', () => {
+        this.logger.error(`❌ Request timeout`);
         req.destroy();
         reject(new Error('Request timeout'));
       });
 
-      req.write(data);
+      req.write(data, 'utf8');
       req.end();
     });
   }

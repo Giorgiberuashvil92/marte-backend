@@ -41,6 +41,18 @@ export class GarageController {
     return this.garageService.findAllCars(userId);
   }
 
+  // ადმინისთვის: ყველა იუზერის მანქანები
+  @Get('cars/all')
+  async findAllCarsWithUsers() {
+    const cars = await this.garageService.findAllCarsWithUsers();
+    return {
+      success: true,
+      message: 'მანქანები წარმატებით ჩამოიტვირთა',
+      data: cars,
+      count: cars.length,
+    };
+  }
+
   @Get('cars/:id')
   async findOneCar(@Request() req: ExpressRequest, @Param('id') id: string) {
     const userId = (req.headers['x-user-id'] as string) || 'demo-user';

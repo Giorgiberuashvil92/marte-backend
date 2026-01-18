@@ -10,6 +10,7 @@ import { Cron } from '@nestjs/schedule';
 import { Car, CarDocument } from '../schemas/car.schema';
 import { Reminder, ReminderDocument } from '../schemas/reminder.schema';
 import { FuelEntry, FuelEntryDocument } from '../schemas/fuel-entry.schema';
+import { User, UserDocument } from '../schemas/user.schema';
 import { CreateCarDto } from './dto/create-car.dto';
 import { UpdateCarDto } from './dto/update-car.dto';
 import { CreateReminderDto } from './dto/create-reminder.dto';
@@ -26,6 +27,7 @@ export class GarageService {
     @InjectModel(Reminder.name) private reminderModel: Model<ReminderDocument>,
     @InjectModel(FuelEntry.name)
     private fuelEntryModel: Model<FuelEntryDocument>,
+    @InjectModel(User.name) private userModel: Model<UserDocument>,
     private notificationsService: NotificationsService,
   ) {}
 
@@ -76,6 +78,150 @@ export class GarageService {
       .find({ userId, isActive: true })
       .sort({ createdAt: -1 })
       .exec();
+  }
+
+  // ადმინისთვის: ყველა იუზერის მანქანები იუზერის ინფორმაციით
+  async findAllCarsWithUsers(): Promise<any[]> {
+    const cars = await this.carModel
+      .find({ isActive: true })
+      .sort({ createdAt: -1 })
+      .lean()
+      .exec();
+
+    // მოვიძებნოთ ყველა უნიკალური userId
+    const userIds = Array.from(new Set(cars.map((car: any) => car.userId)));
+
+    // მოვიძებნოთ იუზერები
+    const users = await this.userModel
+      .find({ id: { $in: userIds } })
+      .lean()
+      .exec();
+
+    // შევქმნათ map userId -> user
+    const userMap = new Map<string, any>(
+      users.map((user: any) => {
+        // lean() აბრუნებს plain object-ს, ამიტომ ხელით ვაკეთებთ transform
+        const userId = user.id || (user._id ? String(user._id) : '');
+        return [userId, user];
+      }),
+    );
+
+    // მოვიძებნოთ ყველა carId
+    const carIds = cars.map((car: any) => {
+      return car.id || (car._id ? String(car._id) : '');
+    });
+
+    // მოვიძებნოთ შეხსენებები
+    const reminders = await this.reminderModel
+      .find({ carId: { $in: carIds }, isActive: true })
+      .lean()
+      .exec();
+
+    // მოვიძებნოთ საწვავის ჩანაწერები
+    const fuelEntries = await this.fuelEntryModel
+      .find({ carId: { $in: carIds } })
+      .sort({ date: -1 })
+      .lean()
+      .exec();
+
+    // შევქმნათ map carId -> reminders
+    const remindersMap = new Map<string, any[]>();
+    reminders.forEach((reminder: any) => {
+      const carId = String(reminder.carId || '');
+      if (!remindersMap.has(carId)) {
+        remindersMap.set(carId, []);
+      }
+      const reminderId =
+        reminder.id || (reminder._id ? String(reminder._id) : '');
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      const { _id, __v, ...reminderData } = reminder;
+      remindersMap.get(carId)?.push({
+        ...reminderData,
+        id: reminderId,
+      });
+    });
+
+    // შევქმნათ map carId -> fuelEntries
+    const fuelEntriesMap = new Map<string, any[]>();
+    fuelEntries.forEach((entry: any) => {
+      const carId = String(entry.carId || '');
+      if (!fuelEntriesMap.has(carId)) {
+        fuelEntriesMap.set(carId, []);
+      }
+      const entryId = entry.id || (entry._id ? String(entry._id) : '');
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      const { _id, __v, ...entryData } = entry;
+      fuelEntriesMap.get(carId)?.push({
+        ...entryData,
+        id: entryId,
+      });
+    });
+
+    // დავაბრუნოთ მანქანები იუზერის ინფორმაციით
+    return cars.map((car: any) => {
+      // lean() აბრუნებს plain object-ს, ამიტომ ხელით ვაკეთებთ transform _id -> id
+      const carId = car.id || (car._id ? String(car._id) : '');
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      const { _id, __v, ...carData } = car;
+      const plainCar = {
+        ...carData,
+        id: carId,
+      };
+
+      const userId = String(car.userId || '');
+      const user: any = userMap.get(userId);
+
+      // მოვიძებნოთ შეხსენებები ამ მანქანისთვის
+      const carReminders = remindersMap.get(carId) || [];
+      const remindersStats = {
+        total: carReminders.length,
+        completed: carReminders.filter((r: any) => r.isCompleted).length,
+        pending: carReminders.filter((r: any) => r.isCompleted === false)
+          .length,
+        urgent: carReminders.filter((r: any) => r.isUrgent).length,
+        upcoming: carReminders.filter((r: any) => {
+          if (r.isCompleted) return false;
+          const reminderDate = new Date(String(r.reminderDate || ''));
+          return reminderDate >= new Date();
+        }).length,
+      };
+
+      // მოვიძებნოთ საწვავის ჩანაწერები ამ მანქანისთვის
+      const carFuelEntries = fuelEntriesMap.get(carId) || [];
+      const fuelStats = {
+        totalEntries: carFuelEntries.length,
+        lastEntry: carFuelEntries.length > 0 ? carFuelEntries[0] : null,
+        totalLiters: carFuelEntries.reduce(
+          (sum: number, e: any) => sum + (e.liters || 0),
+          0,
+        ),
+        totalSpent: carFuelEntries.reduce(
+          (sum: number, e: any) => sum + (e.totalPrice || 0),
+          0,
+        ),
+      };
+
+      return {
+        ...plainCar,
+        user: user
+          ? {
+              id: user.id || (user._id ? String(user._id) : ''),
+              phone: user.phone,
+              firstName: user.firstName,
+              lastName: user.lastName,
+              email: user.email,
+            }
+          : null,
+        reminders: {
+          list: carReminders,
+          stats: remindersStats,
+        },
+        fuelEntries: {
+          list: carFuelEntries,
+          stats: fuelStats,
+        },
+      };
+    });
   }
 
   async findOneCar(userId: string, id: string): Promise<Car> {
