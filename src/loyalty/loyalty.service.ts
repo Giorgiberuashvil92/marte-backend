@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import { Loyalty } from '../schemas/loyalty.schema';
@@ -7,6 +7,8 @@ import { Referral } from '../schemas/referral.schema';
 
 @Injectable()
 export class LoyaltyService {
+  private readonly logger = new Logger(LoyaltyService.name);
+
   constructor(
     @InjectModel(Loyalty.name) private readonly loyaltyModel: Model<Loyalty>,
     @InjectModel(LoyaltyTransaction.name)
@@ -148,29 +150,51 @@ export class LoyaltyService {
   }
 
   async getLeaderboard(userId: string) {
-    // Top 20 by points from DB; include current user if not in top
-    const top = await this.loyaltyModel
-      .find({}, { userId: 1, points: 1 })
-      .sort({ points: -1 })
-      .limit(20)
-      .lean();
-
-    const ids = new Set(top.map((t) => t.userId));
-    if (!ids.has(userId)) {
-      const me = await this.loyaltyModel
-        .findOne({ userId }, { userId: 1, points: 1 })
+    try {
+      this.logger.log(`Getting leaderboard for userId: ${userId}`);
+      
+      // Top 20 by points from DB; include current user if not in top
+      const top = await this.loyaltyModel
+        .find({}, { userId: 1, points: 1 })
+        .sort({ points: -1 })
+        .limit(20)
         .lean();
-      if (me) top.push(me);
-    }
 
-    const sorted = top.sort((a, b) => (b.points || 0) - (a.points || 0));
-    return sorted.map((u, idx) => ({
-      id: u.userId,
-      name: u.userId === userId ? 'მომხმარებელი' : `User ${u.userId.slice(-4)}`,
-      points: u.points || 0,
-      rank: idx + 1,
-      isCurrentUser: u.userId === userId,
-    }));
+      this.logger.debug(`Found ${top.length} top users`);
+
+      const ids = new Set(top.map((t) => t.userId));
+      if (!ids.has(userId)) {
+        this.logger.debug(`Current user ${userId} not in top 20, fetching separately`);
+        const me = await this.loyaltyModel
+          .findOne({ userId }, { userId: 1, points: 1 })
+          .lean();
+        if (me) {
+          top.push(me);
+          this.logger.debug(`Added current user to leaderboard`);
+        } else {
+          this.logger.warn(`Current user ${userId} not found in loyalty collection`);
+        }
+      }
+
+      const sorted = top.sort((a, b) => (b.points || 0) - (a.points || 0));
+      const result = sorted.map((u, idx) => ({
+        id: u.userId,
+        name: u.userId === userId ? 'მომხმარებელი' : `User ${u.userId.slice(-4)}`,
+        points: u.points || 0,
+        rank: idx + 1,
+        isCurrentUser: u.userId === userId,
+      }));
+
+      this.logger.log(`Leaderboard prepared: ${result.length} users`);
+      return result;
+    } catch (error) {
+      this.logger.error('Error getting leaderboard:', {
+        userId,
+        error: error instanceof Error ? error.message : String(error),
+        stack: error instanceof Error ? error.stack : undefined,
+      });
+      throw error;
+    }
   }
 
   async getFriends(userId: string) {

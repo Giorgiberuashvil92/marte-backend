@@ -21,6 +21,44 @@ export class ReferralsService {
   ) {}
 
   /**
+   * Generate fuzzy variations of a referral code for typo tolerance
+   * Common typos: 0/O, 1/I, 5/S, 2/Z
+   */
+  private generateFuzzyVariations(code: string): string[] {
+    const variations = new Set<string>();
+    variations.add(code); // Include original
+
+    // Common character substitutions
+    const substitutions: { [key: string]: string[] } = {
+      '0': ['O', 'o'],
+      O: ['0'],
+      o: ['0', 'O'],
+      '1': ['I', 'l', 'L'],
+      I: ['1', 'l', 'L'],
+      l: ['1', 'I', 'L'],
+      L: ['1', 'I', 'l'],
+      '5': ['S', 's'],
+      S: ['5'],
+      s: ['5', 'S'],
+      '2': ['Z', 'z'],
+      Z: ['2'],
+      z: ['2', 'Z'],
+    };
+
+    // Generate variations by replacing each character with possible substitutions
+    for (let i = 0; i < code.length; i++) {
+      const char = code[i];
+      const subs = substitutions[char] || [];
+      for (const sub of subs) {
+        const variation = code.slice(0, i) + sub + code.slice(i + 1);
+        variations.add(variation.toUpperCase());
+      }
+    }
+
+    return Array.from(variations);
+  }
+
+  /**
    * Generate a unique referral code for a user
    */
   async generateReferralCode(userId: string): Promise<string> {
@@ -109,18 +147,227 @@ export class ReferralsService {
       }
 
       const trimmedCode = referralCode.trim().toUpperCase();
+      console.log('🔍 Applying referral code:', {
+        inviteeUserId,
+        originalCode: referralCode,
+        trimmedCode,
+      });
 
       // Find the inviter by referral code
       const inviter = await this.userModel
         .findOne({ referralCode: trimmedCode })
         .exec();
 
+      console.log('🔍 Inviter lookup result:', {
+        found: !!inviter,
+        inviterId: inviter?.id as string,
+        inviterReferralCode: inviter?.referralCode,
+      });
+
+      // If not found, try case-insensitive search as fallback
       if (!inviter) {
-        throw new NotFoundException('Invalid referral code');
+        console.log(
+          '⚠️ Case-sensitive search failed, trying case-insensitive...',
+        );
+        const inviterCaseInsensitive = await this.userModel
+          .findOne({
+            $expr: {
+              $eq: [{ $toUpper: '$referralCode' }, trimmedCode],
+            },
+          })
+          .exec();
+
+        console.log('🔍 Case-insensitive search result:', {
+          found: !!inviterCaseInsensitive,
+          inviterId: inviterCaseInsensitive?.id,
+          inviterReferralCode: inviterCaseInsensitive?.referralCode,
+        });
+
+        if (!inviterCaseInsensitive) {
+          // Debug: Check if any referral codes exist
+          const sampleCodes = await this.userModel
+            .find({ referralCode: { $exists: true, $ne: null } })
+            .limit(5)
+            .select('id referralCode')
+            .exec();
+          console.log('🔍 Sample referral codes in DB:', sampleCodes);
+
+          // Try fuzzy matching for common typos (0 vs O, 1 vs I, etc.)
+          console.log('🔍 Trying fuzzy matching for common typos...');
+          const fuzzyVariations = this.generateFuzzyVariations(trimmedCode);
+          console.log('🔍 Fuzzy variations:', fuzzyVariations);
+
+          for (const variation of fuzzyVariations) {
+            const fuzzyMatch = await this.userModel
+              .findOne({ referralCode: variation })
+              .exec();
+
+            if (fuzzyMatch) {
+              console.log('✅ Found fuzzy match:', {
+                original: trimmedCode,
+                matched: variation,
+                inviterId: fuzzyMatch.id as string,
+              });
+              // Use fuzzy match
+              const inviterToUse = fuzzyMatch;
+              if (inviterToUse.id === inviteeUserId) {
+                throw new BadRequestException(
+                  'Cannot use your own referral code',
+                );
+              }
+
+              const existingReferral = await this.referralModel
+                .findOne({ inviteeId: inviteeUserId })
+                .exec();
+
+              if (existingReferral) {
+                throw new BadRequestException('Referral code already applied');
+              }
+
+              const referral = new this.referralModel({
+                inviteeId: inviteeUserId,
+                inviterId: inviterToUse.id,
+                appliedAt: Date.now(),
+                rewardsGranted: false,
+              });
+              await referral.save();
+
+              const pointsToAward = 100;
+
+              // Check if loyalty record exists
+              const existingLoyalty = await this.loyaltyModel
+                .findOne({ userId: inviterToUse.id })
+                .exec();
+
+              if (existingLoyalty) {
+                // If exists, increment points
+                await this.loyaltyModel.findOneAndUpdate(
+                  { userId: inviterToUse.id },
+                  { $inc: { points: pointsToAward } },
+                  { new: true },
+                );
+              } else {
+                // If doesn't exist, create with initial points
+                await this.loyaltyModel.create({
+                  userId: inviterToUse.id,
+                  points: pointsToAward,
+                  streakDays: 0,
+                });
+              }
+
+              await this.txModel.create({
+                userId: inviterToUse.id,
+                type: 'earned',
+                amount: pointsToAward,
+                description: 'რეფერალური კოდი',
+                service: `ახალი იუზერი: ${inviteeUserId}`,
+                ts: Date.now(),
+                icon: 'people',
+              });
+
+              referral.rewardsGranted = true;
+              await referral.save();
+
+              console.log(
+                '✅ Referral code applied successfully (fuzzy match):',
+                {
+                  inviteeUserId,
+                  inviterId: inviterToUse.id,
+                  pointsAwarded: pointsToAward,
+                  matchedCode: variation,
+                },
+              );
+
+              return {
+                success: true,
+                inviterId: inviterToUse.id,
+                pointsAwarded: pointsToAward,
+              };
+            }
+          }
+
+          throw new NotFoundException('Invalid referral code');
+        }
+
+        // Use case-insensitive result
+        const inviterToUse = inviterCaseInsensitive;
+        // Continue with the rest of the logic using inviterToUse
+        if (inviterToUse.id === inviteeUserId) {
+          throw new BadRequestException('Cannot use your own referral code');
+        }
+
+        // Check if referral already exists
+        const existingReferral = await this.referralModel
+          .findOne({ inviteeId: inviteeUserId })
+          .exec();
+
+        if (existingReferral) {
+          throw new BadRequestException('Referral code already applied');
+        }
+
+        // Create referral record
+        const referral = new this.referralModel({
+          inviteeId: inviteeUserId,
+          inviterId: inviterToUse.id,
+          appliedAt: Date.now(),
+          rewardsGranted: false,
+        });
+        await referral.save();
+
+        // Award points to inviter
+        const pointsToAward = 100;
+
+        // Update inviter's loyalty points
+        // Check if loyalty record exists
+        const existingLoyalty = await this.loyaltyModel
+          .findOne({ userId: inviterToUse.id })
+          .exec();
+
+        if (existingLoyalty) {
+          // If exists, increment points
+          await this.loyaltyModel.findOneAndUpdate(
+            { userId: inviterToUse.id },
+            { $inc: { points: pointsToAward } },
+            { new: true },
+          );
+        } else {
+          // If doesn't exist, create with initial points
+          await this.loyaltyModel.create({
+            userId: inviterToUse.id,
+            points: pointsToAward,
+            streakDays: 0,
+          });
+        }
+
+        // Create transaction record
+        const transaction = new this.txModel({
+          userId: inviterToUse.id,
+          type: 'earned',
+          amount: pointsToAward,
+          description: `Referral bonus for ${inviteeUserId}`,
+          date: new Date().toISOString(),
+        });
+        await transaction.save();
+
+        console.log('✅ Referral code applied successfully:', {
+          inviteeUserId,
+          inviterId: inviterToUse.id,
+          pointsAwarded: pointsToAward,
+        });
+
+        return {
+          success: true,
+          inviterId: inviterToUse.id,
+          pointsAwarded: pointsToAward,
+        };
       }
 
       // Check if user is trying to use their own code
       if (inviter.id === inviteeUserId) {
+        console.log('❌ User trying to use own referral code:', {
+          userId: inviteeUserId,
+          referralCode: trimmedCode,
+        });
         throw new BadRequestException('Cannot use your own referral code');
       }
 
@@ -130,8 +377,14 @@ export class ReferralsService {
         .exec();
 
       if (existingReferral) {
+        console.log('❌ Referral code already applied:', {
+          inviteeUserId,
+          existingReferral: existingReferral.inviterId,
+        });
         throw new BadRequestException('Referral code already applied');
       }
+
+      console.log('✅ Valid referral code found, creating referral record...');
 
       // Create referral record
       const referral = new this.referralModel({
@@ -144,6 +397,11 @@ export class ReferralsService {
 
       // Award points to inviter
       const pointsToAward = 100; // Points for successful referral
+
+      console.log('💰 Awarding points to inviter:', {
+        inviterId: inviter.id,
+        points: pointsToAward,
+      });
 
       // Update inviter's loyalty points
       // First, try to find existing loyalty record
@@ -182,13 +440,19 @@ export class ReferralsService {
       referral.rewardsGranted = true;
       await referral.save();
 
+      console.log('✅ Referral code applied successfully (normal path):', {
+        inviteeUserId,
+        inviterId: inviter.id,
+        pointsAwarded: pointsToAward,
+      });
+
       return {
         success: true,
         inviterId: inviter.id,
         pointsAwarded: pointsToAward,
       };
     } catch (error: any) {
-      console.error('Error in applyReferralCode:', {
+      console.error('❌ Error in applyReferralCode:', {
         inviteeUserId,
         referralCode,
         error: error.message,

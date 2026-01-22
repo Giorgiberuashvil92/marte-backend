@@ -5,11 +5,15 @@ import {
   Post,
   Body,
   BadRequestException,
+  Logger,
+  InternalServerErrorException,
 } from '@nestjs/common';
 import { LoyaltyService } from './loyalty.service';
 
 @Controller('loyalty')
 export class LoyaltyController {
+  private readonly logger = new Logger(LoyaltyController.name);
+
   constructor(private readonly loyalty: LoyaltyService) {}
 
   @Get('summary')
@@ -49,9 +53,34 @@ export class LoyaltyController {
 
   @Get('leaderboard')
   async leaderboard(@Query('userId') userId?: string) {
-    if (!userId) throw new BadRequestException('userId_required');
-    const data = await this.loyalty.getLeaderboard(userId);
-    return { success: true, data };
+    try {
+      if (!userId) {
+        this.logger.warn('Leaderboard request without userId');
+        throw new BadRequestException('userId_required');
+      }
+
+      this.logger.log(`Fetching leaderboard for userId: ${userId}`);
+      const data = await this.loyalty.getLeaderboard(userId);
+      this.logger.log(
+        `Leaderboard fetched successfully: ${data?.length || 0} users`,
+      );
+
+      return { success: true, data };
+    } catch (error) {
+      this.logger.error('Error fetching leaderboard:', {
+        userId,
+        error: error instanceof Error ? error.message : String(error),
+        stack: error instanceof Error ? error.stack : undefined,
+      });
+
+      if (error instanceof BadRequestException) {
+        throw error;
+      }
+
+      throw new InternalServerErrorException(
+        'Failed to fetch leaderboard. Please try again later.',
+      );
+    }
   }
 
   @Get('friends')

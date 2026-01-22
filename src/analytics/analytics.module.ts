@@ -6,11 +6,13 @@ import {
   AnalyticsEvent,
   AnalyticsEventSchema,
 } from '../schemas/analytics-event.schema';
+import { User, UserSchema } from '../schemas/user.schema';
 
 @Module({
   imports: [
     MongooseModule.forFeature([
       { name: AnalyticsEvent.name, schema: AnalyticsEventSchema },
+      { name: User.name, schema: UserSchema },
     ]),
   ],
   controllers: [AnalyticsController],

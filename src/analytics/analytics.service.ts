@@ -5,12 +5,15 @@ import {
   AnalyticsEvent,
   AnalyticsEventDocument,
 } from '../schemas/analytics-event.schema';
+import { User, UserDocument } from '../schemas/user.schema';
 
 @Injectable()
 export class AnalyticsService {
   constructor(
     @InjectModel(AnalyticsEvent.name)
     private analyticsModel: Model<AnalyticsEventDocument>,
+    @InjectModel(User.name)
+    private userModel: Model<UserDocument>,
   ) {}
 
   async trackEvent(
@@ -298,7 +301,7 @@ export class AnalyticsService {
     limit: number = 100,
   ) {
     const dateRange = this.getDateRange(period);
-
+    
     const events = await this.analyticsModel
       .find({
         userId: userId,
@@ -308,15 +311,50 @@ export class AnalyticsService {
       .limit(limit)
       .lean();
 
-    return events.map((event) => ({
-      id: event._id.toString(),
-      eventType: event.eventType,
-      eventName: event.eventName,
-      screen: event.screen || 'უცნობი',
-      params: event.params || {},
-      timestamp: event.timestamp,
-      date: new Date(event.timestamp).toISOString(),
-    }));
+    // Get user info
+    const user = await this.userModel.findOne({ id: userId }).lean();
+
+    return {
+      userId,
+      userInfo: user
+        ? {
+            phone: user.phone || 'უცნობი',
+            firstName: user.firstName || 'უცნობი',
+            lastName: user.lastName || 'უცნობი',
+            email: user.email || null,
+            role: user.role || 'customer',
+            isVerified: user.isVerified || false,
+            createdAt: user.createdAt || null,
+          }
+        : null,
+      events: events.map((event) => ({
+        id: event._id.toString(),
+        eventType: event.eventType,
+        eventName: event.eventName,
+        screen: event.screen || 'უცნობი',
+        params: event.params || {},
+        paramsFormatted: event.params
+          ? JSON.stringify(event.params, null, 2)
+          : null,
+        timestamp: event.timestamp,
+        date: new Date(event.timestamp).toISOString(),
+        dateFormatted: new Date(event.timestamp).toLocaleString('ka-GE', {
+          year: 'numeric',
+          month: '2-digit',
+          day: '2-digit',
+          hour: '2-digit',
+          minute: '2-digit',
+          second: '2-digit',
+        }),
+      })),
+      totalEvents: events.length,
+      firstEvent: events.length > 0
+        ? new Date(events[events.length - 1].timestamp).toISOString()
+        : null,
+      lastEvent: events.length > 0
+        ? new Date(events[0].timestamp).toISOString()
+        : null,
+    };
   }
 
   async getAllUsersEvents(
@@ -324,7 +362,7 @@ export class AnalyticsService {
     limit: number = 500,
   ) {
     const dateRange = this.getDateRange(period);
-
+    
     const events = await this.analyticsModel
       .find({
         timestamp: { $gte: dateRange.start, $lte: dateRange.end },
@@ -334,9 +372,20 @@ export class AnalyticsService {
       .limit(limit)
       .lean();
 
+    // Get unique user IDs
+    const userIds = Array.from(
+      new Set(events.map((e) => e.userId).filter(Boolean)),
+    );
+
+    // Fetch user info for all users
+    const users = await this.userModel
+      .find({ id: { $in: userIds } })
+      .lean();
+    const userMap = new Map(users.map((u: any) => [u.id, u]));
+
     // Group by user
     const userEventsMap = new Map<string, any[]>();
-
+    
     events.forEach((event) => {
       const userId = event.userId || 'უცნობი';
       if (!userEventsMap.has(userId)) {
@@ -348,18 +397,52 @@ export class AnalyticsService {
         eventName: event.eventName,
         screen: event.screen || 'უცნობი',
         params: event.params || {},
+        paramsFormatted: event.params
+          ? JSON.stringify(event.params, null, 2)
+          : null,
         timestamp: event.timestamp,
         date: new Date(event.timestamp).toISOString(),
+        dateFormatted: new Date(event.timestamp).toLocaleString('ka-GE', {
+          year: 'numeric',
+          month: '2-digit',
+          day: '2-digit',
+          hour: '2-digit',
+          minute: '2-digit',
+          second: '2-digit',
+        }),
       });
     });
 
-    // Convert to array format
-    return Array.from(userEventsMap.entries()).map(([userId, events]) => ({
-      userId,
-      eventsCount: events.length,
-      events: events.slice(0, 50), // Limit events per user
-      lastActivity: events[0]?.timestamp || 0,
-    }));
+    // Convert to array format with user info
+    return Array.from(userEventsMap.entries()).map(([userId, events]) => {
+      const user = userMap.get(userId);
+      return {
+        userId,
+        userInfo: user
+          ? {
+              phone: user.phone || 'უცნობი',
+              firstName: user.firstName || 'უცნობი',
+              lastName: user.lastName || 'უცნობი',
+              email: user.email || null,
+              role: user.role || 'customer',
+              isVerified: user.isVerified || false,
+            }
+          : null,
+        eventsCount: events.length,
+        events: events.slice(0, 50), // Limit events per user
+        lastActivity: events[0]?.timestamp || 0,
+        lastActivityFormatted: events[0]
+          ? new Date(events[0].timestamp).toLocaleString('ka-GE', {
+              year: 'numeric',
+              month: '2-digit',
+              day: '2-digit',
+              hour: '2-digit',
+              minute: '2-digit',
+              second: '2-digit',
+            })
+          : null,
+      };
+    });
   }
 
   private getPreviousPeriodDateRange(period: 'today' | 'week' | 'month') {
