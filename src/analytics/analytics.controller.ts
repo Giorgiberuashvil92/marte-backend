@@ -70,4 +70,31 @@ export class AnalyticsController {
       popularFeatures,
     };
   }
+
+  @Get('user-events')
+  async getUserEvents(
+    @Query('userId') userId: string,
+    @Query('period') period: 'today' | 'week' | 'month' = 'week',
+    @Query('limit') limit: string = '100',
+  ) {
+    if (!userId) {
+      return { error: 'userId is required' };
+    }
+    return await this.analyticsService.getUserEvents(
+      userId,
+      period,
+      parseInt(limit, 10),
+    );
+  }
+
+  @Get('all-users-events')
+  async getAllUsersEvents(
+    @Query('period') period: 'today' | 'week' | 'month' = 'week',
+    @Query('limit') limit: string = '500',
+  ) {
+    return await this.analyticsService.getAllUsersEvents(
+      period,
+      parseInt(limit, 10),
+    );
+  }
 }

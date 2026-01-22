@@ -1,7 +1,10 @@
 import { Injectable } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
-import { AnalyticsEvent, AnalyticsEventDocument } from '../schemas/analytics-event.schema';
+import {
+  AnalyticsEvent,
+  AnalyticsEventDocument,
+} from '../schemas/analytics-event.schema';
 
 @Injectable()
 export class AnalyticsService {
@@ -31,7 +34,7 @@ export class AnalyticsService {
 
   async getScreenViews(period: 'today' | 'week' | 'month') {
     const dateRange = this.getDateRange(period);
-    
+
     const screenViews = await this.analyticsModel.aggregate([
       {
         $match: {
@@ -67,7 +70,7 @@ export class AnalyticsService {
 
   async getButtonClicks(period: 'today' | 'week' | 'month') {
     const dateRange = this.getDateRange(period);
-    
+
     const buttonClicks = await this.analyticsModel.aggregate([
       {
         $match: {
@@ -106,7 +109,7 @@ export class AnalyticsService {
 
   async getUserEngagement(period: 'today' | 'week' | 'month') {
     const dateRange = this.getDateRange(period);
-    
+
     const [activeUsers, totalSessions, newUsers] = await Promise.all([
       // Active users (unique users with any event)
       this.analyticsModel.distinct('userId', {
@@ -121,17 +124,19 @@ export class AnalyticsService {
       }),
 
       // New users (first event in this period)
-      this.analyticsModel.distinct('userId', {
-        timestamp: { $gte: dateRange.start, $lte: dateRange.end },
-        userId: { $exists: true, $ne: null },
-      }).then(async (userIds) => {
-        // Check if these users had events before this period
-        const existingUsers = await this.analyticsModel.distinct('userId', {
-          timestamp: { $lt: dateRange.start },
-          userId: { $in: userIds },
-        });
-        return userIds.filter((id) => !existingUsers.includes(id)).length;
-      }),
+      this.analyticsModel
+        .distinct('userId', {
+          timestamp: { $gte: dateRange.start, $lte: dateRange.end },
+          userId: { $exists: true, $ne: null },
+        })
+        .then(async (userIds) => {
+          // Check if these users had events before this period
+          const existingUsers = await this.analyticsModel.distinct('userId', {
+            timestamp: { $lt: dateRange.start },
+            userId: { $in: userIds },
+          });
+          return userIds.filter((id) => !existingUsers.includes(id)).length;
+        }),
     ]);
 
     // Calculate average session duration (simplified - based on time between first and last screen view per user)
@@ -174,12 +179,14 @@ export class AnalyticsService {
 
   async getNavigationFlows(period: 'today' | 'week' | 'month') {
     const dateRange = this.getDateRange(period);
-    
+
     // Get navigation events
-    const navigations = await this.analyticsModel.find({
-      eventType: 'navigation',
-      timestamp: { $gte: dateRange.start, $lte: dateRange.end },
-    }).lean();
+    const navigations = await this.analyticsModel
+      .find({
+        eventType: 'navigation',
+        timestamp: { $gte: dateRange.start, $lte: dateRange.end },
+      })
+      .lean();
 
     // Group by from->to
     const flowMap = new Map<string, number>();
@@ -202,16 +209,13 @@ export class AnalyticsService {
   async getPopularFeatures(period: 'today' | 'week' | 'month') {
     const dateRange = this.getDateRange(period);
     const previousDateRange = this.getPreviousPeriodDateRange(period);
-    
+
     // Get button clicks and screen views grouped by feature name
     const [currentPeriod, previousPeriod] = await Promise.all([
       this.analyticsModel.aggregate([
         {
           $match: {
-            $or: [
-              { eventType: 'button_click' },
-              { eventType: 'screen_view' },
-            ],
+            $or: [{ eventType: 'button_click' }, { eventType: 'screen_view' }],
             timestamp: { $gte: dateRange.start, $lte: dateRange.end },
           },
         },
@@ -229,10 +233,7 @@ export class AnalyticsService {
       this.analyticsModel.aggregate([
         {
           $match: {
-            $or: [
-              { eventType: 'button_click' },
-              { eventType: 'screen_view' },
-            ],
+            $or: [{ eventType: 'button_click' }, { eventType: 'screen_view' }],
             timestamp: {
               $gte: previousDateRange.start,
               $lte: previousDateRange.end,
@@ -291,30 +292,110 @@ export class AnalyticsService {
     return { start, end: now };
   }
 
+  async getUserEvents(
+    userId: string,
+    period: 'today' | 'week' | 'month' = 'week',
+    limit: number = 100,
+  ) {
+    const dateRange = this.getDateRange(period);
+
+    const events = await this.analyticsModel
+      .find({
+        userId: userId,
+        timestamp: { $gte: dateRange.start, $lte: dateRange.end },
+      })
+      .sort({ timestamp: -1 })
+      .limit(limit)
+      .lean();
+
+    return events.map((event) => ({
+      id: event._id.toString(),
+      eventType: event.eventType,
+      eventName: event.eventName,
+      screen: event.screen || 'უცნობი',
+      params: event.params || {},
+      timestamp: event.timestamp,
+      date: new Date(event.timestamp).toISOString(),
+    }));
+  }
+
+  async getAllUsersEvents(
+    period: 'today' | 'week' | 'month' = 'week',
+    limit: number = 500,
+  ) {
+    const dateRange = this.getDateRange(period);
+
+    const events = await this.analyticsModel
+      .find({
+        timestamp: { $gte: dateRange.start, $lte: dateRange.end },
+        userId: { $exists: true, $ne: null },
+      })
+      .sort({ timestamp: -1 })
+      .limit(limit)
+      .lean();
+
+    // Group by user
+    const userEventsMap = new Map<string, any[]>();
+
+    events.forEach((event) => {
+      const userId = event.userId || 'უცნობი';
+      if (!userEventsMap.has(userId)) {
+        userEventsMap.set(userId, []);
+      }
+      userEventsMap.get(userId)!.push({
+        id: event._id.toString(),
+        eventType: event.eventType,
+        eventName: event.eventName,
+        screen: event.screen || 'უცნობი',
+        params: event.params || {},
+        timestamp: event.timestamp,
+        date: new Date(event.timestamp).toISOString(),
+      });
+    });
+
+    // Convert to array format
+    return Array.from(userEventsMap.entries()).map(([userId, events]) => ({
+      userId,
+      eventsCount: events.length,
+      events: events.slice(0, 50), // Limit events per user
+      lastActivity: events[0]?.timestamp || 0,
+    }));
+  }
+
   private getPreviousPeriodDateRange(period: 'today' | 'week' | 'month') {
     const now = Date.now();
     let start: number;
     let end: number;
 
     switch (period) {
-      case 'today':
+      case 'today': {
         // Previous day
         const yesterday = new Date();
         yesterday.setDate(yesterday.getDate() - 1);
         start = new Date(yesterday.setHours(0, 0, 0, 0)).getTime();
         end = new Date(yesterday.setHours(23, 59, 59, 999)).getTime();
         break;
+      }
       case 'week':
         // Previous week
         start = now - 14 * 24 * 60 * 60 * 1000;
         end = now - 7 * 24 * 60 * 60 * 1000;
         break;
-      case 'month':
+      case 'month': {
         // Previous month
         const date = new Date();
         start = new Date(date.getFullYear(), date.getMonth() - 1, 1).getTime();
-        end = new Date(date.getFullYear(), date.getMonth(), 0, 23, 59, 59, 999).getTime();
+        end = new Date(
+          date.getFullYear(),
+          date.getMonth(),
+          0,
+          23,
+          59,
+          59,
+          999,
+        ).getTime();
         break;
+      }
       default:
         start = now - 14 * 24 * 60 * 60 * 1000;
         end = now - 7 * 24 * 60 * 60 * 1000;
