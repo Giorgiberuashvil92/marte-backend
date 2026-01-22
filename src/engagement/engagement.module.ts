@@ -9,6 +9,14 @@ import {
   MechanicEngagement,
   MechanicEngagementSchema,
 } from '../schemas/mechanic-engagement.schema';
+import {
+  DismantlerEngagement,
+  DismantlerEngagementSchema,
+} from '../schemas/dismantler-engagement.schema';
+import {
+  PartEngagement,
+  PartEngagementSchema,
+} from '../schemas/part-engagement.schema';
 import { User, UserSchema } from '../schemas/user.schema';
 
 @Module({
@@ -16,6 +24,8 @@ import { User, UserSchema } from '../schemas/user.schema';
     MongooseModule.forFeature([
       { name: StoreEngagement.name, schema: StoreEngagementSchema },
       { name: MechanicEngagement.name, schema: MechanicEngagementSchema },
+      { name: DismantlerEngagement.name, schema: DismantlerEngagementSchema },
+      { name: PartEngagement.name, schema: PartEngagementSchema },
       { name: User.name, schema: UserSchema },
     ]),
   ],

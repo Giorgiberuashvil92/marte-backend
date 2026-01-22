@@ -72,13 +72,17 @@ export class User {
 
   @Prop({ type: [String], default: [] })
   ownedDismantlers: string[];
+
+  @Prop({ unique: true, sparse: true })
+  referralCode?: string; // Unique referral code for this user
 }
 
 export const UserSchema = SchemaFactory.createForClass(User);
 
 // Indexes for better performance
-// Avoid duplicate definition warnings; rely on @Prop uniques for phone/firebaseUid
+// Avoid duplicate definition warnings; rely on @Prop uniques for phone/firebaseUid/referralCode
 UserSchema.index({ email: 1 }, { sparse: true });
 UserSchema.index({ isVerified: 1 });
 UserSchema.index({ isActive: 1 });
 UserSchema.index({ createdAt: -1 });
+// referralCode index is already defined via @Prop({ unique: true, sparse: true })

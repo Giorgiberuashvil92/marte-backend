@@ -23,7 +23,7 @@ export class UsersController {
     @Query('role') role?: string,
     @Query('active') active?: string,
   ) {
-    const lim = Math.max(1, Math.min(parseInt(limit || '20'), 100));
+    const lim = Math.max(1, Math.min(parseInt(limit || '20'), 1000));
     const off = Math.max(0, parseInt(offset || '0'));
     const act = active === undefined ? undefined : active === 'true';
     const data = await this.users.list({

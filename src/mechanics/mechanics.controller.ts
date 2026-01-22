@@ -26,11 +26,13 @@ export class MechanicsController {
     @Query('q') q?: string,
     @Query('specialty') specialty?: string,
     @Query('location') location?: string,
+    @Query('ownerId') ownerId?: string,
+    @Query('status') status?: string,
   ) {
     // Debug log to verify routing
 
-    console.log('[MECH_CTRL] GET /mechanics', { q, specialty, location });
-    return this.mechanicsService.findAll({ q, specialty, location });
+    console.log('[MECH_CTRL] GET /mechanics', { q, specialty, location, ownerId, status });
+    return this.mechanicsService.findAll({ q, specialty, location, ownerId, status });
   }
 
   @Post()
@@ -249,5 +251,37 @@ export class MechanicsController {
   async remove(@Param('id') id: string) {
     console.log('[MECH_CTRL] DELETE /mechanics/:id', id);
     return this.mechanicsService.delete(id);
+  }
+
+  @Patch(':id/renew')
+  async renew(@Param('id') id: string) {
+    try {
+      const mechanic = await this.mechanicsService.renew(id);
+      return {
+        success: true,
+        message: 'ხელოსნის განცხადება წარმატებით განახლდა',
+        data: mechanic,
+      };
+    } catch (error) {
+      throw new BadRequestException(
+        error instanceof Error ? error.message : 'განახლება ვერ მოხერხდა',
+      );
+    }
+  }
+
+  @Patch(':id/upgrade-to-vip')
+  async upgradeToVip(@Param('id') id: string) {
+    try {
+      const mechanic = await this.mechanicsService.updateToVip(id, true);
+      return {
+        success: true,
+        message: 'ხელოსნის განცხადება წარმატებით გადაიყვანა VIP-ზე',
+        data: mechanic,
+      };
+    } catch (error) {
+      throw new BadRequestException(
+        error instanceof Error ? error.message : 'VIP-ზე გადაყვანა ვერ მოხერხდა',
+      );
+    }
   }
 }

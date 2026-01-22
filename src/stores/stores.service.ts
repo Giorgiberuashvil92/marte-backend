@@ -17,6 +17,11 @@ export class StoresService {
     const now = new Date();
     const nextPaymentDate = new Date(now);
     nextPaymentDate.setMonth(nextPaymentDate.getMonth() + 1);
+    // eslint-disable-next-line prettier/prettier
+    
+    // გამოვთვალოთ expiry date (1 თვე შექმნის თარიღიდან)
+    const expiryDate = new Date(now);
+    expiryDate.setMonth(expiryDate.getMonth() + 1);
 
     const storeData = {
       ...createStoreDto,
@@ -26,6 +31,8 @@ export class StoresService {
         : nextPaymentDate,
       paymentStatus: createStoreDto.paymentStatus || 'pending',
       totalPaid: createStoreDto.totalPaid || 0,
+      isFeatured: false,
+      expiryDate: expiryDate,
     };
     const createdStore = new this.storeModel(storeData);
     return createdStore.save();
@@ -128,5 +135,39 @@ export class StoresService {
       .filter((loc) => loc && loc.trim() !== '');
     // Return unique locations, sorted alphabetically
     return Array.from(new Set(locations)).sort();
+  }
+
+  async renew(id: string): Promise<Store> {
+    const store = await this.storeModel.findById(id).exec();
+    if (!store) {
+      throw new NotFoundException('მაღაზია ვერ მოიძებნა');
+    }
+
+    // განვაახლოთ expiry date (1 თვე ახლიდან)
+    const newExpiryDate = new Date();
+    newExpiryDate.setMonth(newExpiryDate.getMonth() + 1);
+
+    // ასევე განვაახლოთ nextPaymentDate
+    const newNextPaymentDate = new Date();
+    newNextPaymentDate.setMonth(newNextPaymentDate.getMonth() + 1);
+
+    const updatedStore = await this.storeModel
+      .findByIdAndUpdate(
+        id,
+        { 
+          expiryDate: newExpiryDate, 
+          nextPaymentDate: newNextPaymentDate,
+          paymentStatus: 'paid',
+          updatedAt: new Date() 
+        },
+        { new: true }
+      )
+      .exec();
+
+    if (!updatedStore) {
+      throw new NotFoundException('მაღაზია ვერ მოიძებნა');
+    }
+
+    return updatedStore;
   }
 }

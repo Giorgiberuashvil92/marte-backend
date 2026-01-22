@@ -239,6 +239,26 @@ export class StoresController {
     }
   }
 
+  @Patch(':id/renew')
+  async renew(@Param('id') id: string) {
+    try {
+      const result = await this.storesService.renew(id);
+      return {
+        success: true,
+        message: 'მაღაზია წარმატებით განახლდა',
+        data: result,
+      };
+    } catch (error) {
+      if (error instanceof NotFoundException) {
+        throw error;
+      }
+      throw new BadRequestException({
+        success: false,
+        message: error instanceof Error ? error.message : 'Unknown error',
+      });
+    }
+  }
+
   @Patch(':id')
   async update(
     @Param('id') id: string,

@@ -9,14 +9,19 @@ import {
   Query,
   BadRequestException,
   NotFoundException,
+  Request,
 } from '@nestjs/common';
 import { PartsService } from './parts.service';
 import { CreatePartDto } from './dto/create-part.dto';
 import { UpdatePartDto } from './dto/update-part.dto';
+import { EngagementService } from '../engagement/engagement.service';
 
 @Controller('parts')
 export class PartsController {
-  constructor(private readonly partsService: PartsService) {}
+  constructor(
+    private readonly partsService: PartsService,
+    private readonly engagementService: EngagementService,
+  ) {}
 
   @Post()
   async create(@Body() createPartDto: CreatePartDto) {
@@ -196,6 +201,89 @@ export class PartsController {
       throw new NotFoundException({
         success: false,
         message: errorMessage,
+      });
+    }
+  }
+
+  @Post(':partId/like')
+  async toggleLike(
+    @Param('partId') partId: string,
+    @Body() body: { userId: string },
+    @Request() req: any,
+  ) {
+    try {
+      // Verify part exists
+      await this.partsService.findOne(partId);
+      const userId =
+        body?.userId ||
+        (req.headers['x-user-id'] as string) ||
+        req.user?.id ||
+        req.user?.uid;
+      if (!userId) {
+        throw new BadRequestException('User ID is required');
+      }
+      const result = await this.engagementService.togglePartLike(
+        partId,
+        userId,
+      );
+      return {
+        success: true,
+        message: result.isLiked ? 'ნაწილი დაგულებულია' : 'დაგულება მოხსნილია',
+        data: result,
+      };
+    } catch (error) {
+      if (
+        error instanceof NotFoundException ||
+        error instanceof BadRequestException
+      ) {
+        throw error;
+      }
+      throw new NotFoundException({
+        success: false,
+        message: error instanceof Error ? error.message : 'Part not found',
+      });
+    }
+  }
+
+  @Get(':partId/stats')
+  async getPartStats(@Param('partId') partId: string) {
+    try {
+      await this.partsService.findOne(partId);
+      const stats = await this.engagementService.getPartStats(partId);
+      return {
+        success: true,
+        data: stats,
+      };
+    } catch (error) {
+      throw new NotFoundException({
+        success: false,
+        message: error instanceof Error ? error.message : 'Part not found',
+      });
+    }
+  }
+
+  @Get('likes/bulk')
+  async getPartsLikes(
+    @Query('partIds') partIds: string,
+    @Query('userId') userId?: string,
+  ) {
+    try {
+      const ids = partIds.split(',').filter((id) => id.trim());
+      if (ids.length === 0) {
+        throw new BadRequestException('Part IDs are required');
+      }
+      const likes = await this.engagementService.getPartsWithLikes(ids, userId);
+      return {
+        success: true,
+        data: likes,
+      };
+    } catch (error) {
+      if (error instanceof BadRequestException) {
+        throw error;
+      }
+      throw new BadRequestException({
+        success: false,
+        message: error instanceof Error ? error.message : 'Unknown error',
       });
     }
   }

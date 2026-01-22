@@ -27,7 +27,9 @@ export class DismantlersService {
       throw new Error('წლიდან არ შეიძლება იყოს უფრო დიდი ვიდრე წლამდე');
     }
 
-    console.log('✅ Year validation passed');
+
+    const expiryDate = new Date();
+    expiryDate.setMonth(expiryDate.getMonth() + 1);
 
     const newDismantler = new this.dismantlerModel({
       brand: createDismantlerDto.brand,
@@ -47,6 +49,7 @@ export class DismantlersService {
       views: 0,
       isFeatured: false,
       ownerId: createDismantlerDto.ownerId,
+      expiryDate: expiryDate,
     });
 
     try {
@@ -159,5 +162,30 @@ export class DismantlersService {
     if (!result) {
       throw new Error(`დაშლილები ID: ${id} ვერ მოიძებნა`);
     }
+  }
+
+  async renew(id: string): Promise<Dismantler> {
+    const dismantler = await this.dismantlerModel.findById(id).exec();
+    if (!dismantler) {
+      throw new Error(`დაშლილები ID: ${id} ვერ მოიძებნა`);
+    }
+
+    // განვაახლოთ expiry date (1 თვე ახლიდან)
+    const newExpiryDate = new Date();
+    newExpiryDate.setMonth(newExpiryDate.getMonth() + 1);
+
+    const updatedDismantler = await this.dismantlerModel
+      .findByIdAndUpdate(
+        id,
+        { expiryDate: newExpiryDate, updatedAt: new Date() },
+        { new: true }
+      )
+      .exec();
+
+    if (!updatedDismantler) {
+      throw new Error(`დაშლილები ID: ${id} ვერ მოიძებნა`);
+    }
+
+    return updatedDismantler;
   }
 }

@@ -12,7 +12,17 @@ export class AutoServicesService {
   ) {}
 
   async create(createServiceDto: CreateServiceDto): Promise<Service> {
-    const createdService = new this.serviceModel(createServiceDto);
+    // გამოვთვალოთ expiry date (1 თვე შექმნის თარიღიდან)
+    const expiryDate = new Date();
+    expiryDate.setMonth(expiryDate.getMonth() + 1);
+
+    const serviceData: any = {
+      ...createServiceDto,
+      isFeatured: createServiceDto.isFeatured || false,
+      expiryDate: expiryDate,
+    };
+
+    const createdService = new this.serviceModel(serviceData);
     return createdService.save();
   }
 
@@ -21,6 +31,7 @@ export class AutoServicesService {
     location?: string;
     isOpen?: boolean;
     status?: string;
+    ownerId?: string;
   }): Promise<Service[]> {
     const query: Record<string, any> = {};
 
@@ -39,6 +50,10 @@ export class AutoServicesService {
 
     if (filters?.status) {
       query.status = filters.status;
+    }
+
+    if (filters?.ownerId) {
+      query.ownerId = filters.ownerId;
     }
 
     return this.serviceModel.find(query).sort({ createdAt: -1 }).exec();
@@ -103,5 +118,30 @@ export class AutoServicesService {
       })
       .sort({ createdAt: -1 })
       .exec();
+  }
+
+  async renew(id: string): Promise<Service> {
+    const service = await this.serviceModel.findById(id).exec();
+    if (!service) {
+      throw new Error('სერვისი ვერ მოიძებნა');
+    }
+
+    // განვაახლოთ expiry date (1 თვე ახლიდან)
+    const newExpiryDate = new Date();
+    newExpiryDate.setMonth(newExpiryDate.getMonth() + 1);
+
+    const updatedService = await this.serviceModel
+      .findByIdAndUpdate(
+        id,
+        { expiryDate: newExpiryDate, updatedAt: new Date() },
+        { new: true },
+      )
+      .exec();
+
+    if (!updatedService) {
+      throw new Error('სერვისი ვერ მოიძებნა');
+    }
+
+    return updatedService;
   }
 }

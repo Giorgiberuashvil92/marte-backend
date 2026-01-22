@@ -5,7 +5,7 @@ export type LoyaltyDocument = HydratedDocument<Loyalty>;
 
 @Schema({ timestamps: true })
 export class Loyalty {
-  @Prop({ required: true, index: true })
+  @Prop({ required: true })
   userId: string;
 
   @Prop({ required: true, default: 0 })

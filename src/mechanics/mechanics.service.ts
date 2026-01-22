@@ -37,6 +37,8 @@ export class MechanicsService {
     q?: string;
     specialty?: string;
     location?: string;
+    ownerId?: string;
+    status?: string;
   }): Promise<Mechanic[]> {
     const filter: Record<string, unknown> = {};
     if (params?.q) {
@@ -52,6 +54,12 @@ export class MechanicsService {
     }
     if (params?.location) {
       (filter as any).location = { $regex: params.location, $options: 'i' };
+    }
+    if (params?.ownerId) {
+      (filter as any).ownerId = params.ownerId;
+    }
+    if (params?.status) {
+      (filter as any).status = params.status;
     }
     const docs = await this.mechanicModel
       .find(filter)
@@ -103,11 +111,21 @@ export class MechanicsService {
   }
 
   async create(
-    dto: Partial<Mechanic> & { firstName?: string; lastName?: string },
+    dto: Partial<Mechanic> & {
+      firstName?: string;
+      lastName?: string;
+      ownerId?: string;
+      isFeatured?: boolean;
+    },
   ): Promise<Mechanic> {
     const name =
       (dto.name || `${dto.firstName ?? ''} ${dto.lastName ?? ''}`).trim() ||
       'Mechanic';
+
+    // გამოვთვალოთ expiry date (1 თვე შექმნის თარიღიდან)
+    const expiryDate = new Date();
+    expiryDate.setMonth(expiryDate.getMonth() + 1);
+
     const doc = await this.mechanicModel.create({
       name,
       specialty: dto.specialty || 'მექანიკოსი',
@@ -121,6 +139,10 @@ export class MechanicsService {
       description: dto.description,
       phone: dto.phone,
       address: dto.address,
+      ownerId: dto.ownerId,
+      isFeatured: dto.isFeatured || false,
+      expiryDate: expiryDate,
+      status: 'pending',
     });
     return {
       id: String(doc._id),
@@ -197,5 +219,95 @@ export class MechanicsService {
   async delete(id: string): Promise<{ deleted: boolean }> {
     const res = await this.mechanicModel.findByIdAndDelete(id).lean();
     return { deleted: !!res };
+  }
+
+  async renew(id: string): Promise<Mechanic> {
+    const mechanic = await this.mechanicModel.findById(id).exec();
+    if (!mechanic) {
+      throw new Error('ხელოსანი ვერ მოიძებნა');
+    }
+
+    // განვაახლოთ expiry date (1 თვე ახლიდან)
+    const newExpiryDate = new Date();
+    newExpiryDate.setMonth(newExpiryDate.getMonth() + 1);
+
+    const updatedMechanic = await this.mechanicModel
+      .findByIdAndUpdate(
+        id,
+        { expiryDate: newExpiryDate, updatedAt: new Date() },
+        { new: true },
+      )
+      .exec();
+
+    if (!updatedMechanic) {
+      throw new Error('ხელოსანი ვერ მოიძებნა');
+    }
+
+    return {
+      id: String(updatedMechanic._id),
+      name: updatedMechanic.name,
+      specialty: updatedMechanic.specialty,
+      rating: updatedMechanic.rating ?? 0,
+      reviews: updatedMechanic.reviews ?? 0,
+      experience: updatedMechanic.experience ?? '-',
+      location: updatedMechanic.location ?? '-',
+      distanceKm: undefined,
+      priceGEL: undefined,
+      avatar: updatedMechanic.avatar,
+      isAvailable: updatedMechanic.isAvailable ?? true,
+      services: updatedMechanic.services ?? [],
+      description: updatedMechanic.description ?? '',
+      phone: updatedMechanic.phone,
+      address: updatedMechanic.address,
+      latitude: updatedMechanic.latitude,
+      longitude: updatedMechanic.longitude,
+    };
+  }
+
+  async updateToVip(id: string, isFeatured: boolean): Promise<Mechanic> {
+    const mechanic = await this.mechanicModel.findById(id).exec();
+    if (!mechanic) {
+      throw new Error('ხელოსანი ვერ მოიძებნა');
+    }
+
+    // განვაახლოთ expiry date (1 თვე ახლიდან)
+    const newExpiryDate = new Date();
+    newExpiryDate.setMonth(newExpiryDate.getMonth() + 1);
+
+    const updatedMechanic = await this.mechanicModel
+      .findByIdAndUpdate(
+        id,
+        {
+          isFeatured: isFeatured,
+          expiryDate: newExpiryDate,
+          updatedAt: new Date(),
+        },
+        { new: true },
+      )
+      .exec();
+
+    if (!updatedMechanic) {
+      throw new Error('ხელოსანი ვერ მოიძებნა');
+    }
+
+    return {
+      id: String(updatedMechanic._id),
+      name: updatedMechanic.name,
+      specialty: updatedMechanic.specialty,
+      rating: updatedMechanic.rating ?? 0,
+      reviews: updatedMechanic.reviews ?? 0,
+      experience: updatedMechanic.experience ?? '-',
+      location: updatedMechanic.location ?? '-',
+      distanceKm: undefined,
+      priceGEL: undefined,
+      avatar: updatedMechanic.avatar,
+      isAvailable: updatedMechanic.isAvailable ?? true,
+      services: updatedMechanic.services ?? [],
+      description: updatedMechanic.description ?? '',
+      phone: updatedMechanic.phone,
+      address: updatedMechanic.address,
+      latitude: updatedMechanic.latitude,
+      longitude: updatedMechanic.longitude,
+    };
   }
 }

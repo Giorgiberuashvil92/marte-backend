@@ -1,4 +1,9 @@
-import { Injectable, NestMiddleware } from '@nestjs/common';
+import {
+  Injectable,
+  NestMiddleware,
+  CanActivate,
+  ExecutionContext,
+} from '@nestjs/common';
 import { Request, Response, NextFunction } from 'express';
 
 interface AuthenticatedRequest extends Request {
@@ -31,5 +36,27 @@ export class AuthMiddleware implements NestMiddleware {
     }
 
     next();
+  }
+}
+
+@Injectable()
+export class AuthGuard implements CanActivate {
+  canActivate(context: ExecutionContext): boolean {
+    const request = context.switchToHttp().getRequest<AuthenticatedRequest>();
+    const userId = request.headers['x-user-id'] as string;
+
+    if (userId) {
+      request.user = {
+        id: userId,
+        uid: userId,
+      };
+      return true;
+    } else {
+      request.user = {
+        id: 'demo-user',
+        uid: 'demo-user',
+      };
+      return true;
+    }
   }
 }

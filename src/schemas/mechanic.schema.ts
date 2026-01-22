@@ -44,7 +44,24 @@ export class Mechanic {
 
   @Prop()
   address?: string;
+
+  @Prop()
+  ownerId?: string;
+
+  @Prop({ default: false })
+  isFeatured?: boolean; // VIP ხელოსანი
+
+  @Prop({ type: Date })
+  expiryDate?: Date; // განცხადების ვადის გასვლის თარიღი (1 თვე შექმნის თარიღიდან)
+
+  @Prop({ default: 'active' })
+  status?: string; // active, pending, expired
 }
 
 export type MechanicDocument = HydratedDocument<Mechanic>;
 export const MechanicSchema = SchemaFactory.createForClass(Mechanic);
+
+// Indexes for better performance
+MechanicSchema.index({ ownerId: 1 });
+MechanicSchema.index({ status: 1 });
+MechanicSchema.index({ isFeatured: 1 });

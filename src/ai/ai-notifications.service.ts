@@ -266,53 +266,22 @@ export class AINotificationsService {
 
   /**
    * გაგზავნე notification AI recommendations-ის საფუძველზე
+   * ⚠️ ეს notification არ უნდა იგზავნებოდეს request-ის owner-ს
+   * ამ notification-ს უნდა მიიღონ მხოლოდ მაღაზიები/დაშლილები
+   * (ეს უკვე ხდება sendRequestNotificationToRelevantStores-ში)
    */
   async sendAIRecommendationNotification(
     userId: string,
     request: any,
   ): Promise<void> {
-    try {
-      const recommendations = await this.aiService.recommendForPartsRequest({
-        vehicle: request.vehicle,
-        partName: request.partName,
-        location: request.location,
-      });
-
-      // ფილტრავს მაღალი confidence-ის მქონე recommendations
-      // Lowered threshold from 0.7 to 0.5 to catch more matches (brand + model = 0.7, brand only = 0.4)
-      const highConfidenceRecs = recommendations.filter(
-        (rec) => rec.confidence >= 0.5,
-      );
-
-      console.log(
-        `🤖 [AI-NOTIFY] Found ${recommendations.length} total recommendations, ${highConfidenceRecs.length} with confidence >= 0.5`,
-      );
-
-      if (highConfidenceRecs.length > 0) {
-        await this.notificationsService.sendPushToTargets(
-          [{ userId }],
-          {
-            title: '🤖 მომხმარებელს ჭირდება ნაწილი',
-            body: `${request.vehicle?.make || ''} ${request.vehicle?.model || ''}${request.vehicle?.year ? ' ' + request.vehicle?.year : ''} • ${request.partName} — ${highConfidenceRecs.length} ვარიანტი`,
-            data: {
-              type: 'ai_recommendations',
-              requestId: request._id?.toString(),
-              recommendationCount: highConfidenceRecs.length.toString(),
-              topRecommendations: JSON.stringify(
-                highConfidenceRecs.slice(0, 3),
-              ),
-              screen: 'AIRecommendations',
-            },
-            sound: 'default',
-            badge: 1,
-          },
-          'system',
-        );
-
-        console.log(`✅ [AI-NOTIFY] Sent AI recommendations to user ${userId}`);
-      }
-    } catch (error) {
-      console.error('❌ [AI-NOTIFY] Error sending AI recommendations:', error);
-    }
+    // ⚠️ ეს notification არ უნდა იგზავნებოდეს request-ის owner-ს
+    // AI recommendations notification-ები უნდა მიიღონ მხოლოდ მაღაზიები/დაშლილები
+    // რომლებიც შეესაბამება request-ს
+    // ეს უკვე ხდება sendRequestNotificationToRelevantStores-ში
+    // ამიტომ აქ არაფერი არ ვაკეთებთ
+    console.log(
+      `⚠️ [AI-NOTIFY] sendAIRecommendationNotification called but should not send to request owner. Request owner: ${userId}. Notifications to stores/dismantlers are handled by sendRequestNotificationToRelevantStores.`,
+    );
+    return;
   }
 }

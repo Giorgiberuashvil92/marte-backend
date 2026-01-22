@@ -122,18 +122,21 @@ export class ServicesController {
     @Query('location') location?: string,
     @Query('isOpen') isOpen?: string,
     @Query('status') status?: string,
+    @Query('ownerId') ownerId?: string,
   ) {
     const filters: {
       category?: string;
       location?: string;
       isOpen?: boolean;
       status?: string;
+      ownerId?: string;
     } = {};
 
     if (category) filters.category = category;
     if (location) filters.location = location;
     if (isOpen) filters.isOpen = isOpen === 'true';
     if (status) filters.status = status;
+    if (ownerId) filters.ownerId = ownerId;
 
     const services = await this.autoServicesService.findAll(filters);
 
@@ -181,18 +184,21 @@ export class ServicesController {
     @Query('location') location?: string,
     @Query('isOpen') isOpen?: string,
     @Query('status') status?: string,
+    @Query('ownerId') ownerId?: string,
   ) {
     const filters: {
       category?: string;
       location?: string;
       isOpen?: boolean;
       status?: string;
+      ownerId?: string;
     } = {};
 
     if (category) filters.category = category;
     if (location) filters.location = location;
     if (isOpen) filters.isOpen = isOpen === 'true';
     if (status) filters.status = status;
+    if (ownerId) filters.ownerId = ownerId;
 
     const services = await this.autoServicesService.findAll(filters);
     return services;
@@ -212,6 +218,23 @@ export class ServicesController {
         success: false,
         message:
           error instanceof Error ? error.message : 'სერვისი ვერ მოიძებნა',
+      });
+    }
+  }
+
+  @Patch(':id/renew')
+  async renewService(@Param('id') id: string) {
+    try {
+      const result = await this.autoServicesService.renew(id);
+      return {
+        success: true,
+        message: 'სერვისი წარმატებით განახლდა',
+        data: result,
+      };
+    } catch (error) {
+      throw new BadRequestException({
+        success: false,
+        message: error instanceof Error ? error.message : 'Unknown error',
       });
     }
   }

@@ -1,4 +1,4 @@
-import { IsString, IsNotEmpty } from 'class-validator';
+import { IsString, IsNotEmpty, IsOptional } from 'class-validator';
 
 export class VerifyOtpDto {
   @IsString()
@@ -8,4 +8,8 @@ export class VerifyOtpDto {
   @IsString()
   @IsNotEmpty()
   code: string;
+
+  @IsOptional()
+  @IsString()
+  referralCode?: string; // Optional referral code for new users
 }

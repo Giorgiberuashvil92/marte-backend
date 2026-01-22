@@ -98,4 +98,8 @@ export class CreateServiceDto {
   @IsOptional()
   @IsString()
   status?: string;
+
+  @IsOptional()
+  @IsBoolean()
+  isFeatured?: boolean;
 }

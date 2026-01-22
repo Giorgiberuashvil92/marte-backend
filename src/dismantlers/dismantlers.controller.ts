@@ -14,10 +14,14 @@ import {
 import { CreateDismantlerDto } from './dto/create-dismantler.dto';
 import { UpdateDismantlerDto } from './dto/update-dismantler.dto';
 import { DismantlersService } from './dismantlers.service';
+import { EngagementService } from '../engagement/engagement.service';
 
 @Controller('dismantlers')
 export class DismantlersController {
-  constructor(private readonly dismantlersService: DismantlersService) {}
+  constructor(
+    private readonly dismantlersService: DismantlersService,
+    private readonly engagementService: EngagementService,
+  ) {}
 
   @Post()
   async create(
@@ -127,6 +131,202 @@ export class DismantlersController {
     };
   }
 
+  // Engagement endpoints - must be before :id route
+  @Get(':dismantlerId/stats')
+  async getDismantlerStats(@Param('dismantlerId') dismantlerId: string) {
+    try {
+      // Verify dismantler exists
+      await this.dismantlersService.findOne(dismantlerId);
+      const stats =
+        await this.engagementService.getDismantlerStats(dismantlerId);
+      return {
+        success: true,
+        data: stats,
+      };
+    } catch (error) {
+      throw new NotFoundException({
+        success: false,
+        message:
+          error instanceof Error ? error.message : 'Dismantler not found',
+      });
+    }
+  }
+
+  @Get('likes/bulk')
+  async getDismantlersLikes(
+    @Query('dismantlerIds') dismantlerIds: string,
+    @Query('userId') userId?: string,
+  ) {
+    try {
+      const ids = dismantlerIds.split(',').filter((id) => id.trim());
+      if (ids.length === 0) {
+        throw new BadRequestException('Dismantler IDs are required');
+      }
+      const likes = await this.engagementService.getDismantlersWithLikes(
+        ids,
+        userId,
+      );
+      return {
+        success: true,
+        data: likes,
+      };
+    } catch (error) {
+      if (error instanceof BadRequestException) {
+        throw error;
+      }
+      throw new BadRequestException({
+        success: false,
+        message: error instanceof Error ? error.message : 'Unknown error',
+      });
+    }
+  }
+
+  @Get(':dismantlerId/engagement')
+  async getDismantlerEngagement(@Param('dismantlerId') dismantlerId: string) {
+    try {
+      // Verify dismantler exists
+      await this.dismantlersService.findOne(dismantlerId);
+      const engagement =
+        await this.engagementService.getDismantlerEngagement(dismantlerId);
+      return {
+        success: true,
+        data: engagement,
+      };
+    } catch (error) {
+      throw new NotFoundException({
+        success: false,
+        message:
+          error instanceof Error ? error.message : 'Dismantler not found',
+      });
+    }
+  }
+
+  @Post(':dismantlerId/like')
+  async toggleLike(
+    @Param('dismantlerId') dismantlerId: string,
+    @Body() body: { userId: string },
+    @Request() req: any,
+  ) {
+    try {
+      // Verify dismantler exists
+      await this.dismantlersService.findOne(dismantlerId);
+      const userId =
+        body?.userId ||
+        (req.headers['x-user-id'] as string) ||
+        req.user?.id ||
+        req.user?.uid;
+      if (!userId) {
+        throw new BadRequestException('User ID is required');
+      }
+      const result = await this.engagementService.toggleDismantlerLike(
+        dismantlerId,
+        userId,
+      );
+      return {
+        success: true,
+        message: result.isLiked
+          ? 'დაშლილები დაგულებულია'
+          : 'დაგულება მოხსნილია',
+        data: result,
+      };
+    } catch (error) {
+      if (
+        error instanceof NotFoundException ||
+        error instanceof BadRequestException
+      ) {
+        throw error;
+      }
+      throw new NotFoundException({
+        success: false,
+        message:
+          error instanceof Error ? error.message : 'Dismantler not found',
+      });
+    }
+  }
+
+  @Post(':dismantlerId/view')
+  async viewDismantler(
+    @Param('dismantlerId') dismantlerId: string,
+    @Body() body: { userId: string },
+    @Request() req: any,
+  ) {
+    try {
+      // Verify dismantler exists
+      await this.dismantlersService.findOne(dismantlerId);
+      const userId =
+        body?.userId ||
+        (req.headers['x-user-id'] as string) ||
+        req.user?.id ||
+        req.user?.uid;
+      if (!userId) {
+        throw new BadRequestException('User ID is required');
+      }
+      await this.engagementService.trackDismantlerAction(
+        dismantlerId,
+        userId,
+        'view',
+        true,
+      );
+      return {
+        success: true,
+        message: 'Dismantler view tracked successfully',
+      };
+    } catch (error) {
+      if (
+        error instanceof NotFoundException ||
+        error instanceof BadRequestException
+      ) {
+        throw error;
+      }
+      throw new NotFoundException({
+        success: false,
+        message:
+          error instanceof Error ? error.message : 'Dismantler not found',
+      });
+    }
+  }
+
+  @Post(':dismantlerId/call')
+  async callDismantler(
+    @Param('dismantlerId') dismantlerId: string,
+    @Body() body: { userId: string },
+    @Request() req: any,
+  ) {
+    try {
+      // Verify dismantler exists
+      await this.dismantlersService.findOne(dismantlerId);
+      const userId =
+        body?.userId ||
+        (req.headers['x-user-id'] as string) ||
+        req.user?.id ||
+        req.user?.uid;
+      if (!userId) {
+        throw new BadRequestException('User ID is required');
+      }
+      await this.engagementService.trackDismantlerAction(
+        dismantlerId,
+        userId,
+        'call',
+      );
+      return {
+        success: true,
+        message: 'Dismantler call tracked successfully',
+      };
+    } catch (error) {
+      if (
+        error instanceof NotFoundException ||
+        error instanceof BadRequestException
+      ) {
+        throw error;
+      }
+      throw new NotFoundException({
+        success: false,
+        message:
+          error instanceof Error ? error.message : 'Dismantler not found',
+      });
+    }
+  }
+
   @Get(':id')
   async findOne(@Param('id') id: string) {
     try {
@@ -154,6 +354,29 @@ export class DismantlersController {
         id,
         updateDismantlerDto,
       );
+      return {
+        success: true,
+        message: 'დაშლილების განცხადება წარმატებით განახლდა',
+        data: result,
+      };
+    } catch (error) {
+      if (error.message?.includes('ვერ მოიძებნა')) {
+        throw new NotFoundException({
+          success: false,
+          message: error.message as string,
+        });
+      }
+      throw new BadRequestException({
+        success: false,
+        message: error.message as string,
+      });
+    }
+  }
+
+  @Patch(':id/renew')
+  async renew(@Param('id') id: string) {
+    try {
+      const result = await this.dismantlersService.renew(id);
       return {
         success: true,
         message: 'დაშლილების განცხადება წარმატებით განახლდა',

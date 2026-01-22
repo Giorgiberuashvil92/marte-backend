@@ -65,6 +65,12 @@ export class Service {
   @Prop({ default: 'active' })
   status: string;
 
+  @Prop({ default: false })
+  isFeatured?: boolean; // VIP სერვისი
+
+  @Prop({ type: Date })
+  expiryDate?: Date; // განცხადების ვადის გასვლის თარიღი (1 თვე შექმნის თარიღიდან)
+
   @Prop({ default: Date.now })
   createdAt: Date;
 

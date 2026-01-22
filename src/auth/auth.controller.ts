@@ -20,11 +20,11 @@ export class AuthController {
   }
 
   @Post('verify')
-  verify(@Body() dto: VerifyOtpDto) {
+  async verify(@Body() dto: VerifyOtpDto) {
     console.log(
-      `🔐 [AUTH_CONTROLLER] Verify request received for OTP ID: ${dto.otpId}, Code: ${dto.code}`,
+      `🔐 [AUTH_CONTROLLER] Verify request received for OTP ID: ${dto.otpId}, Code: ${dto.code}, ReferralCode: ${dto.referralCode || 'none'}`,
     );
-    return this.authService.verify(dto.otpId, dto.code);
+    return this.authService.verify(dto.otpId, dto.code, dto.referralCode);
   }
 
   @Post('complete')

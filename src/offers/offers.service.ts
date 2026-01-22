@@ -2,6 +2,7 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import { Offer, OfferDocument } from '../schemas/offer.schema';
+import { Request, RequestDocument } from '../schemas/request.schema';
 import { NotificationsService } from '../notifications/notifications.service';
 import { OffersGateway } from './offers.gateway';
 
@@ -9,6 +10,8 @@ import { OffersGateway } from './offers.gateway';
 export class OffersService {
   constructor(
     @InjectModel(Offer.name) private readonly offerModel: Model<OfferDocument>,
+    @InjectModel(Request.name)
+    private readonly requestModel: Model<RequestDocument>,
     private readonly gateway?: OffersGateway,
     private readonly notificationsService?: NotificationsService,
   ) {}
@@ -43,34 +46,94 @@ export class OffersService {
     }
     // Push to request owner on new offer
     try {
-      if (this.notificationsService && saved?.userId) {
-        const storeName =
-          (saved as any).providerName || (saved as any).storeName || 'მაღაზია';
-        const price = (saved as any).priceGEL
-          ? `${(saved as any).priceGEL}₾`
-          : '';
-        const part = (saved as any).partName
-          ? ` • ${(saved as any).partName}`
-          : '';
-        await this.notificationsService.sendPushToTargets(
-          [{ userId: String(saved.userId) }],
-          {
-            title: '✨ ახალი შეთავაზება',
-            body: `${storeName}${price ? ' • ' + price : ''}${part}`,
-            data: {
-              type: 'new_offer',
-              screen: 'OfferDetails',
-              requestId: String(saved.reqId || ''),
-              offerId: String((saved as any).id || saved._id || ''),
-              storeName,
+      if (this.notificationsService && saved?.reqId) {
+        // მოვძებნოთ request-ის owner-ის userId
+        let requestOwnerUserId: string | null = null;
+        let finalRequestId = String(saved.reqId || '');
+        
+        try {
+          // სცადოთ _id-ით (ObjectId)
+          let request = await this.requestModel.findById(saved.reqId).lean();
+
+          // თუ ვერ ვიპოვეთ, სცადოთ id ველით (string)
+          if (!request) {
+            request = await this.requestModel
+              .findOne({ id: saved.reqId })
+              .lean();
+          }
+
+          if (request) {
+            requestOwnerUserId = String(request.userId || '');
+            // მოვიღოთ request-ის _id (ObjectId) როგორც string notification-ისთვის
+            finalRequestId = (request as any)._id 
+              ? String((request as any)._id) 
+              : (request as any).id || saved.reqId;
+            
+            console.log('✅ [OFFERS] Found request owner userId:', {
+              reqId: saved.reqId,
+              requestOwnerUserId,
+              requestUserId: request.userId,
+              finalRequestId,
+            });
+          } else {
+            console.warn('⚠️ [OFFERS] Request not found:', saved.reqId);
+          }
+        } catch (error) {
+          console.error('❌ [OFFERS] Error finding request:', error);
+        }
+
+        // თუ request-ის owner-ის userId ვერ ვიპოვეთ, გამოვიყენოთ saved.userId (fallback)
+        const targetUserId = requestOwnerUserId || saved?.userId;
+
+        if (targetUserId) {
+          const storeName =
+            (saved as any).providerName ||
+            (saved as any).storeName ||
+            'მაღაზია';
+          const price = (saved as any).priceGEL
+            ? `${(saved as any).priceGEL}₾`
+            : '';
+          const part = (saved as any).partName
+            ? ` • ${(saved as any).partName}`
+            : '';
+
+          console.log('📱 [OFFERS] Sending notification to request owner:', {
+            requestId: finalRequestId,
+            reqId: saved.reqId,
+            requestOwnerUserId,
+            targetUserId,
+            partnerId: saved.partnerId,
+            savedUserId: saved.userId,
+          });
+
+          await this.notificationsService.sendPushToTargets(
+            [{ userId: String(targetUserId) }],
+            {
+              title: '✨ ახალი შეთავაზება',
+              body: `${storeName}${price ? ' • ' + price : ''}${part}`,
+              data: {
+                type: 'new_offer',
+                screen: 'RequestDetails',
+                requestId: finalRequestId,
+                offerId: String((saved as any).id || saved._id || ''),
+                storeName,
+              },
+              sound: 'default',
+              badge: 1,
             },
-            sound: 'default',
-            badge: 1,
-          },
-          'offer',
-        );
+            'offer',
+          );
+        } else {
+          console.warn('⚠️ [OFFERS] No target userId found for notification:', {
+            reqId: saved.reqId,
+            savedUserId: saved.userId,
+            requestOwnerUserId,
+          });
+        }
       }
-    } catch {}
+    } catch (error) {
+      console.error('❌ [OFFERS] Error sending notification:', error);
+    }
     return saved;
   }
 

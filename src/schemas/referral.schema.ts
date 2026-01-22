@@ -5,7 +5,7 @@ export type ReferralDocument = HydratedDocument<Referral>;
 
 @Schema({ timestamps: true })
 export class Referral {
-  @Prop({ required: true, index: true })
+  @Prop({ required: true })
   inviteeId: string; // who used the code
 
   @Prop({ required: true, index: true })

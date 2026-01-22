@@ -36,6 +36,9 @@ import { SmsModule } from './sms/sms.module';
 import { FeedbackModule } from './feedback/feedback.module';
 import { EngagementModule } from './engagement/engagement.module';
 import { SpecialOffersModule } from './special-offers/special-offers.module';
+import { CarBrandsModule } from './car-brands/car-brands.module';
+import { ReferralsModule } from './referrals/referrals.module';
+import { AnalyticsModule } from './analytics/analytics.module';
 import databaseConfig from './config/database.config';
 
 // Schemas
@@ -86,6 +89,7 @@ import {
   LoginHistory,
   LoginHistorySchema,
 } from './schemas/login-history.schema';
+import { CarBrand, CarBrandSchema } from './schemas/car-brand.schema';
 
 @Module({
   imports: [
@@ -124,6 +128,7 @@ import {
       { name: Subscription.name, schema: SubscriptionSchema },
       { name: Payment.name, schema: PaymentSchema },
       { name: LoginHistory.name, schema: LoginHistorySchema },
+      { name: CarBrand.name, schema: CarBrandSchema },
     ]),
     GarageModule,
     AuthModule,
@@ -157,6 +162,9 @@ import {
     FeedbackModule,
     EngagementModule,
     SpecialOffersModule,
+    CarBrandsModule,
+    ReferralsModule,
+    AnalyticsModule,
   ],
   controllers: [AppController],
   providers: [AppService],

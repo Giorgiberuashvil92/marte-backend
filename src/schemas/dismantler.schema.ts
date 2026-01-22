@@ -49,6 +49,9 @@ export class Dismantler {
 
   @Prop({ required: true })
   ownerId: string;
+
+  @Prop({ type: Date })
+  expiryDate?: Date; // განცხადების ვადის გასვლის თარიღი (1 თვე შექმნის თარიღიდან)
 }
 
 export const DismantlerSchema = SchemaFactory.createForClass(Dismantler);

@@ -2,6 +2,7 @@ import { Injectable, BadRequestException } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import { User } from '../schemas/user.schema';
+import { Request } from '../schemas/request.schema';
 
 type ListParams = {
   q?: string;
@@ -15,6 +16,7 @@ type ListParams = {
 export class UsersService {
   constructor(
     @InjectModel(User.name) private readonly userModel: Model<User>,
+    @InjectModel(Request.name) private readonly requestModel: Model<Request>,
   ) {}
 
   async list(params: ListParams) {
@@ -27,7 +29,6 @@ export class UsersService {
         { firstName: { $regex: q, $options: 'i' } },
         { lastName: { $regex: q, $options: 'i' } },
         { id: { $regex: q, $options: 'i' } },
-        { idNumber: { $regex: q, $options: 'i' } },
       ];
     }
     if (params.role) filter.role = params.role;
@@ -43,19 +44,58 @@ export class UsersService {
       this.userModel.countDocuments(filter),
     ]);
 
-    const data = items.map((u: any) => ({
-      id: u.id,
-      phone: u.phone,
-      email: u.email,
-      firstName: u.firstName,
-      lastName: u.lastName,
-      idNumber: u.idNumber,
-      role: u.role,
-      isActive: u.isActive,
-      profileImage: u.profileImage,
-      createdAt: u.createdAt,
-      updatedAt: u.updatedAt,
-    }));
+    // მოვძებნოთ requests თითოეული user-ისთვის
+    const userIds = items.map((u: any) => String(u.id || '')).filter(Boolean);
+
+    // მოვძებნოთ ყველა requests, რომლებიც ეკუთვნის ამ users-ს
+    let allRequests: any[] = [];
+    if (userIds.length > 0) {
+      // ვიყენებთ $in operator-ს რომ ვიპოვოთ ყველა request, რომლის userId ემთხვევა users-ის id-ებს
+      allRequests = await this.requestModel
+        .find({ userId: { $in: userIds } })
+        .sort({ createdAt: -1 })
+        .lean();
+
+      // დებაგ: შევამოწმოთ რამდენი request-ი ვიპოვეთ
+      console.log(
+        `[UsersService] Found ${allRequests.length} requests for ${userIds.length} users`,
+      );
+    }
+
+    // შევქმნათ map userId -> requests (გამოვიყენოთ String() რომ დავრწმუნდეთ, რომ შედარება სწორად მუშაობს)
+    const requestsMap = new Map<string, any[]>();
+    allRequests.forEach((req: any) => {
+      const userId = String(req.userId || '').trim();
+      if (!userId) return; // თუ userId არ არსებობს, გამოვტოვოთ
+
+      if (!requestsMap.has(userId)) {
+        requestsMap.set(userId, []);
+      }
+      const requestId = req.id || (req._id ? String(req._id) : '');
+      const { _id, __v, ...requestData } = req;
+      requestsMap.get(userId)?.push({
+        ...requestData,
+        id: requestId,
+      });
+    });
+
+    const data = items.map((u: any) => {
+      const userId = String(u.id || '').trim();
+      return {
+        id: u.id,
+        phone: u.phone,
+        email: u.email,
+        firstName: u.firstName,
+        lastName: u.lastName,
+        idNumber: u.idNumber,
+        role: u.role,
+        isActive: u.isActive,
+        profileImage: u.profileImage,
+        requests: requestsMap.get(userId) || [],
+        createdAt: u.createdAt,
+        updatedAt: u.updatedAt,
+      };
+    });
 
     return { data, total, limit: params.limit, offset: params.offset };
   }
@@ -171,7 +211,8 @@ export class UsersService {
   }): Promise<Array<{ phone: string; firstName?: string; lastName?: string }>> {
     const queryFilter: any = {};
     if (filter?.role) queryFilter.role = filter.role;
-    if (typeof filter?.active === 'boolean') queryFilter.isActive = filter.active;
+    if (typeof filter?.active === 'boolean')
+      queryFilter.isActive = filter.active;
 
     const users = await this.userModel
       .find(queryFilter)

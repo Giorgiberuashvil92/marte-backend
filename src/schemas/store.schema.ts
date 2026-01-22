@@ -128,6 +128,12 @@ export class Store {
 
   @Prop()
   paymentPeriod?: string; // 'monthly', 'yearly'
+
+  @Prop({ default: false })
+  isFeatured?: boolean; // VIP მაღაზია
+
+  @Prop({ type: Date })
+  expiryDate?: Date; // განცხადების ვადის გასვლის თარიღი (1 თვე შექმნის თარიღიდან)
 }
 
 export const StoreSchema = SchemaFactory.createForClass(Store);

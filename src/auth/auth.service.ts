@@ -79,7 +79,7 @@ export class AuthService {
     }
   }
 
-  async verify(otpId: string, code: string) {
+  async verify(otpId: string, code: string, _referralCode?: string) {
     if (!otpId || !code) throw new BadRequestException('invalid_payload');
 
     const otp = await this.otpModel
@@ -95,6 +95,7 @@ export class AuthService {
 
     // upsert user
     let user = await this.userModel.findOne({ phone: otp.phone }).exec();
+    const isNewUser = !user;
 
     if (!user) {
       const userId = `usr_${Date.now()}`;
@@ -116,19 +117,22 @@ export class AuthService {
     await user.save();
 
     // Save login history (async, don't wait for it)
-    this.loginHistoryService
-      .createLoginHistory({
-        userId: user.id,
-        phone: user.phone,
-        email: user.email,
-        firstName: user.firstName,
-        status: 'success',
-      })
-      .catch((err) => {
-        console.error('Error saving login history:', err);
-      });
+    if (user) {
+      this.loginHistoryService
+        .createLoginHistory({
+          userId: user.id,
+          phone: user.phone,
+          email: user.email,
+          firstName: user.firstName,
+          status: 'success',
+        })
+        .catch((err) => {
+          console.error('Error saving login history:', err);
+        });
+    }
 
-    return { user, intent: 'login' };
+    // Return result - referral code will be applied by frontend after registration
+    return { user, intent: isNewUser ? 'register' : 'login' };
   }
 
   async complete(
