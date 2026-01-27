@@ -177,4 +177,75 @@ export class RequestsService {
     if (!res) throw new NotFoundException('request_not_found');
     return { success: true };
   }
+
+  async addResponse(requestId: string, responseData: any) {
+    const request = await this.requestModel.findById(requestId).exec();
+    if (!request) throw new NotFoundException('request_not_found');
+
+    const response = {
+      responderId: responseData.responderId,
+      responderName: responseData.responderName,
+      responderPhone: responseData.responderPhone,
+      responderEmail: responseData.responderEmail,
+      message: responseData.message,
+      price: responseData.price,
+      timestamp: Date.now(),
+    };
+
+    request.responses = request.responses || [];
+    request.responses.push(response as any);
+    request.set('updatedAt', Date.now());
+
+    return await request.save();
+  }
+
+  async addMessage(requestId: string, messageData: any) {
+    const request = await this.requestModel.findById(requestId).exec();
+    if (!request) throw new NotFoundException('request_not_found');
+
+    const message = {
+      responderId: messageData.responderId,
+      responderName: messageData.responderName,
+      responderPhone: messageData.responderPhone,
+      responderEmail: messageData.responderEmail,
+      message: messageData.message,
+      price: messageData.price,
+      timestamp: Date.now(),
+    };
+
+    request.messages = request.messages || [];
+    request.messages.push(message as any);
+    request.set('updatedAt', Date.now());
+
+    return await request.save();
+  }
+
+  async getResponses(requestId: string) {
+    const request = await this.requestModel.findById(requestId).exec();
+    if (!request) throw new NotFoundException('request_not_found');
+    return request.responses || [];
+  }
+
+  async getMessages(requestId: string) {
+    const request = await this.requestModel.findById(requestId).exec();
+    if (!request) throw new NotFoundException('request_not_found');
+    return request.messages || [];
+  }
+
+  async getOffers(requestId: string) {
+    // Verify request exists
+    const request = await this.requestModel.findById(requestId).exec();
+    if (!request) throw new NotFoundException('request_not_found');
+
+    // Get offers for this request
+    const offers = await this.offerModel
+      .find({ reqId: requestId })
+      .sort({ createdAt: -1 })
+      .lean();
+
+    return offers.map((offer: any) => ({
+      ...offer,
+      id: offer.id || (offer._id ? String(offer._id) : ''),
+    }));
+  }
 }

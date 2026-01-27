@@ -74,4 +74,9 @@ export class ReferralsController {
       offset,
     );
   }
+
+  @Get('analysis')
+  async getAllReferralsAnalysis() {
+    return await this.referralsService.getAllReferralsAnalysis();
+  }
 }

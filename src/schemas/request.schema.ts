@@ -17,6 +17,33 @@ export class Vehicle {
 
 export const VehicleSchema = SchemaFactory.createForClass(Vehicle);
 
+@Schema({ _id: false })
+export class RequestResponse {
+  @Prop({ required: true })
+  responderId: string;
+
+  @Prop({ required: true })
+  responderName: string;
+
+  @Prop()
+  responderPhone?: string;
+
+  @Prop()
+  responderEmail?: string;
+
+  @Prop({ required: true })
+  message: string;
+
+  @Prop()
+  price?: number;
+
+  @Prop({ type: Number, default: () => Date.now() })
+  timestamp: number;
+}
+
+export const RequestResponseSchema =
+  SchemaFactory.createForClass(RequestResponse);
+
 @Schema({ timestamps: true })
 export class Request {
   @Prop({ required: true })
@@ -60,6 +87,12 @@ export class Request {
     required: false,
   })
   service?: string;
+
+  @Prop({ type: [RequestResponseSchema], default: [] })
+  responses?: RequestResponse[];
+
+  @Prop({ type: [RequestResponseSchema], default: [] })
+  messages?: RequestResponse[];
 }
 
 export const RequestSchema = SchemaFactory.createForClass(Request);

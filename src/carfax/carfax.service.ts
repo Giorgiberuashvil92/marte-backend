@@ -684,4 +684,126 @@ export class CarFAXService {
       );
     }
   }
+
+  /**
+   * აბრუნებს ყველა იუზერს, რომლებიც აკეთებენ CarFAX მოთხოვნებს
+   * მათი სტატისტიკით
+   */
+  async getAllCarFAXUsers(): Promise<
+    Array<{
+      userId: string;
+      totalReports: number;
+      usage: {
+        totalLimit: number;
+        used: number;
+        remaining: number;
+      };
+      firstReportDate?: Date;
+      lastReportDate?: Date;
+    }>
+  > {
+    try {
+      this.logger.log('CarFAX მომხმარებლების სიის მოთხოვნა');
+
+      // ვიპოვოთ ყველა უნიკალური userId CarFAXReport collection-იდან
+      const uniqueUserIds = await this.carfaxReportModel
+        .distinct('userId')
+        .exec();
+
+      this.logger.log(
+        `ნაპოვნია ${uniqueUserIds.length} უნიკალური მომხმარებელი CarFAX report-ებით`,
+      );
+
+      // ვიპოვოთ ყველა მომხმარებელი CarFAXUsage collection-იდანაც
+      const usageUserIds = await this.carfaxUsageModel
+        .distinct('userId')
+        .exec();
+
+      // გავაერთიანოთ ორივე სია
+      const allUserIds = [
+        ...new Set([...uniqueUserIds, ...usageUserIds]),
+      ] as string[];
+
+      this.logger.log(
+        `სულ ${allUserIds.length} უნიკალური მომხმარებელი CarFAX-თან დაკავშირებით`,
+      );
+
+      // ვაგროვოთ სტატისტიკა თითოეული მომხმარებლისთვის
+      const usersStats = await Promise.all(
+        allUserIds.map(async (userId) => {
+          // report-ების რაოდენობა
+          const totalReports = await this.carfaxReportModel
+            .countDocuments({ userId })
+            .exec();
+
+          // პირველი და ბოლო report-ის თარიღები
+          const firstReport = await this.carfaxReportModel
+            .findOne({ userId })
+            .sort({ createdAt: 1 })
+            .select('createdAt')
+            .exec();
+
+          const lastReport = await this.carfaxReportModel
+            .findOne({ userId })
+            .sort({ createdAt: -1 })
+            .select('createdAt')
+            .exec();
+
+          // გამოყენების ინფორმაცია
+          let usage = {
+            totalLimit: 5,
+            used: 0,
+            remaining: 5,
+          };
+
+          try {
+            const usageData = await this.carfaxUsageModel
+              .findOne({ userId })
+              .exec();
+            if (usageData) {
+              usage = {
+                totalLimit: usageData.totalLimit,
+                used: usageData.used,
+                remaining: usageData.totalLimit - usageData.used,
+              };
+            }
+          } catch (error) {
+            this.logger.warn(
+              `CarFAX usage-ის მიღების შეცდომა მომხმარებლისთვის: ${userId}`,
+            );
+          }
+
+          return {
+            userId,
+            totalReports,
+            usage,
+            firstReportDate: firstReport?.createdAt,
+            lastReportDate: lastReport?.createdAt,
+          };
+        }),
+      );
+
+      // დავალაგოთ ბოლო report-ის თარიღის მიხედვით (ახლები ზედა)
+      usersStats.sort((a, b) => {
+        const dateA = a.lastReportDate?.getTime() || 0;
+        const dateB = b.lastReportDate?.getTime() || 0;
+        return dateB - dateA;
+      });
+
+      this.logger.log(
+        `CarFAX მომხმარებლების სია წარმატებით მოიძებნა: ${usersStats.length} მომხმარებელი`,
+      );
+
+      return usersStats;
+    } catch (error) {
+      this.logger.error(
+        'CarFAX მომხმარებლების სიის მიღების შეცდომა',
+        error,
+      );
+      throw new HttpException(
+        'CarFAX მომხმარებლების სიის მიღებისას მოხდა შეცდომა',
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
+  }
 }

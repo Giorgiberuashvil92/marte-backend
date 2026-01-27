@@ -42,4 +42,32 @@ export class RequestsController {
   remove(@Param('id') id: string) {
     return this.requestsService.remove(id);
   }
+
+  @Post(':requestId/responses')
+  addResponse(
+    @Param('requestId') requestId: string,
+    @Body() responseData: any,
+  ) {
+    return this.requestsService.addResponse(requestId, responseData);
+  }
+
+  @Post(':requestId/messages')
+  addMessage(@Param('requestId') requestId: string, @Body() messageData: any) {
+    return this.requestsService.addMessage(requestId, messageData);
+  }
+
+  @Get(':requestId/responses')
+  getResponses(@Param('requestId') requestId: string) {
+    return this.requestsService.getResponses(requestId);
+  }
+
+  @Get(':requestId/messages')
+  getMessages(@Param('requestId') requestId: string) {
+    return this.requestsService.getMessages(requestId);
+  }
+
+  @Get(':requestId/offers')
+  getOffers(@Param('requestId') requestId: string) {
+    return this.requestsService.getOffers(requestId);
+  }
 }

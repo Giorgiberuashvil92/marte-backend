@@ -98,6 +98,11 @@ export class CarFAXController {
     return await this.carfaxService.getCarFAXStats(userId);
   }
 
+  @Get('users')
+  async getAllCarFAXUsers() {
+    return await this.carfaxService.getAllCarFAXUsers();
+  }
+
   @Get('health')
   healthCheck() {
     return {

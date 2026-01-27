@@ -607,4 +607,163 @@ export class ReferralsService {
       hasMore,
     };
   }
+
+  /**
+   * რეფერალების სრული ანალიზი - ყველა რეფერალის დეტალური ინფორმაცია
+   */
+  async getAllReferralsAnalysis(): Promise<{
+    summary: {
+      totalReferrals: number;
+      totalInviters: number;
+      totalInvitees: number;
+      subscriptionsEnabled: number;
+      rewardsGranted: number;
+      pendingRewards: number;
+    };
+    referrals: Array<{
+      _id: string;
+      inviteeId: string;
+      inviterId: string;
+      appliedAt: number;
+      subscriptionEnabled: boolean;
+      rewardsGranted: boolean;
+      firstBookingAt?: number;
+      createdAt: Date;
+      updatedAt: Date;
+      inviteeName?: string;
+      inviterName?: string;
+      inviterReferralCode?: string;
+    }>;
+    topInviters: Array<{
+      inviterId: string;
+      inviterName?: string;
+      referralCount: number;
+      subscriptionsEnabled: number;
+      rewardsGranted: number;
+    }>;
+  }> {
+    try {
+      // ყველა რეფერალის მოტანა
+      const allReferrals = await this.referralModel
+        .find({})
+        .sort({ createdAt: -1 })
+        .exec();
+
+      // უნიკალური inviter-ების რაოდენობა
+      const uniqueInviters = new Set(allReferrals.map((r) => r.inviterId)).size;
+
+      // უნიკალური invitee-ების რაოდენობა
+      const uniqueInvitees = new Set(allReferrals.map((r) => r.inviteeId)).size;
+
+      // subscription enabled-ების რაოდენობა
+      const subscriptionsEnabled = allReferrals.filter(
+        (r) => r.subscriptionEnabled,
+      ).length;
+
+      // rewards granted-ების რაოდენობა
+      const rewardsGranted = allReferrals.filter(
+        (r) => r.rewardsGranted,
+      ).length;
+
+      // pending rewards (subscription enabled მაგრამ rewards არ არის granted)
+      const pendingRewards = allReferrals.filter(
+        (r) => r.subscriptionEnabled && !r.rewardsGranted,
+      ).length;
+
+      // ვიპოვოთ ყველა userId რომელიც გვჭირდება
+      const allUserIds = new Set<string>();
+      allReferrals.forEach((r) => {
+        allUserIds.add(r.inviteeId);
+        allUserIds.add(r.inviterId);
+      });
+
+      // ვიპოვოთ იუზერების ინფორმაცია
+      const users = await this.userModel
+        .find({ id: { $in: Array.from(allUserIds) } })
+        .select('id firstName lastName referralCode')
+        .exec();
+
+      const userMap = new Map<
+        string,
+        { name: string; referralCode?: string }
+      >();
+      users.forEach((user) => {
+        userMap.set(user.id, {
+          name:
+            `${user.firstName || ''} ${user.lastName || ''}`.trim() || user.id,
+          referralCode: user.referralCode,
+        });
+      });
+
+      // დეტალური რეფერალების სია
+      const referralsDetails = allReferrals.map((ref) => {
+        const refDoc = ref as any; // mongoose document with timestamps
+        return {
+          _id: ref._id.toString(),
+          inviteeId: ref.inviteeId,
+          inviterId: ref.inviterId,
+          appliedAt: ref.appliedAt,
+          subscriptionEnabled: ref.subscriptionEnabled,
+          rewardsGranted: ref.rewardsGranted,
+          firstBookingAt: ref.firstBookingAt,
+          createdAt: refDoc.createdAt as Date,
+          updatedAt: refDoc.updatedAt as Date,
+          inviteeName: userMap.get(ref.inviteeId)?.name || ref.inviteeId,
+          inviterName: userMap.get(ref.inviterId)?.name || ref.inviterId,
+          inviterReferralCode: userMap.get(ref.inviterId)?.referralCode,
+        };
+      });
+
+      // Top inviters (რომლებსაც ყველაზე მეტი რეფერალი აქვთ)
+      const inviterStats = new Map<
+        string,
+        {
+          count: number;
+          subscriptionsEnabled: number;
+          rewardsGranted: number;
+        }
+      >();
+
+      allReferrals.forEach((ref) => {
+        const stats = inviterStats.get(ref.inviterId) || {
+          count: 0,
+          subscriptionsEnabled: 0,
+          rewardsGranted: 0,
+        };
+        stats.count++;
+        if (ref.subscriptionEnabled) stats.subscriptionsEnabled++;
+        if (ref.rewardsGranted) stats.rewardsGranted++;
+        inviterStats.set(ref.inviterId, stats);
+      });
+
+      const topInviters = Array.from(inviterStats.entries())
+        .map(([inviterId, stats]) => {
+          const userInfo = userMap.get(inviterId);
+          return {
+            inviterId,
+            inviterName: userInfo?.name || inviterId,
+            referralCount: stats.count,
+            subscriptionsEnabled: stats.subscriptionsEnabled,
+            rewardsGranted: stats.rewardsGranted,
+          };
+        })
+        .sort((a, b) => b.referralCount - a.referralCount);
+
+      return {
+        summary: {
+          totalReferrals: allReferrals.length,
+          totalInviters: uniqueInviters,
+          totalInvitees: uniqueInvitees,
+          subscriptionsEnabled,
+          rewardsGranted,
+          pendingRewards,
+        },
+        referrals: referralsDetails,
+        topInviters,
+      };
+    } catch (error) {
+      console.error('❌ Error in getAllReferralsAnalysis:', error);
+      throw new BadRequestException('რეფერალების ანალიზისას მოხდა შეცდომა');
+    }
+  }
 }
