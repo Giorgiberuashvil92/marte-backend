@@ -1,4 +1,13 @@
-import { Controller, Get, Post, Param, Logger } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Post,
+  Param,
+  Body,
+  Logger,
+  HttpException,
+  HttpStatus,
+} from '@nestjs/common';
 import { SubscriptionsService } from './subscriptions.service';
 
 @Controller('subscriptions')
@@ -60,6 +69,61 @@ export class SubscriptionsController {
         success: false,
         message: 'Failed to update subscription token',
         error: error instanceof Error ? error.message : 'Unknown error',
+      };
+    }
+  }
+
+  /**
+   * Premium პაკეტის ხელით მინიჭება phone number-ით
+   * POST /subscriptions/grant-premium
+   * Body: { phone: string, period?: 'monthly' | 'yearly' | 'lifetime' }
+   */
+  @Post('grant-premium')
+  async grantPremiumByPhone(@Body() body: { phone: string; period?: 'monthly' | 'yearly' | 'lifetime' }) {
+    try {
+      if (!body.phone || body.phone.trim().length === 0) {
+        return {
+          success: false,
+          message: 'Phone number აუცილებელია',
+        };
+      }
+
+      this.logger.log(`🎁 Premium პაკეტის მინიჭება phone: ${body.phone}`);
+
+      const subscription = await this.subscriptionsService.grantPremiumByPhone(
+        body.phone.trim(),
+        body.period || 'monthly',
+      );
+
+      this.logger.log(`✅ Premium პაკეტი წარმატებით მიენიჭა phone: ${body.phone}`);
+
+      return {
+        success: true,
+        message: 'Premium პაკეტი წარმატებით მიენიჭა',
+        data: {
+          subscriptionId: String(subscription._id),
+          userId: subscription.userId,
+          planId: subscription.planId,
+          planName: subscription.planName,
+          period: subscription.period,
+          status: subscription.status,
+        },
+      };
+    } catch (error) {
+      this.logger.error('❌ Premium პაკეტის მინიჭების შეცდომა:', error);
+
+      if (error instanceof HttpException) {
+        return {
+          success: false,
+          message: error.message,
+          statusCode: error.getStatus(),
+        };
+      }
+
+      return {
+        success: false,
+        message: 'Premium პაკეტის მინიჭებისას მოხდა შეცდომა',
+        error: error instanceof Error ? error.message : 'უცნობი შეცდომა',
       };
     }
   }

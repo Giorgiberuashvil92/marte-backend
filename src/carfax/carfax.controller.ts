@@ -112,4 +112,84 @@ export class CarFAXController {
       message: 'CarFAX სერვისი მუშაობს',
     };
   }
+
+  /**
+   * VIN-ის მიღება და რეპორტის ფაილად დაბრუნება
+   * POST /carfax/report-file
+   * Body: { vin: string, format?: 'pdf' | 'html' }
+   */
+  @Post('report-file')
+  async getCarFAXReportAsFile(
+    @Request() req: any,
+    @Body() body: { vin: string; format?: 'pdf' | 'html' },
+    @Res() res: Response,
+  ) {
+    const userId =
+      (req.headers as Record<string, string>)['x-user-id'] || 'admin-user';
+    const format = body.format || 'pdf';
+
+    if (!body.vin || body.vin.trim().length === 0) {
+      throw new HttpException('VIN კოდი აუცილებელია', HttpStatus.BAD_REQUEST);
+    }
+
+    try {
+      // მივიღოთ CarFAX რეპორტი
+      const report = await this.carfaxService.getCarFAXReport(userId, {
+        vin: body.vin.trim().toUpperCase(),
+      });
+
+      if (!report.success || !report.data) {
+        throw new HttpException(
+          'CarFAX რეპორტის მიღება ვერ მოხერხდა',
+          HttpStatus.NOT_FOUND,
+        );
+      }
+
+      // HTML კონტენტის მიღება
+      const htmlContent =
+        report.data.reportData?.htmlContent ||
+        report.data.reportData?.content ||
+        '';
+
+      if (!htmlContent) {
+        throw new HttpException(
+          'HTML კონტენტი ვერ მოიძებნა',
+          HttpStatus.NOT_FOUND,
+        );
+      }
+
+      const fileName = `CarFAX_Report_${body.vin}_${Date.now()}`;
+
+      if (format === 'html') {
+        // HTML ფაილის დაბრუნება
+        res.setHeader('Content-Type', 'text/html; charset=utf-8');
+        res.setHeader(
+          'Content-Disposition',
+          `attachment; filename="${fileName}.html"`,
+        );
+        res.send(htmlContent);
+      } else {
+        // PDF ფაილის გენერაცია და დაბრუნება
+        const pdfBuffer = await this.carfaxService.htmlToPdf(
+          htmlContent,
+          'https://cai.autoimports.ge/',
+        );
+
+        res.setHeader('Content-Type', 'application/pdf');
+        res.setHeader(
+          'Content-Disposition',
+          `attachment; filename="${fileName}.pdf"`,
+        );
+        res.end(pdfBuffer);
+      }
+    } catch (error) {
+      if (error instanceof HttpException) {
+        throw error;
+      }
+      throw new HttpException(
+        `რეპორტის მიღებისას მოხდა შეცდომა: ${error instanceof Error ? error.message : 'უცნობი შეცდომა'}`,
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
+  }
 }

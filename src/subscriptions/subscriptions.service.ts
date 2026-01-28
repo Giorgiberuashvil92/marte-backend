@@ -1,10 +1,11 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, HttpException, HttpStatus } from '@nestjs/common';
 import { InjectModel, InjectConnection } from '@nestjs/mongoose';
 import { Model, Connection } from 'mongoose';
 import {
   Subscription,
   SubscriptionDocument,
 } from '../schemas/subscription.schema';
+import { User, UserDocument } from '../schemas/user.schema';
 import { NotificationsService } from '../notifications/notifications.service';
 
 @Injectable()
@@ -14,6 +15,8 @@ export class SubscriptionsService {
   constructor(
     @InjectModel(Subscription.name)
     private subscriptionModel: Model<SubscriptionDocument>,
+    @InjectModel(User.name)
+    private userModel: Model<UserDocument>,
     @InjectConnection()
     private connection: Connection,
     private notificationsService: NotificationsService,
@@ -648,6 +651,154 @@ export class SubscriptionsService {
         error,
       );
       throw error;
+    }
+  }
+
+  /**
+   * Premium პაკეტის ხელით მინიჭება phone number-ით
+   */
+  async grantPremiumByPhone(
+    phone: string,
+    period: 'monthly' | 'yearly' | 'lifetime' = 'monthly',
+  ): Promise<SubscriptionDocument> {
+    try {
+      this.logger.log(`🎁 Premium პაკეტის მინიჭება phone: ${phone}`);
+
+      // ვიპოვოთ user phone number-ით
+      const user = await this.userModel.findOne({ phone }).exec();
+
+      if (!user) {
+        throw new HttpException(
+          `მომხმარებელი ვერ მოიძებნა phone: ${phone}`,
+          HttpStatus.NOT_FOUND,
+        );
+      }
+
+      this.logger.log(`✅ მომხმარებელი ნაპოვნია: ${user.id} (${user.phone})`);
+
+      // შევამოწმოთ არსებობს თუ არა active subscription
+      const existingSubscription = await this.subscriptionModel
+        .findOne({ userId: user.id, status: 'active' })
+        .exec();
+
+      if (existingSubscription) {
+        // თუ არსებობს, განვაახლოთ premium-ად
+        this.logger.log(
+          `🔄 არსებული subscription-ის განახლება premium-ად`,
+        );
+
+        existingSubscription.planId = 'premium';
+        existingSubscription.planName = 'პრემიუმ პაკეტი';
+        existingSubscription.planPrice = 0; // ხელით მინიჭებული
+        existingSubscription.period = period;
+        existingSubscription.status = 'active';
+        existingSubscription.startDate = new Date();
+        existingSubscription.nextBillingDate =
+          period === 'lifetime'
+            ? undefined
+            : this.calculateNextBillingDate(period, new Date());
+        existingSubscription.paymentMethod = 'manual';
+        existingSubscription.updatedAt = new Date();
+
+        const updated = await existingSubscription.save();
+
+        // გავაგზავნოთ notification
+        try {
+          await this.notificationsService.sendPushToUsers(
+            [user.id],
+            {
+              title: '🎉 პრემიუმ პაკეტი აქტივირებულია!',
+              body: `თქვენი პრემიუმ პაკეტი წარმატებით აქტივირდა. გაიარეთ პრემიუმ ფუნქციები!`,
+              data: {
+                type: 'subscription_activated',
+                subscriptionId: String(updated._id),
+                planId: 'premium',
+                planName: 'პრემიუმ პაკეტი',
+                screen: 'Premium',
+                action: 'openPremiumModal',
+              },
+              sound: 'default',
+              badge: 1,
+            },
+            'system',
+          );
+        } catch (notificationError) {
+          this.logger.warn('Notification-ის გაგზავნა ვერ მოხერხდა');
+        }
+
+        this.logger.log(`✅ Subscription განახლებულია premium-ად`);
+        return updated;
+      }
+
+      // ახალი premium subscription-ის შექმნა
+      const subscriptionData = {
+        userId: user.id,
+        planId: 'premium',
+        planName: 'პრემიუმ პაკეტი',
+        planPrice: 0, // ხელით მინიჭებული
+        currency: 'GEL',
+        period: period,
+        status: 'active',
+        startDate: new Date(),
+        nextBillingDate:
+          period === 'lifetime'
+            ? undefined
+            : this.calculateNextBillingDate(period, new Date()),
+        paymentMethod: 'manual',
+        totalPaid: 0,
+        billingCycles: 0,
+        carfaxRequestsUsed: 0,
+      };
+
+      const subscription = new this.subscriptionModel(subscriptionData);
+      const savedSubscription = await subscription.save();
+
+      this.logger.log(
+        `✅ Premium subscription შეიქმნა: ${String(savedSubscription._id)}`,
+      );
+
+      // გავაგზავნოთ push notification
+      try {
+        await this.notificationsService.sendPushToUsers(
+          [user.id],
+          {
+            title: '🎉 პრემიუმ პაკეტი აქტივირებულია!',
+            body: `თქვენი პრემიუმ პაკეტი წარმატებით აქტივირდა. გაიარეთ პრემიუმ ფუნქციები!`,
+            data: {
+              type: 'subscription_activated',
+              subscriptionId: String(savedSubscription._id),
+              planId: 'premium',
+              planName: 'პრემიუმ პაკეტი',
+              screen: 'Premium',
+              action: 'openPremiumModal',
+            },
+            sound: 'default',
+            badge: 1,
+          },
+          'system',
+        );
+        this.logger.log(
+          `✅ Push notification გაგზავნილია user-ისთვის: ${user.id}`,
+        );
+      } catch (notificationError) {
+        this.logger.warn(
+          `⚠️ Push notification-ის გაგზავნა ვერ მოხერხდა:`,
+          notificationError,
+        );
+      }
+
+      return savedSubscription;
+    } catch (error) {
+      this.logger.error('❌ Premium პაკეტის მინიჭების შეცდომა:', error);
+
+      if (error instanceof HttpException) {
+        throw error;
+      }
+
+      throw new HttpException(
+        `Premium პაკეტის მინიჭებისას მოხდა შეცდომა: ${error instanceof Error ? error.message : 'უცნობი შეცდომა'}`,
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
     }
   }
 }

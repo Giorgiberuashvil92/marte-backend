@@ -508,7 +508,308 @@ export class ReferralsService {
   }
 
   /**
+   * Get all users who used a specific referral code
+   */
+  async getReferralCodeUsers(referralCode: string): Promise<{
+    inviterId: string;
+    inviterName: string;
+    users: Array<{
+      userId: string;
+      name: string;
+      appliedAt: number;
+      subscriptionEnabled: boolean;
+      rewardsGranted: boolean;
+      firstBookingAt?: number;
+    }>;
+  }> {
+    const trimmedCode = referralCode.trim().toUpperCase();
+
+    // Find the inviter by referral code
+    const inviter = await this.userModel
+      .findOne({ referralCode: trimmedCode })
+      .exec();
+
+    if (!inviter) {
+      // Try case-insensitive search
+      const inviterCaseInsensitive = await this.userModel
+        .findOne({
+          $expr: {
+            $eq: [{ $toUpper: '$referralCode' }, trimmedCode],
+          },
+        })
+        .exec();
+
+      if (!inviterCaseInsensitive) {
+        throw new NotFoundException('Referral code not found');
+      }
+
+      // Find all referrals for this inviter
+      const referrals = await this.referralModel
+        .find({ inviterId: inviterCaseInsensitive.id })
+        .sort({ appliedAt: -1 })
+        .exec();
+
+      // Get user information for all invitees
+      const inviteeIds = referrals.map((r) => r.inviteeId);
+      const users = await this.userModel
+        .find({ id: { $in: inviteeIds } })
+        .select('id firstName lastName')
+        .exec();
+
+      const userMap = new Map<string, { name: string }>();
+      users.forEach((user) => {
+        userMap.set(user.id, {
+          name:
+            `${user.firstName || ''} ${user.lastName || ''}`.trim() ||
+            `მომხმარებელი ${user.id.slice(-4)}`,
+        });
+      });
+
+      const usersList = referrals.map((ref) => {
+        const userInfo = userMap.get(ref.inviteeId);
+        return {
+          userId: ref.inviteeId,
+          name: userInfo?.name || ref.inviteeId,
+          appliedAt: ref.appliedAt,
+          subscriptionEnabled: ref.subscriptionEnabled,
+          rewardsGranted: ref.rewardsGranted,
+          firstBookingAt: ref.firstBookingAt,
+        };
+      });
+
+      return {
+        inviterId: inviterCaseInsensitive.id,
+        inviterName:
+          `${inviterCaseInsensitive.firstName || ''} ${inviterCaseInsensitive.lastName || ''}`.trim() ||
+          `მომხმარებელი ${inviterCaseInsensitive.id.slice(-4)}`,
+        users: usersList,
+      };
+    }
+
+    // Find all referrals for this inviter
+    const referrals = await this.referralModel
+      .find({ inviterId: inviter.id })
+      .sort({ appliedAt: -1 })
+      .exec();
+
+    // Get user information for all invitees
+    const inviteeIds = referrals.map((r) => r.inviteeId);
+    const users = await this.userModel
+      .find({ id: { $in: inviteeIds } })
+      .select('id firstName lastName')
+      .exec();
+
+    const userMap = new Map<string, { name: string }>();
+    users.forEach((user) => {
+      userMap.set(user.id, {
+        name:
+          `${user.firstName || ''} ${user.lastName || ''}`.trim() ||
+          `მომხმარებელი ${user.id.slice(-4)}`,
+      });
+    });
+
+    const usersList = referrals.map((ref) => {
+      const userInfo = userMap.get(ref.inviteeId);
+      return {
+        userId: ref.inviteeId,
+        name: userInfo?.name || ref.inviteeId,
+        appliedAt: ref.appliedAt,
+        subscriptionEnabled: ref.subscriptionEnabled,
+        rewardsGranted: ref.rewardsGranted,
+        firstBookingAt: ref.firstBookingAt,
+      };
+    });
+
+    return {
+      inviterId: inviter.id,
+      inviterName:
+        `${inviter.firstName || ''} ${inviter.lastName || ''}`.trim() ||
+        `მომხმარებელი ${inviter.id.slice(-4)}`,
+      users: usersList,
+    };
+  }
+
+  /**
+   * Get all users who used referral code of a specific user (by userId)
+   * Admin Panel endpoint - returns list of all referrals for a user
+   */
+  async getReferralsByUserId(userId: string): Promise<{
+    inviterId: string;
+    inviterName: string;
+    referralCode: string;
+    users: Array<{
+      userId: string;
+      name: string;
+      appliedAt: number;
+      subscriptionEnabled: boolean;
+      rewardsGranted: boolean;
+      firstBookingAt?: number;
+    }>;
+  }> {
+    // Find the user
+    const inviter = await this.userModel.findOne({ id: userId }).exec();
+
+    if (!inviter) {
+      throw new NotFoundException('User not found');
+    }
+
+    // Get referral code
+    const referralCode =
+      inviter.referralCode || (await this.getReferralCode(userId)) || '';
+
+    // Find all referrals for this inviter
+    const referrals = await this.referralModel
+      .find({ inviterId: userId })
+      .sort({ appliedAt: -1 })
+      .exec();
+
+    // Get user information for all invitees
+    const inviteeIds = referrals.map((r) => r.inviteeId);
+    const users = await this.userModel
+      .find({ id: { $in: inviteeIds } })
+      .select('id firstName lastName')
+      .exec();
+
+    const userMap = new Map<string, { name: string }>();
+    users.forEach((user) => {
+      userMap.set(user.id, {
+        name:
+          `${user.firstName || ''} ${user.lastName || ''}`.trim() ||
+          `მომხმარებელი ${user.id.slice(-4)}`,
+      });
+    });
+
+    const usersList = referrals.map((ref) => {
+      const userInfo = userMap.get(ref.inviteeId);
+      return {
+        userId: ref.inviteeId,
+        name: userInfo?.name || ref.inviteeId,
+        appliedAt: ref.appliedAt,
+        subscriptionEnabled: ref.subscriptionEnabled,
+        rewardsGranted: ref.rewardsGranted,
+        firstBookingAt: ref.firstBookingAt,
+      };
+    });
+
+    return {
+      inviterId: inviter.id,
+      inviterName:
+        `${inviter.firstName || ''} ${inviter.lastName || ''}`.trim() ||
+        `მომხმარებელი ${inviter.id.slice(-4)}`,
+      referralCode: referralCode,
+      users: usersList,
+    };
+  }
+
+  /**
+   * Get detailed referral usage history/logs for a specific user
+   * Admin Panel endpoint - returns detailed history with timestamps
+   */
+  async getReferralUsageHistory(userId: string): Promise<{
+    inviterId: string;
+    inviterName: string;
+    referralCode: string;
+    totalReferrals: number;
+    history: Array<{
+      referralId: string;
+      inviteeId: string;
+      inviteeName: string;
+      appliedAt: number;
+      appliedAtFormatted: string;
+      subscriptionEnabled: boolean;
+      rewardsGranted: boolean;
+      firstBookingAt?: number;
+      firstBookingAtFormatted?: string;
+      createdAt: Date;
+      updatedAt: Date;
+      daysSinceApplied: number;
+    }>;
+  }> {
+    // Find the user
+    const inviter = await this.userModel.findOne({ id: userId }).exec();
+
+    if (!inviter) {
+      throw new NotFoundException('User not found');
+    }
+
+    // Get referral code
+    const referralCode =
+      inviter.referralCode || (await this.getReferralCode(userId)) || '';
+
+    // Find all referrals for this inviter with full document info
+    const referrals = await this.referralModel
+      .find({ inviterId: userId })
+      .sort({ appliedAt: -1 })
+      .exec();
+
+    // Get user information for all invitees
+    const inviteeIds = referrals.map((r) => r.inviteeId);
+    const users = await this.userModel
+      .find({ id: { $in: inviteeIds } })
+      .select('id firstName lastName')
+      .exec();
+
+    const userMap = new Map<string, { name: string }>();
+    users.forEach((user) => {
+      userMap.set(user.id, {
+        name:
+          `${user.firstName || ''} ${user.lastName || ''}`.trim() ||
+          `მომხმარებელი ${user.id.slice(-4)}`,
+      });
+    });
+
+    const formatDate = (timestamp: number): string => {
+      const date = new Date(timestamp);
+      return date.toLocaleDateString('ka-GE', {
+        year: 'numeric',
+        month: 'long',
+        day: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+      });
+    };
+
+    const now = Date.now();
+
+    const history = referrals.map((ref) => {
+      const refDoc = ref as any; // mongoose document with timestamps
+      const userInfo = userMap.get(ref.inviteeId);
+      const daysSinceApplied = Math.floor(
+        (now - ref.appliedAt) / (1000 * 60 * 60 * 24),
+      );
+
+      return {
+        referralId: ref._id.toString(),
+        inviteeId: ref.inviteeId,
+        inviteeName: userInfo?.name || ref.inviteeId,
+        appliedAt: ref.appliedAt,
+        appliedAtFormatted: formatDate(ref.appliedAt),
+        subscriptionEnabled: ref.subscriptionEnabled,
+        rewardsGranted: ref.rewardsGranted,
+        firstBookingAt: ref.firstBookingAt,
+        firstBookingAtFormatted: ref.firstBookingAt
+          ? formatDate(ref.firstBookingAt)
+          : undefined,
+        createdAt: refDoc.createdAt as Date,
+        updatedAt: refDoc.updatedAt as Date,
+        daysSinceApplied,
+      };
+    });
+
+    return {
+      inviterId: inviter.id,
+      inviterName:
+        `${inviter.firstName || ''} ${inviter.lastName || ''}`.trim() ||
+        `მომხმარებელი ${inviter.id.slice(-4)}`,
+      referralCode: referralCode,
+      totalReferrals: referrals.length,
+      history,
+    };
+  }
+
+  /**
    * Get referral leaderboard - all users with pagination
+   * Now uses getAllReferralsHistory to get accurate data
    */
   async getReferralLeaderboard(
     userId?: string,
@@ -527,63 +828,71 @@ export class ReferralsService {
     total: number;
     hasMore: boolean;
   }> {
-    // Get all referral transactions
-    const referralTransactions = await this.txModel
-      .find({
-        description: 'რეფერალური კოდი',
-        type: 'earned',
-      })
-      .exec();
+    // Get all referral history
+    const historyData = await this.getAllReferralsHistory();
 
-    // Group by userId and sum points
-    const pointsMap = new Map<string, number>();
-    for (const tx of referralTransactions) {
-      const current = pointsMap.get(tx.userId) || 0;
-      pointsMap.set(tx.userId, current + (tx.amount || 0));
-    }
+    // Group referrals by inviterId
+    const inviterMap = new Map<
+      string,
+      {
+        name: string;
+        referrals: number;
+        points: number;
+        createdAt: number;
+      }
+    >();
 
-    // Get referral counts
-    const referralCounts = await this.referralModel
-      .aggregate([
-        {
-          $group: {
-            _id: '$inviterId',
-            count: { $sum: 1 },
-          },
-        },
-      ])
-      .exec();
+    // Process history to build inviter stats
+    historyData.history.forEach((item) => {
+      const existing = inviterMap.get(item.inviterId) || {
+        name: item.inviterName,
+        referrals: 0,
+        points: 0,
+        createdAt: item.createdAt.getTime(),
+      };
 
-    const referralCountMap = new Map<string, number>();
-    for (const item of referralCounts as Array<{
-      _id: string;
-      count: number;
-    }>) {
-      referralCountMap.set(item._id, item.count);
-    }
+      existing.referrals += 1;
+      // Award points: 100 points per referral (if rewardsGranted)
+      if (item.rewardsGranted) {
+        existing.points += 100;
+      }
 
-    // Get ALL users from the database (with pagination support)
+      inviterMap.set(item.inviterId, existing);
+    });
+
+    // Get all users to include those without referrals
     const allUsers = await this.userModel
       .find({})
-      .select('id firstName createdAt')
-      .sort({ createdAt: -1 }) // Newest first
+      .select('id firstName lastName createdAt')
       .exec();
 
-    // Build leaderboard entries for all users
-    const allLeaderboard = allUsers.map((user) => ({
-      userId: user.id,
-      name: user.firstName || `მომხმარებელი ${user.id.slice(-4)}`,
-      points: pointsMap.get(user.id) || 0,
-      referrals: referralCountMap.get(user.id) || 0,
-      createdAt: user.createdAt || Date.now(),
-    }));
+    // Build leaderboard entries
+    const allLeaderboard = allUsers.map((user) => {
+      const inviterData = inviterMap.get(user.id);
+      const userName =
+        `${user.firstName || ''} ${user.lastName || ''}`.trim() ||
+        `მომხმარებელი ${user.id.slice(-4)}`;
 
-    // Sort: first by points (desc), then by createdAt (desc - newest first)
+      const userCreatedAt = user.createdAt || Date.now();
+
+      return {
+        userId: user.id,
+        name: inviterData?.name || userName,
+        points: inviterData?.points || 0,
+        referrals: inviterData?.referrals || 0,
+        createdAt: inviterData?.createdAt || userCreatedAt,
+      };
+    });
+
+    // Sort: first by points (desc), then by referrals (desc), then by createdAt (desc)
     allLeaderboard.sort((a, b) => {
       if (b.points !== a.points) {
         return b.points - a.points; // Higher points first
       }
-      return b.createdAt - a.createdAt; // Newer users first if same points
+      if (b.referrals !== a.referrals) {
+        return b.referrals - a.referrals; // More referrals first
+      }
+      return b.createdAt - a.createdAt; // Newer users first if same points/referrals
     });
 
     // Assign ranks
@@ -764,6 +1073,154 @@ export class ReferralsService {
     } catch (error) {
       console.error('❌ Error in getAllReferralsAnalysis:', error);
       throw new BadRequestException('რეფერალების ანალიზისას მოხდა შეცდომა');
+    }
+  }
+
+  /**
+   * Get complete referral usage history - all referrals ever used
+   * Admin Panel endpoint - returns detailed history of all referral code usages
+   */
+  async getAllReferralsHistory(): Promise<{
+    summary: {
+      totalReferrals: number;
+      totalInviters: number;
+      totalInvitees: number;
+      subscriptionsEnabled: number;
+      rewardsGranted: number;
+      pendingRewards: number;
+    };
+    history: Array<{
+      referralId: string;
+      inviterId: string;
+      inviterName: string;
+      inviterReferralCode: string;
+      inviteeId: string;
+      inviteeName: string;
+      appliedAt: number;
+      appliedAtFormatted: string;
+      subscriptionEnabled: boolean;
+      rewardsGranted: boolean;
+      firstBookingAt?: number;
+      firstBookingAtFormatted?: string;
+      createdAt: Date;
+      updatedAt: Date;
+      daysSinceApplied: number;
+    }>;
+  }> {
+    try {
+      // ყველა რეფერალის მოტანა
+      const allReferrals = await this.referralModel
+        .find({})
+        .sort({ appliedAt: -1 })
+        .exec();
+
+      // უნიკალური inviter-ების რაოდენობა
+      const uniqueInviters = new Set(allReferrals.map((r) => r.inviterId)).size;
+
+      // უნიკალური invitee-ების რაოდენობა
+      const uniqueInvitees = new Set(allReferrals.map((r) => r.inviteeId)).size;
+
+      // subscription enabled-ების რაოდენობა
+      const subscriptionsEnabled = allReferrals.filter(
+        (r) => r.subscriptionEnabled,
+      ).length;
+
+      // rewards granted-ების რაოდენობა
+      const rewardsGranted = allReferrals.filter(
+        (r) => r.rewardsGranted,
+      ).length;
+
+      // pending rewards (subscription enabled მაგრამ rewards არ არის granted)
+      const pendingRewards = allReferrals.filter(
+        (r) => r.subscriptionEnabled && !r.rewardsGranted,
+      ).length;
+
+      // ვიპოვოთ ყველა userId რომელიც გვჭირდება
+      const allUserIds = new Set<string>();
+      allReferrals.forEach((r) => {
+        allUserIds.add(r.inviteeId);
+        allUserIds.add(r.inviterId);
+      });
+
+      // ვიპოვოთ იუზერების ინფორმაცია
+      const users = await this.userModel
+        .find({ id: { $in: Array.from(allUserIds) } })
+        .select('id firstName lastName referralCode')
+        .exec();
+
+      const userMap = new Map<
+        string,
+        { name: string; referralCode?: string }
+      >();
+      users.forEach((user) => {
+        userMap.set(user.id, {
+          name:
+            `${user.firstName || ''} ${user.lastName || ''}`.trim() ||
+            `მომხმარებელი ${user.id.slice(-4)}`,
+          referralCode: user.referralCode,
+        });
+      });
+
+      const formatDate = (timestamp: number): string => {
+        const date = new Date(timestamp);
+        return date.toLocaleDateString('ka-GE', {
+          year: 'numeric',
+          month: 'long',
+          day: 'numeric',
+          hour: '2-digit',
+          minute: '2-digit',
+        });
+      };
+
+      const now = Date.now();
+
+      // დეტალური ისტორია
+      const history = allReferrals.map((ref) => {
+        const refDoc = ref as any; // mongoose document with timestamps
+        const inviterInfo = userMap.get(ref.inviterId);
+        const inviteeInfo = userMap.get(ref.inviteeId);
+        const daysSinceApplied = Math.floor(
+          (now - ref.appliedAt) / (1000 * 60 * 60 * 24),
+        );
+
+        return {
+          referralId: ref._id.toString(),
+          inviterId: ref.inviterId,
+          inviterName: inviterInfo?.name || ref.inviterId,
+          inviterReferralCode:
+            inviterInfo?.referralCode || 'კოდი არ მოიძებნა',
+          inviteeId: ref.inviteeId,
+          inviteeName: inviteeInfo?.name || ref.inviteeId,
+          appliedAt: ref.appliedAt,
+          appliedAtFormatted: formatDate(ref.appliedAt),
+          subscriptionEnabled: ref.subscriptionEnabled,
+          rewardsGranted: ref.rewardsGranted,
+          firstBookingAt: ref.firstBookingAt,
+          firstBookingAtFormatted: ref.firstBookingAt
+            ? formatDate(ref.firstBookingAt)
+            : undefined,
+          createdAt: refDoc.createdAt as Date,
+          updatedAt: refDoc.updatedAt as Date,
+          daysSinceApplied,
+        };
+      });
+
+      return {
+        summary: {
+          totalReferrals: allReferrals.length,
+          totalInviters: uniqueInviters,
+          totalInvitees: uniqueInvitees,
+          subscriptionsEnabled,
+          rewardsGranted,
+          pendingRewards,
+        },
+        history,
+      };
+    } catch (error) {
+      console.error('❌ Error in getAllReferralsHistory:', error);
+      throw new BadRequestException(
+        'რეფერალების ისტორიის მიღებისას მოხდა შეცდომა',
+      );
     }
   }
 }
