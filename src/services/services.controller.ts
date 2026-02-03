@@ -35,18 +35,21 @@ export class ServicesController {
     @Query('order') order: 'asc' | 'desc' = 'desc',
     @Query('limit') limit?: string,
     @Query('type') type?: string, // carwash, store, dismantler, part, category
+    @Query('vip') vip?: string, // true/false - მხოლოდ VIP სერვისები
   ): Promise<ServiceItem[]> {
     this.logger.log(
-      `getAllServices - sortBy: ${sortBy}, order: ${order}, type: ${type}`,
+      `getAllServices - sortBy: ${sortBy}, order: ${order}, type: ${type}, vip: ${vip}`,
     );
 
     const limitNum = limit ? parseInt(limit, 10) : 50;
+    const vipFilter = vip === 'true' || vip === '1';
 
     return await this.servicesService.getAllServices({
       sortBy,
       order,
       limit: limitNum,
       type,
+      vip: vipFilter,
     });
   }
 
@@ -185,13 +188,30 @@ export class ServicesController {
     @Query('isOpen') isOpen?: string,
     @Query('status') status?: string,
     @Query('ownerId') ownerId?: string,
+    @Query('type') type?: string,
+    @Query('vip') vip?: string, // true/false - მხოლოდ VIP სერვისები
   ) {
+    // თუ type პარამეტრი არის, გამოვიყენოთ services.service.ts-ის getAllServices
+    if (type) {
+      const limitNum = 50; // default limit
+      const vipFilter = vip === 'true' || vip === '1';
+      return await this.servicesService.getAllServices({
+        sortBy: 'date',
+        order: 'desc',
+        limit: limitNum,
+        type,
+        vip: vipFilter,
+      });
+    }
+
+    // წინა ლოგიკა auto-services-ისთვის
     const filters: {
       category?: string;
       location?: string;
       isOpen?: boolean;
       status?: string;
       ownerId?: string;
+      isFeatured?: boolean;
     } = {};
 
     if (category) filters.category = category;
@@ -199,6 +219,9 @@ export class ServicesController {
     if (isOpen) filters.isOpen = isOpen === 'true';
     if (status) filters.status = status;
     if (ownerId) filters.ownerId = ownerId;
+    if (vip === 'true' || vip === '1') {
+      filters.isFeatured = true;
+    }
 
     const services = await this.autoServicesService.findAll(filters);
     return services;

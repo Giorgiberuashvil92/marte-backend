@@ -47,6 +47,9 @@ export class Dismantler {
   @Prop({ default: false })
   isFeatured: boolean;
 
+  @Prop({ default: false })
+  isVip: boolean;
+
   @Prop({ required: true })
   ownerId: string;
 

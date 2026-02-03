@@ -32,6 +32,7 @@ export class AutoServicesService {
     isOpen?: boolean;
     status?: string;
     ownerId?: string;
+    isFeatured?: boolean; // VIP ფილტრაცია
   }): Promise<Service[]> {
     const query: Record<string, any> = {};
 
@@ -54,6 +55,10 @@ export class AutoServicesService {
 
     if (filters?.ownerId) {
       query.ownerId = filters.ownerId;
+    }
+
+    if (filters?.isFeatured !== undefined) {
+      query.isFeatured = filters.isFeatured;
     }
 
     return this.serviceModel.find(query).sort({ createdAt: -1 }).exec();

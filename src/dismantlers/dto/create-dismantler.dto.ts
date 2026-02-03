@@ -7,6 +7,7 @@ import {
   Min,
   Max,
   Matches,
+  IsBoolean,
 } from 'class-validator';
 
 export class CreateDismantlerDto {
@@ -58,6 +59,10 @@ export class CreateDismantlerDto {
   @IsOptional()
   @IsString()
   contactEmail?: string;
+
+  @IsOptional()
+  @IsBoolean()
+  isVip?: boolean;
 
   @IsString()
   @IsNotEmpty()

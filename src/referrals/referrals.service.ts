@@ -4,7 +4,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
-import { Model } from 'mongoose';
+import { Model, HydratedDocument } from 'mongoose';
 import { User } from '../schemas/user.schema';
 import { Referral } from '../schemas/referral.schema';
 import { Loyalty } from '../schemas/loyalty.schema';
@@ -146,227 +146,107 @@ export class ReferralsService {
         throw new BadRequestException('Referral code is required');
       }
 
-      const trimmedCode = referralCode.trim().toUpperCase();
+      // Normalize referral code: remove spaces, convert to uppercase
+      const normalizedCode = referralCode.replace(/\s+/g, '').toUpperCase();
       console.log('🔍 Applying referral code:', {
         inviteeUserId,
         originalCode: referralCode,
-        trimmedCode,
+        normalizedCode,
       });
 
-      // Find the inviter by referral code
-      const inviter = await this.userModel
-        .findOne({ referralCode: trimmedCode })
+      // Try multiple search strategies
+      let inviter: HydratedDocument<User> | null = null;
+
+      // Strategy 1: Exact match (normalized)
+      inviter = await this.userModel
+        .findOne({ referralCode: normalizedCode })
         .exec();
 
-      console.log('🔍 Inviter lookup result:', {
-        found: !!inviter,
-        inviterId: inviter?.id as string,
-        inviterReferralCode: inviter?.referralCode,
-      });
+      if (inviter) {
+        console.log('✅ Found exact match (normalized):', {
+          inviterId: inviter.id,
+          referralCode: inviter.referralCode,
+        });
+      }
 
-      // If not found, try case-insensitive search as fallback
+      // Strategy 2: Case-insensitive search (if exact match failed)
+      if (!inviter) {
+        console.log('⚠️ Exact match failed, trying case-insensitive search...');
+        const allUsers = await this.userModel
+          .find({ referralCode: { $exists: true, $ne: null } })
+          .select('id referralCode')
+          .exec();
+
+        // Manual case-insensitive comparison (more reliable than $expr)
+        for (const user of allUsers) {
+          if (
+            user.referralCode &&
+            user.referralCode.replace(/\s+/g, '').toUpperCase() ===
+              normalizedCode
+          ) {
+            inviter = user;
+            console.log('✅ Found case-insensitive match:', {
+              inviterId: inviter?.id,
+              referralCode: inviter?.referralCode,
+              matchedCode: normalizedCode,
+            });
+            break;
+          }
+        }
+      }
+
+      // Strategy 3: Fuzzy matching for common typos (if still not found)
       if (!inviter) {
         console.log(
-          '⚠️ Case-sensitive search failed, trying case-insensitive...',
+          '⚠️ Case-insensitive search failed, trying fuzzy matching...',
         );
-        const inviterCaseInsensitive = await this.userModel
-          .findOne({
-            $expr: {
-              $eq: [{ $toUpper: '$referralCode' }, trimmedCode],
-            },
-          })
+        const fuzzyVariations = this.generateFuzzyVariations(normalizedCode);
+        console.log('🔍 Fuzzy variations:', fuzzyVariations);
+
+        const allUsers = await this.userModel
+          .find({ referralCode: { $exists: true, $ne: null } })
+          .select('id referralCode')
           .exec();
 
-        console.log('🔍 Case-insensitive search result:', {
-          found: !!inviterCaseInsensitive,
-          inviterId: inviterCaseInsensitive?.id,
-          inviterReferralCode: inviterCaseInsensitive?.referralCode,
-        });
-
-        if (!inviterCaseInsensitive) {
-          // Debug: Check if any referral codes exist
-          const sampleCodes = await this.userModel
-            .find({ referralCode: { $exists: true, $ne: null } })
-            .limit(5)
-            .select('id referralCode')
-            .exec();
-          console.log('🔍 Sample referral codes in DB:', sampleCodes);
-
-          // Try fuzzy matching for common typos (0 vs O, 1 vs I, etc.)
-          console.log('🔍 Trying fuzzy matching for common typos...');
-          const fuzzyVariations = this.generateFuzzyVariations(trimmedCode);
-          console.log('🔍 Fuzzy variations:', fuzzyVariations);
-
-          for (const variation of fuzzyVariations) {
-            const fuzzyMatch = await this.userModel
-              .findOne({ referralCode: variation })
-              .exec();
-
-            if (fuzzyMatch) {
+        for (const variation of fuzzyVariations) {
+          for (const user of allUsers) {
+            if (
+              user.referralCode &&
+              user.referralCode.replace(/\s+/g, '').toUpperCase() === variation
+            ) {
+              inviter = user;
               console.log('✅ Found fuzzy match:', {
-                original: trimmedCode,
+                original: normalizedCode,
                 matched: variation,
-                inviterId: fuzzyMatch.id as string,
+                inviterId: inviter.id,
+                inviterReferralCode: inviter.referralCode,
               });
-              // Use fuzzy match
-              const inviterToUse = fuzzyMatch;
-              if (inviterToUse.id === inviteeUserId) {
-                throw new BadRequestException(
-                  'Cannot use your own referral code',
-                );
-              }
-
-              const existingReferral = await this.referralModel
-                .findOne({ inviteeId: inviteeUserId })
-                .exec();
-
-              if (existingReferral) {
-                throw new BadRequestException('Referral code already applied');
-              }
-
-              const referral = new this.referralModel({
-                inviteeId: inviteeUserId,
-                inviterId: inviterToUse.id,
-                appliedAt: Date.now(),
-                rewardsGranted: false,
-              });
-              await referral.save();
-
-              const pointsToAward = 100;
-
-              // Check if loyalty record exists
-              const existingLoyalty = await this.loyaltyModel
-                .findOne({ userId: inviterToUse.id })
-                .exec();
-
-              if (existingLoyalty) {
-                // If exists, increment points
-                await this.loyaltyModel.findOneAndUpdate(
-                  { userId: inviterToUse.id },
-                  { $inc: { points: pointsToAward } },
-                  { new: true },
-                );
-              } else {
-                // If doesn't exist, create with initial points
-                await this.loyaltyModel.create({
-                  userId: inviterToUse.id,
-                  points: pointsToAward,
-                  streakDays: 0,
-                });
-              }
-
-              await this.txModel.create({
-                userId: inviterToUse.id,
-                type: 'earned',
-                amount: pointsToAward,
-                description: 'რეფერალური კოდი',
-                service: `ახალი იუზერი: ${inviteeUserId}`,
-                ts: Date.now(),
-                icon: 'people',
-              });
-
-              referral.rewardsGranted = true;
-              await referral.save();
-
-              console.log(
-                '✅ Referral code applied successfully (fuzzy match):',
-                {
-                  inviteeUserId,
-                  inviterId: inviterToUse.id,
-                  pointsAwarded: pointsToAward,
-                  matchedCode: variation,
-                },
-              );
-
-              return {
-                success: true,
-                inviterId: inviterToUse.id,
-                pointsAwarded: pointsToAward,
-              };
+              break;
             }
           }
-
-          throw new NotFoundException('Invalid referral code');
+          if (inviter) break;
         }
-
-        // Use case-insensitive result
-        const inviterToUse = inviterCaseInsensitive;
-        // Continue with the rest of the logic using inviterToUse
-        if (inviterToUse.id === inviteeUserId) {
-          throw new BadRequestException('Cannot use your own referral code');
-        }
-
-        // Check if referral already exists
-        const existingReferral = await this.referralModel
-          .findOne({ inviteeId: inviteeUserId })
-          .exec();
-
-        if (existingReferral) {
-          throw new BadRequestException('Referral code already applied');
-        }
-
-        // Create referral record
-        const referral = new this.referralModel({
-          inviteeId: inviteeUserId,
-          inviterId: inviterToUse.id,
-          appliedAt: Date.now(),
-          rewardsGranted: false,
-        });
-        await referral.save();
-
-        // Award points to inviter
-        const pointsToAward = 100;
-
-        // Update inviter's loyalty points
-        // Check if loyalty record exists
-        const existingLoyalty = await this.loyaltyModel
-          .findOne({ userId: inviterToUse.id })
-          .exec();
-
-        if (existingLoyalty) {
-          // If exists, increment points
-          await this.loyaltyModel.findOneAndUpdate(
-            { userId: inviterToUse.id },
-            { $inc: { points: pointsToAward } },
-            { new: true },
-          );
-        } else {
-          // If doesn't exist, create with initial points
-          await this.loyaltyModel.create({
-            userId: inviterToUse.id,
-            points: pointsToAward,
-            streakDays: 0,
-          });
-        }
-
-        // Create transaction record
-        const transaction = new this.txModel({
-          userId: inviterToUse.id,
-          type: 'earned',
-          amount: pointsToAward,
-          description: `Referral bonus for ${inviteeUserId}`,
-          date: new Date().toISOString(),
-        });
-        await transaction.save();
-
-        console.log('✅ Referral code applied successfully:', {
-          inviteeUserId,
-          inviterId: inviterToUse.id,
-          pointsAwarded: pointsToAward,
-        });
-
-        return {
-          success: true,
-          inviterId: inviterToUse.id,
-          pointsAwarded: pointsToAward,
-        };
       }
+
+      // If still not found, throw error
+      if (!inviter) {
+        console.log('❌ Referral code not found after all search strategies');
+        throw new NotFoundException('Invalid referral code');
+      }
+
+      // Found inviter - continue with validation and reward logic
+      // At this point, inviter is guaranteed to be non-null
+
+      console.log('✅ Inviter found:', {
+        inviterId: inviter.id,
+        inviterReferralCode: inviter.referralCode,
+      });
 
       // Check if user is trying to use their own code
       if (inviter.id === inviteeUserId) {
         console.log('❌ User trying to use own referral code:', {
           userId: inviteeUserId,
-          referralCode: trimmedCode,
+          referralCode: normalizedCode,
         });
         throw new BadRequestException('Cannot use your own referral code');
       }
@@ -411,22 +291,36 @@ export class ReferralsService {
 
       if (existingLoyalty) {
         // If exists, increment points
-        await this.loyaltyModel.findOneAndUpdate(
+        const updatedLoyalty = await this.loyaltyModel.findOneAndUpdate(
           { userId: inviter.id },
           { $inc: { points: pointsToAward } },
           { new: true },
         );
+        console.log('💰 [NORMAL PATH] Points added to existing loyalty:', {
+          userId: inviter.id,
+          pointsAwarded: pointsToAward,
+          oldPoints: existingLoyalty.points,
+          newPoints: updatedLoyalty?.points,
+        });
       } else {
         // If doesn't exist, create with initial points
-        await this.loyaltyModel.create({
+        const newLoyalty = await this.loyaltyModel.create({
           userId: inviter.id,
           points: pointsToAward,
           streakDays: 0,
         });
+        console.log(
+          '💰 [NORMAL PATH] New loyalty record created with points:',
+          {
+            userId: inviter.id,
+            pointsAwarded: pointsToAward,
+            newLoyaltyId: newLoyalty._id,
+          },
+        );
       }
 
       // Create transaction record
-      await this.txModel.create({
+      const transaction = await this.txModel.create({
         userId: inviter.id,
         type: 'earned',
         amount: pointsToAward,
@@ -434,6 +328,21 @@ export class ReferralsService {
         service: `ახალი იუზერი: ${inviteeUserId}`,
         ts: Date.now(),
         icon: 'people',
+      });
+      console.log('💰 [NORMAL PATH] Transaction created:', {
+        transactionId: transaction._id,
+        userId: inviter.id,
+        amount: pointsToAward,
+      });
+
+      // Verify points were actually added
+      const verifyLoyalty = await this.loyaltyModel
+        .findOne({ userId: inviter.id })
+        .exec();
+      console.log('✅ [NORMAL PATH] Verification - Final loyalty points:', {
+        userId: inviter.id,
+        finalPoints: verifyLoyalty?.points,
+        expectedPoints: (existingLoyalty?.points || 0) + pointsToAward,
       });
 
       // Mark rewards as granted
@@ -809,7 +718,7 @@ export class ReferralsService {
 
   /**
    * Get referral leaderboard - all users with pagination
-   * Now uses getAllReferralsHistory to get accurate data
+   * Now uses getAllReferralsAnalysis to get accurate data
    */
   async getReferralLeaderboard(
     userId?: string,
@@ -828,60 +737,281 @@ export class ReferralsService {
     total: number;
     hasMore: boolean;
   }> {
-    // Get all referral history
-    const historyData = await this.getAllReferralsHistory();
+    console.log('🏆 [LEADERBOARD] ლიდერბორდის მოთხოვნა:', {
+      userId,
+      limit,
+      offset,
+    });
 
-    // Group referrals by inviterId
-    const inviterMap = new Map<
+    // Get all referral analysis with accurate stats
+    const analysisData = await this.getAllReferralsAnalysis();
+    console.log('📊 [LEADERBOARD] Analysis Data:', {
+      totalReferrals: analysisData.summary.totalReferrals,
+      totalInviters: analysisData.summary.totalInviters,
+      topInvitersCount: analysisData.topInviters.length,
+      topInviters: analysisData.topInviters.slice(0, 5).map((inv) => ({
+        inviterId: inv.inviterId,
+        inviterName: inv.inviterName,
+        referralCount: inv.referralCount,
+      })),
+    });
+
+    // Create a map from topInviters for quick lookup
+    const inviterStatsMap = new Map<
       string,
       {
         name: string;
         referrals: number;
         points: number;
-        createdAt: number;
       }
     >();
 
-    // Process history to build inviter stats
-    historyData.history.forEach((item) => {
-      const existing = inviterMap.get(item.inviterId) || {
-        name: item.inviterName,
-        referrals: 0,
-        points: 0,
-        createdAt: item.createdAt.getTime(),
-      };
+    // Get referral transactions for points calculation
+    // Search for both possible descriptions to catch all referral transactions
+    const referralTransactionsQuery = {
+      $or: [
+        { description: 'რეფერალური კოდი' },
+        { description: { $regex: /referral|რეფერალ/i } },
+      ],
+      type: 'earned',
+    };
 
-      existing.referrals += 1;
-      // Award points: 100 points per referral (if rewardsGranted)
-      if (item.rewardsGranted) {
-        existing.points += 100;
-      }
+    console.log(
+      '🔍 [LEADERBOARD] Searching for referral transactions with query:',
+      referralTransactionsQuery,
+    );
 
-      inviterMap.set(item.inviterId, existing);
-    });
-
-    // Get all users to include those without referrals
-    const allUsers = await this.userModel
-      .find({})
-      .select('id firstName lastName createdAt')
+    const referralTransactions = await this.txModel
+      .find(referralTransactionsQuery)
       .exec();
 
-    // Build leaderboard entries
-    const allLeaderboard = allUsers.map((user) => {
-      const inviterData = inviterMap.get(user.id);
+    console.log('💰 [LEADERBOARD] Referral Transactions Found:', {
+      totalTransactions: referralTransactions.length,
+      transactionsByDescription: referralTransactions.reduce(
+        (acc: any, tx: any) => {
+          const desc = tx.description || 'unknown';
+          acc[desc] = (acc[desc] || 0) + 1;
+          return acc;
+        },
+        {},
+      ),
+      allTransactions: referralTransactions.map((tx: any) => ({
+        _id: tx._id?.toString(),
+        userId: tx.userId,
+        amount: tx.amount,
+        description: tx.description,
+        type: tx.type,
+        ts: tx.ts,
+        date: tx.date,
+      })),
+      uniqueUsers: [
+        ...new Set(referralTransactions.map((tx: any) => tx.userId)),
+      ],
+    });
+
+    // Group points by userId - ONLY users with points > 0
+    const pointsMap = new Map<string, number>();
+    for (const tx of referralTransactions) {
+      const amount = tx.amount || 0;
+      if (amount > 0) {
+        const current = pointsMap.get(tx.userId) || 0;
+        pointsMap.set(tx.userId, current + amount);
+      }
+    }
+
+    // Filter out users with 0 points
+    const filteredPointsMap = new Map<string, number>();
+    for (const [userId, points] of pointsMap.entries()) {
+      if (points > 0) {
+        filteredPointsMap.set(userId, points);
+      }
+    }
+
+    console.log('💎 [LEADERBOARD] Points Map:', {
+      totalTransactions: referralTransactions.length,
+      totalUsersWithPoints: filteredPointsMap.size,
+      allUsersWithPoints: Array.from(filteredPointsMap.entries()).map(
+        ([userId, points]) => ({ userId, points }),
+      ),
+      top5Points: Array.from(filteredPointsMap.entries())
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 5)
+        .map(([userId, points]) => ({ userId, points })),
+    });
+
+    // Use filtered points map
+    const finalPointsMap = filteredPointsMap;
+
+    // Process topInviters to build stats map
+    console.log('🔨 [LEADERBOARD] Building inviterStatsMap from topInviters:', {
+      topInvitersCount: analysisData.topInviters.length,
+      topInvitersDetails: analysisData.topInviters.map((inv) => ({
+        inviterId: inv.inviterId,
+        inviterName: inv.inviterName,
+        referralCount: inv.referralCount,
+        pointsFromMap: finalPointsMap.get(inv.inviterId) || 0,
+      })),
+    });
+
+    // Create a map for referral counts from topInviters
+    const referralCountMap = new Map<string, number>();
+    analysisData.topInviters.forEach((inviter) => {
+      referralCountMap.set(inviter.inviterId, inviter.referralCount);
+    });
+
+    // Add all users who have points (not just topInviters)
+    // This ensures everyone with points appears in leaderboard
+    const allUsersWithPoints = Array.from(finalPointsMap.keys());
+    console.log('⭐ [LEADERBOARD] Users with points:', {
+      totalUsersWithPoints: allUsersWithPoints.length,
+      userIds: allUsersWithPoints,
+    });
+
+    // Get user info for all users with points
+    const usersWithPointsInfo = await this.userModel
+      .find({ id: { $in: allUsersWithPoints } })
+      .select('id firstName lastName')
+      .exec();
+
+    const userInfoMap = new Map<string, { name: string }>();
+    usersWithPointsInfo.forEach((user) => {
       const userName =
         `${user.firstName || ''} ${user.lastName || ''}`.trim() ||
         `მომხმარებელი ${user.id.slice(-4)}`;
+      userInfoMap.set(user.id, { name: userName });
+    });
 
-      const userCreatedAt = user.createdAt || Date.now();
+    // Build inviterStatsMap with ALL users who have points > 0
+    allUsersWithPoints.forEach((userId) => {
+      const points = finalPointsMap.get(userId) || 0;
 
-      return {
-        userId: user.id,
-        name: inviterData?.name || userName,
-        points: inviterData?.points || 0,
-        referrals: inviterData?.referrals || 0,
-        createdAt: inviterData?.createdAt || userCreatedAt,
-      };
+      // IMPORTANT: Only add users with points > 0
+      if (points <= 0) {
+        console.log(`⏭️ [LEADERBOARD] Skipping user ${userId} - has 0 points`);
+        return;
+      }
+
+      const referrals = referralCountMap.get(userId) || 0;
+      const userInfo = userInfoMap.get(userId);
+
+      // Try to get name from topInviters first, then from userInfoMap
+      const topInvitersEntry = analysisData.topInviters.find(
+        (inv) => inv.inviterId === userId,
+      );
+      const name =
+        topInvitersEntry?.inviterName ||
+        userInfo?.name ||
+        `მომხმარებელი ${userId.slice(-4)}`;
+
+      inviterStatsMap.set(userId, {
+        name,
+        referrals,
+        points,
+      });
+    });
+
+    console.log(
+      '✅ [LEADERBOARD] InviterStatsMap built with ALL users with points:',
+      {
+        totalEntries: inviterStatsMap.size,
+        entries: Array.from(inviterStatsMap.entries()).map(
+          ([userId, stats]) => ({
+            userId,
+            name: stats.name,
+            referrals: stats.referrals,
+            points: stats.points,
+          }),
+        ),
+      },
+    );
+
+    console.log('👥 [LEADERBOARD] Inviter Stats Map:', {
+      totalInviters: inviterStatsMap.size,
+      allInviters: Array.from(inviterStatsMap.entries()).map(
+        ([userId, stats]) => ({
+          userId,
+          name: stats.name,
+          referrals: stats.referrals,
+          points: stats.points,
+        }),
+      ),
+      top5Inviters: Array.from(inviterStatsMap.entries())
+        .slice(0, 5)
+        .map(([userId, stats]) => ({
+          userId,
+          name: stats.name,
+          referrals: stats.referrals,
+          points: stats.points,
+        })),
+    });
+
+    // Get users who have points (from inviterStatsMap) - these are the ones we want to show
+    const userIdsWithPoints = Array.from(inviterStatsMap.keys());
+
+    console.log('👤 [LEADERBOARD] Users with points to show:', {
+      totalUsersWithPoints: userIdsWithPoints.length,
+      userIds: userIdsWithPoints,
+    });
+
+    // Get user info for users with points
+    const usersWithPoints = await this.userModel
+      .find({ id: { $in: userIdsWithPoints } })
+      .select('id firstName lastName createdAt')
+      .exec();
+
+    console.log('👤 [LEADERBOARD] Users fetched from DB:', {
+      totalUsers: usersWithPoints.length,
+      sampleUsers: usersWithPoints.slice(0, 5).map((u) => ({
+        id: u.id,
+        firstName: u.firstName,
+        lastName: u.lastName,
+        createdAt: u.createdAt,
+      })),
+    });
+
+    // Build leaderboard entries - ONLY for users with points > 0
+    const allLeaderboard = usersWithPoints
+      .map((user) => {
+        const inviterData = inviterStatsMap.get(user.id);
+
+        // Double check: skip if no data or points <= 0
+        if (!inviterData || inviterData.points <= 0) {
+          console.log(
+            `⏭️ [LEADERBOARD] Skipping user ${user.id} - no data or 0 points`,
+          );
+          return null;
+        }
+
+        const userName =
+          `${user.firstName || ''} ${user.lastName || ''}`.trim() ||
+          `მომხმარებელი ${user.id.slice(-4)}`;
+
+        const userCreatedAt = user.createdAt || Date.now();
+
+        return {
+          userId: user.id,
+          name: inviterData.name || userName,
+          points: inviterData.points,
+          referrals: inviterData.referrals,
+          createdAt: userCreatedAt,
+        };
+      })
+      .filter((entry) => entry !== null) as Array<{
+      userId: string;
+      name: string;
+      points: number;
+      referrals: number;
+      createdAt: number;
+    }>;
+
+    console.log('📋 [LEADERBOARD] All Leaderboard (before sort):', {
+      totalEntries: allLeaderboard.length,
+      top5BeforeSort: allLeaderboard.slice(0, 5).map((entry) => ({
+        userId: entry.userId,
+        name: entry.name,
+        points: entry.points,
+        referrals: entry.referrals,
+      })),
     });
 
     // Sort: first by points (desc), then by referrals (desc), then by createdAt (desc)
@@ -893,6 +1023,38 @@ export class ReferralsService {
         return b.referrals - a.referrals; // More referrals first
       }
       return b.createdAt - a.createdAt; // Newer users first if same points/referrals
+    });
+
+    // Count users with points/referrals (all should have points > 0 now)
+    const usersWithPointsCount = allLeaderboard.filter(
+      (e) => e.points > 0,
+    ).length;
+    const usersWithReferralsCount = allLeaderboard.filter(
+      (e) => e.referrals > 0,
+    ).length;
+
+    console.log('🔄 [LEADERBOARD] After Sorting:', {
+      totalEntries: allLeaderboard.length,
+      usersWithPoints: usersWithPointsCount,
+      usersWithReferrals: usersWithReferralsCount,
+      usersWithZeroPoints: allLeaderboard.length - usersWithPointsCount,
+      top10AfterSort: allLeaderboard.slice(0, 10).map((entry, index) => ({
+        rank: index + 1,
+        userId: entry.userId,
+        name: entry.name,
+        points: entry.points,
+        referrals: entry.referrals,
+        createdAt: entry.createdAt,
+      })),
+      allUsersWithPoints: allLeaderboard
+        .filter((e) => e.points > 0)
+        .map((entry, index) => ({
+          rank: index + 1,
+          userId: entry.userId,
+          name: entry.name,
+          points: entry.points,
+          referrals: entry.referrals,
+        })),
     });
 
     // Assign ranks
@@ -909,6 +1071,22 @@ export class ReferralsService {
       offset + limit,
     );
     const hasMore = offset + limit < total;
+
+    console.log('✅ [LEADERBOARD] Final Result:', {
+      total,
+      offset,
+      limit,
+      hasMore,
+      returnedCount: paginatedLeaderboard.length,
+      paginatedEntries: paginatedLeaderboard.map((entry) => ({
+        rank: entry.rank,
+        userId: entry.userId,
+        name: entry.name,
+        points: entry.points,
+        referrals: entry.referrals,
+        isCurrentUser: entry.isCurrentUser,
+      })),
+    });
 
     return {
       leaderboard: paginatedLeaderboard,
@@ -952,11 +1130,27 @@ export class ReferralsService {
     }>;
   }> {
     try {
+      console.log('📈 [ANALYSIS] getAllReferralsAnalysis დაწყებულია');
+
       // ყველა რეფერალის მოტანა
       const allReferrals = await this.referralModel
         .find({})
         .sort({ createdAt: -1 })
         .exec();
+
+      console.log('📊 [ANALYSIS] All Referrals from DB:', {
+        totalReferrals: allReferrals.length,
+        allReferralsDetails: allReferrals.map((r) => ({
+          _id: r._id?.toString(),
+          inviterId: r.inviterId,
+          inviteeId: r.inviteeId,
+          rewardsGranted: r.rewardsGranted,
+          subscriptionEnabled: r.subscriptionEnabled,
+          appliedAt: r.appliedAt,
+        })),
+        uniqueInviters: [...new Set(allReferrals.map((r) => r.inviterId))],
+        uniqueInvitees: [...new Set(allReferrals.map((r) => r.inviteeId))],
+      });
 
       // უნიკალური inviter-ების რაოდენობა
       const uniqueInviters = new Set(allReferrals.map((r) => r.inviterId)).size;
@@ -1058,7 +1252,18 @@ export class ReferralsService {
         })
         .sort((a, b) => b.referralCount - a.referralCount);
 
-      return {
+      console.log('🏆 [ANALYSIS] Top Inviters:', {
+        totalInviters: topInviters.length,
+        top5Inviters: topInviters.slice(0, 5).map((inv) => ({
+          inviterId: inv.inviterId,
+          inviterName: inv.inviterName,
+          referralCount: inv.referralCount,
+          subscriptionsEnabled: inv.subscriptionsEnabled,
+          rewardsGranted: inv.rewardsGranted,
+        })),
+      });
+
+      const result = {
         summary: {
           totalReferrals: allReferrals.length,
           totalInviters: uniqueInviters,
@@ -1070,6 +1275,13 @@ export class ReferralsService {
         referrals: referralsDetails,
         topInviters,
       };
+
+      console.log('✅ [ANALYSIS] getAllReferralsAnalysis დასრულებულია:', {
+        summary: result.summary,
+        topInvitersCount: result.topInviters.length,
+      });
+
+      return result;
     } catch (error) {
       console.error('❌ Error in getAllReferralsAnalysis:', error);
       throw new BadRequestException('რეფერალების ანალიზისას მოხდა შეცდომა');
@@ -1187,8 +1399,7 @@ export class ReferralsService {
           referralId: ref._id.toString(),
           inviterId: ref.inviterId,
           inviterName: inviterInfo?.name || ref.inviterId,
-          inviterReferralCode:
-            inviterInfo?.referralCode || 'კოდი არ მოიძებნა',
+          inviterReferralCode: inviterInfo?.referralCode || 'კოდი არ მოიძებნა',
           inviteeId: ref.inviteeId,
           inviteeName: inviteeInfo?.name || ref.inviteeId,
           appliedAt: ref.appliedAt,

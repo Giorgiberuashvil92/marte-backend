@@ -27,7 +27,6 @@ export class DismantlersService {
       throw new Error('წლიდან არ შეიძლება იყოს უფრო დიდი ვიდრე წლამდე');
     }
 
-
     const expiryDate = new Date();
     expiryDate.setMonth(expiryDate.getMonth() + 1);
 
@@ -48,6 +47,7 @@ export class DismantlersService {
       status: 'pending',
       views: 0,
       isFeatured: false,
+      isVip: createDismantlerDto.isVip || false,
       ownerId: createDismantlerDto.ownerId,
       expiryDate: expiryDate,
     });
@@ -76,6 +76,7 @@ export class DismantlersService {
     location?: string;
     status?: string;
     ownerId?: string;
+    vip?: boolean;
   }): Promise<Dismantler[]> {
     const query: Record<string, any> = {};
 
@@ -99,6 +100,9 @@ export class DismantlersService {
     }
     if (filters?.ownerId) {
       query.ownerId = filters.ownerId;
+    }
+    if (filters?.vip !== undefined) {
+      query.isVip = filters.vip === true;
     }
 
     return this.dismantlerModel.find(query).sort({ createdAt: -1 }).exec();
@@ -178,7 +182,7 @@ export class DismantlersService {
       .findByIdAndUpdate(
         id,
         { expiryDate: newExpiryDate, updatedAt: new Date() },
-        { new: true }
+        { new: true },
       )
       .exec();
 

@@ -70,11 +70,9 @@ export class FinancingService {
   }
 
   async findAllLeads(limit = 200) {
-    const docs = await this.financingLeadModel
-      .find()
-      .sort({ createdAt: -1 })
-      .limit(limit)
-      .lean<
+    // Fetch both leads and requests
+    const [leadDocs, requestDocs] = await Promise.all([
+      this.financingLeadModel.find().sort({ createdAt: -1 }).limit(limit).lean<
         {
           _id: unknown;
           userId: string;
@@ -88,9 +86,26 @@ export class FinancingService {
           note?: string;
           createdAt: Date;
         }[]
-      >();
-    return docs.map((d) => ({
+      >(),
+      this.financingRequestModel
+        .find()
+        .sort({ createdAt: -1 })
+        .limit(limit)
+        .lean<
+          {
+            _id: unknown;
+            fullName: string;
+            phone: string;
+            note?: string;
+            createdAt: Date;
+          }[]
+        >(),
+    ]);
+
+    // Map leads
+    const leads = leadDocs.map((d) => ({
       id: String(d._id as any),
+      type: 'lead' as const,
       userId: d.userId,
       requestId: d.requestId,
       amount: d.amount,
@@ -102,6 +117,57 @@ export class FinancingService {
       note: d.note ?? '',
       createdAt: d.createdAt,
     }));
+
+    // Map requests (convert to lead-like format)
+    const requests = requestDocs.map((d) => {
+      // Parse note to extract amount and other info
+      const note = d.note ?? '';
+      const amountMatch = note.match(/თანხა:\s*(\d+)/);
+      const amount = amountMatch ? parseFloat(amountMatch[1]) : 0;
+
+      const merchantPhoneMatch = note.match(/მაღაზიის ნომერი:\s*([^\n]+)/);
+      const merchantPhone = merchantPhoneMatch
+        ? merchantPhoneMatch[1].trim()
+        : null;
+
+      const personalIdMatch = note.match(/პირადი ნომერი:\s*([^\n]+)/);
+      const personalId = personalIdMatch ? personalIdMatch[1].trim() : null;
+
+      const downPaymentMatch = note.match(/ავანსი:\s*(\d+)/);
+      const downPayment = downPaymentMatch
+        ? parseFloat(downPaymentMatch[1])
+        : null;
+
+      const termMonthsMatch = note.match(/ვადა:\s*(\d+)/);
+      const termMonths = termMonthsMatch
+        ? parseInt(termMonthsMatch[1], 10)
+        : null;
+
+      return {
+        id: String(d._id as any),
+        type: 'request' as const,
+        userId: null,
+        requestId: null,
+        amount,
+        phone: d.phone,
+        merchantPhone,
+        downPayment,
+        termMonths,
+        personalId,
+        note,
+        fullName: d.fullName,
+        createdAt: d.createdAt,
+      };
+    });
+
+    // Combine and sort by createdAt (newest first)
+    const all = [...leads, ...requests].sort(
+      (a, b) =>
+        new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
+    );
+
+    // Limit the combined results
+    return all.slice(0, limit);
   }
 
   async findAllRequests(limit = 200) {

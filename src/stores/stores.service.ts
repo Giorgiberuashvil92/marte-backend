@@ -32,6 +32,7 @@ export class StoresService {
       paymentStatus: createStoreDto.paymentStatus || 'pending',
       totalPaid: createStoreDto.totalPaid || 0,
       isFeatured: false,
+      isVip: createStoreDto.isVip === true,
       expiryDate: expiryDate,
     };
     const createdStore = new this.storeModel(storeData);
@@ -44,7 +45,12 @@ export class StoresService {
     includeAll: boolean = false,
     type?: string,
   ): Promise<Store[]> {
-    console.log('🔍 [STORES SERVICE] findAll called with:', { ownerId, location, includeAll, type });
+    console.log('🔍 [STORES SERVICE] findAll called with:', {
+      ownerId,
+      location,
+      includeAll,
+      type,
+    });
     const filter: Record<string, any> = {};
     if (ownerId) {
       // თუ ownerId არის მითითებული (პარტნიორის დეშბორდი), ყველა მაღაზია ჩანდეს
@@ -59,14 +65,20 @@ export class StoresService {
       console.log('🔍 [STORES SERVICE] Filtering by type:', type);
       filter.type = type;
     }
-    console.log('🔍 [STORES SERVICE] Final filter:', JSON.stringify(filter, null, 2));
+    console.log(
+      '🔍 [STORES SERVICE] Final filter:',
+      JSON.stringify(filter, null, 2),
+    );
     const stores = await this.storeModel
       .find(filter)
       .sort({ createdAt: -1 })
       .exec();
     console.log('🔍 [STORES SERVICE] Found stores:', stores.length);
     if (stores.length > 0 && type) {
-      console.log('🔍 [STORES SERVICE] Store types found:', stores.map(s => s.type));
+      console.log(
+        '🔍 [STORES SERVICE] Store types found:',
+        stores.map((s) => s.type),
+      );
     }
 
     // ავტომატურად განვაახლოთ paymentStatus თუ nextPaymentDate გავიდა
@@ -154,13 +166,13 @@ export class StoresService {
     const updatedStore = await this.storeModel
       .findByIdAndUpdate(
         id,
-        { 
-          expiryDate: newExpiryDate, 
+        {
+          expiryDate: newExpiryDate,
           nextPaymentDate: newNextPaymentDate,
           paymentStatus: 'paid',
-          updatedAt: new Date() 
+          updatedAt: new Date(),
         },
-        { new: true }
+        { new: true },
       )
       .exec();
 

@@ -24,6 +24,7 @@ export interface ServiceItem {
   popularity?: number;
   isOpen?: boolean;
   category?: string;
+  isFeatured?: boolean; // VIP სერვისი
 }
 
 export interface MapServiceItem {
@@ -59,6 +60,7 @@ export interface GetAllServicesOptions {
   order: 'asc' | 'desc';
   limit: number;
   type?: string;
+  vip?: boolean; // VIP ფილტრაცია
 }
 
 @Injectable()
@@ -81,10 +83,10 @@ export class ServicesService {
   ) {}
 
   async getAllServices(options: GetAllServicesOptions): Promise<ServiceItem[]> {
-    const { sortBy, order, limit, type } = options;
+    const { sortBy, order, limit, type, vip } = options;
 
     this.logger.log(
-      `🔍 Fetching all services - sortBy: ${sortBy}, order: ${order}, type: ${type || 'all'}`,
+      `🔍 Fetching all services - sortBy: ${sortBy}, order: ${order}, type: ${type || 'all'}, vip: ${vip || false}`,
     );
 
     const allServices: ServiceItem[] = [];
@@ -94,19 +96,19 @@ export class ServicesService {
       const promises: Promise<ServiceItem[]>[] = [];
 
       if (!type || type === 'carwash') {
-        promises.push(this.getCarwashServices());
+        promises.push(this.getCarwashServices(vip));
       }
       if (!type || type === 'store') {
-        promises.push(this.getStoreServices());
+        promises.push(this.getStoreServices(vip));
       }
       if (!type || type === 'dismantler') {
-        promises.push(this.getDismantlerServices());
+        promises.push(this.getDismantlerServices(vip));
       }
       if (!type || type === 'part') {
-        promises.push(this.getPartServices());
+        promises.push(this.getPartServices(vip));
       }
       if (!type || type === 'category') {
-        promises.push(this.getCategoryServices());
+        promises.push(this.getCategoryServices(vip));
       }
 
       const results = await Promise.all(promises);
@@ -134,7 +136,7 @@ export class ServicesService {
       const result = allServices.slice(0, limit);
 
       this.logger.log(
-        `✅ Returning ${result.length} services (total found: ${allServices.length})`,
+        `✅ Returning ${result.length} services (total found: ${allServices.length})${vip ? ' - VIP only' : ''}`,
       );
       return result;
     } catch (error) {
@@ -161,7 +163,9 @@ export class ServicesService {
     });
   }
 
-  private async getCarwashServices(): Promise<ServiceItem[]> {
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  private async getCarwashServices(_vip?: boolean): Promise<ServiceItem[]> {
+    // Carwash-ებს არ აქვთ isFeatured ველი, ამიტომ VIP ფილტრაცია არ გამოიყენება
     const carwashes = await this.carwashModel.find({}).exec();
     return carwashes.map((carwash) => ({
       id: String(carwash.id),
@@ -186,12 +190,19 @@ export class ServicesService {
       popularity: carwash.rating,
       isOpen: carwash.isOpen,
       category: carwash.category,
+      isFeatured: false, // Carwash-ებს არ აქვთ VIP სტატუსი
     }));
   }
 
-  private async getStoreServices(): Promise<ServiceItem[]> {
+  private async getStoreServices(vip?: boolean): Promise<ServiceItem[]> {
     // მხოლოდ active მაღაზიები
-    const stores = await this.storeModel.find({ status: 'active' }).exec();
+    const query: { status: string; isFeatured?: boolean } = {
+      status: 'active',
+    };
+    if (vip) {
+      query.isFeatured = true;
+    }
+    const stores = await this.storeModel.find(query).exec();
     return stores.map((store) => ({
       id: store._id.toString(),
       title: store.title,
@@ -215,11 +226,16 @@ export class ServicesService {
       ),
       category: store.type,
       popularity: Math.random() * 5, // Temporary until we have real popularity data
+      isFeatured: (store as { isFeatured?: boolean }).isFeatured || false,
     }));
   }
 
-  private async getDismantlerServices(): Promise<ServiceItem[]> {
-    const dismantlers = await this.dismantlerModel.find({}).exec();
+  private async getDismantlerServices(vip?: boolean): Promise<ServiceItem[]> {
+    const query: { isFeatured?: boolean } = {};
+    if (vip) {
+      query.isFeatured = true;
+    }
+    const dismantlers = await this.dismantlerModel.find(query).exec();
     return dismantlers.map((dismantler) => ({
       id: dismantler._id.toString(),
       title: `${dismantler.brand} ${dismantler.model} (${dismantler.yearFrom}-${dismantler.yearTo})`,
@@ -243,10 +259,13 @@ export class ServicesService {
       ),
       category: `${dismantler.brand} ${dismantler.model}`,
       popularity: dismantler.views || 0,
+      isFeatured: (dismantler as { isFeatured?: boolean }).isFeatured || false,
     }));
   }
 
-  private async getPartServices(): Promise<ServiceItem[]> {
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  private async getPartServices(_vip?: boolean): Promise<ServiceItem[]> {
+    // Part-ებს არ აქვთ isFeatured ველი, ამიტომ VIP ფილტრაცია არ გამოიყენება
     const parts = await this.partModel.find({}).exec();
     return parts.map((part) => ({
       id: part._id.toString(),
@@ -268,10 +287,13 @@ export class ServicesService {
       updatedAt: new Date(part.updatedAt || Date.now()),
       category: part.category,
       popularity: Math.random() * 5, // Temporary
+      isFeatured: false, // Part-ებს არ აქვთ VIP სტატუსი
     }));
   }
 
-  private async getCategoryServices(): Promise<ServiceItem[]> {
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  private async getCategoryServices(_vip?: boolean): Promise<ServiceItem[]> {
+    // Category-ებს არ აქვთ isFeatured ველი, ამიტომ VIP ფილტრაცია არ გამოიყენება
     const categories = await this.categoryModel.find({ isActive: true }).exec();
     return categories.map((category) => ({
       id: category._id.toString(),
@@ -289,6 +311,7 @@ export class ServicesService {
       updatedAt: new Date(category.updatedAt || Date.now()),
       category: category.nameEn,
       popularity: category.popularity,
+      isFeatured: false, // Category-ებს არ აქვთ VIP სტატუსი
     }));
   }
 

@@ -8,6 +8,7 @@ import {
   Matches,
   IsIn,
   IsDateString,
+  IsBoolean,
 } from 'class-validator';
 
 export class UpdateStoreDto {
@@ -163,4 +164,8 @@ export class UpdateStoreDto {
   @IsOptional()
   @IsString()
   paymentPeriod?: string;
+
+  @IsOptional()
+  @IsBoolean()
+  isVip?: boolean;
 }

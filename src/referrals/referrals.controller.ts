@@ -68,11 +68,35 @@ export class ReferralsController {
     const userId = req.user?.id || req.headers['x-user-id'];
     const limit = parseInt(req.query?.limit || '20', 10);
     const offset = parseInt(req.query?.offset || '0', 10);
-    return await this.referralsService.getReferralLeaderboard(
+    
+    console.log('🎯 [CONTROLLER] Leaderboard Request Received:', {
+      userId,
+      limit,
+      offset,
+      query: req.query,
+      headers: {
+        'x-user-id': req.headers['x-user-id'],
+        'user-agent': req.headers['user-agent'],
+      },
+      timestamp: new Date().toISOString(),
+    });
+    
+    const startTime = Date.now();
+    const result = await this.referralsService.getReferralLeaderboard(
       userId,
       limit,
       offset,
     );
+    const duration = Date.now() - startTime;
+    
+    console.log('✅ [CONTROLLER] Leaderboard Response Sent:', {
+      total: result.total,
+      hasMore: result.hasMore,
+      leaderboardCount: result.leaderboard.length,
+      duration: `${duration}ms`,
+    });
+    
+    return result;
   }
 
   @Get('analysis')

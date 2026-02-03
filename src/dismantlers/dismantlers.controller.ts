@@ -73,6 +73,7 @@ export class DismantlersController {
     @Query('location') location?: string,
     @Query('status') status?: string,
     @Query('ownerId') ownerId?: string,
+    @Query('vip') vip?: string,
   ) {
     const filters = {
       brand,
@@ -82,6 +83,7 @@ export class DismantlersController {
       location,
       status,
       ownerId,
+      vip: vip === 'true' ? true : vip === 'false' ? false : undefined,
     };
 
     const dismantlers = await this.dismantlersService.findAll(filters);

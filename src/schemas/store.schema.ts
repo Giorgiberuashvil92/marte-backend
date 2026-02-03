@@ -132,6 +132,9 @@ export class Store {
   @Prop({ default: false })
   isFeatured?: boolean; // VIP მაღაზია
 
+  @Prop({ default: false })
+  isVip?: boolean; // VIP სტატუსი (მხოლოდ type === 'დაშლილები' მაღაზიებისთვის)
+
   @Prop({ type: Date })
   expiryDate?: Date; // განცხადების ვადის გასვლის თარიღი (1 თვე შექმნის თარიღიდან)
 }
