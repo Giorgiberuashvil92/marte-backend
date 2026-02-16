@@ -301,7 +301,7 @@ export class AnalyticsService {
     limit: number = 100,
   ) {
     const dateRange = this.getDateRange(period);
-    
+
     const events = await this.analyticsModel
       .find({
         userId: userId,
@@ -348,12 +348,12 @@ export class AnalyticsService {
         }),
       })),
       totalEvents: events.length,
-      firstEvent: events.length > 0
-        ? new Date(events[events.length - 1].timestamp).toISOString()
-        : null,
-      lastEvent: events.length > 0
-        ? new Date(events[0].timestamp).toISOString()
-        : null,
+      firstEvent:
+        events.length > 0
+          ? new Date(events[events.length - 1].timestamp).toISOString()
+          : null,
+      lastEvent:
+        events.length > 0 ? new Date(events[0].timestamp).toISOString() : null,
     };
   }
 
@@ -362,7 +362,7 @@ export class AnalyticsService {
     limit: number = 500,
   ) {
     const dateRange = this.getDateRange(period);
-    
+
     const events = await this.analyticsModel
       .find({
         timestamp: { $gte: dateRange.start, $lte: dateRange.end },
@@ -378,14 +378,12 @@ export class AnalyticsService {
     );
 
     // Fetch user info for all users
-    const users = await this.userModel
-      .find({ id: { $in: userIds } })
-      .lean();
+    const users = await this.userModel.find({ id: { $in: userIds } }).lean();
     const userMap = new Map(users.map((u: any) => [u.id, u]));
 
     // Group by user
     const userEventsMap = new Map<string, any[]>();
-    
+
     events.forEach((event) => {
       const userId = event.userId || 'უცნობი';
       if (!userEventsMap.has(userId)) {
@@ -485,5 +483,343 @@ export class AnalyticsService {
     }
 
     return { start, end };
+  }
+
+  async getCategoryPageAnalytics(period: 'today' | 'week' | 'month') {
+    const dateRange = this.getDateRange(period);
+
+    // Get category page events
+    const categoryEvents = await this.analyticsModel.aggregate([
+      {
+        $match: {
+          eventType: {
+            $in: [
+              'category_page_entry',
+              'category_filter',
+              'category_service_click',
+              'category_refresh',
+            ],
+          },
+          timestamp: { $gte: dateRange.start, $lte: dateRange.end },
+        },
+      },
+      {
+        $group: {
+          _id: {
+            eventType: '$eventType',
+            categoryName: '$params.category_name',
+          },
+          count: { $sum: 1 },
+          uniqueUsers: { $addToSet: '$userId' },
+        },
+      },
+      {
+        $project: {
+          eventType: '$_id.eventType',
+          categoryName: '$_id.categoryName',
+          count: 1,
+          uniqueUsers: { $size: '$uniqueUsers' },
+        },
+      },
+    ]);
+
+    // Get filter usage
+    const filterUsage = await this.analyticsModel.aggregate([
+      {
+        $match: {
+          eventType: 'category_filter',
+          timestamp: { $gte: dateRange.start, $lte: dateRange.end },
+        },
+      },
+      {
+        $group: {
+          _id: '$params.filter_type',
+          count: { $sum: 1 },
+        },
+      },
+      {
+        $sort: { count: -1 },
+      },
+    ]);
+
+    return {
+      events: categoryEvents,
+      filterUsage: filterUsage.map((item) => ({
+        filterType: item._id,
+        count: item.count,
+      })),
+    };
+  }
+
+  async getHomePageAnalytics(period: 'today' | 'week' | 'month') {
+    const dateRange = this.getDateRange(period);
+
+    // Get home page button clicks
+    const homeClicks = await this.analyticsModel.aggregate([
+      {
+        $match: {
+          $or: [
+            { eventType: 'home_category_click' },
+            { eventType: 'button_click', screen: 'მთავარი' },
+          ],
+          timestamp: { $gte: dateRange.start, $lte: dateRange.end },
+        },
+      },
+      {
+        $group: {
+          _id: {
+            eventType: '$eventType',
+            buttonName: '$eventName',
+            categoryKey: '$params.category_key',
+          },
+          count: { $sum: 1 },
+          uniqueUsers: { $addToSet: '$userId' },
+        },
+      },
+      {
+        $project: {
+          eventType: '$_id.eventType',
+          buttonName: '$_id.buttonName',
+          categoryKey: '$_id.categoryKey',
+          count: 1,
+          uniqueUsers: { $size: '$uniqueUsers' },
+        },
+      },
+      {
+        $sort: { count: -1 },
+      },
+      { $limit: 20 },
+    ]);
+
+    return {
+      clicks: homeClicks,
+    };
+  }
+
+  async getMapAnalytics(period: 'today' | 'week' | 'month') {
+    const dateRange = this.getDateRange(period);
+
+    // Get map entry/exit events
+    const mapEvents = await this.analyticsModel.aggregate([
+      {
+        $match: {
+          eventType: { $in: ['map_entry', 'map_exit'] },
+          timestamp: { $gte: dateRange.start, $lte: dateRange.end },
+        },
+      },
+      {
+        $group: {
+          _id: '$eventType',
+          count: { $sum: 1 },
+          uniqueUsers: { $addToSet: '$userId' },
+          avgTimeSpent: { $avg: '$params.time_spent_seconds' },
+        },
+      },
+    ]);
+
+    // Calculate unique map visitors
+    const uniqueMapVisitors = await this.analyticsModel.distinct('userId', {
+      eventType: 'map_entry',
+      timestamp: { $gte: dateRange.start, $lte: dateRange.end },
+      userId: { $exists: true, $ne: null },
+    });
+
+    return {
+      entries: mapEvents.find((e) => e._id === 'map_entry')?.count || 0,
+      exits: mapEvents.find((e) => e._id === 'map_exit')?.count || 0,
+      uniqueVisitors: uniqueMapVisitors.length,
+      avgTimeSpent:
+        mapEvents.find((e) => e._id === 'map_exit')?.avgTimeSpent || 0,
+    };
+  }
+
+  /**
+   * რადარის დაფიქსირების სტატისტიკა
+   */
+  async getRadarFixStats(period: 'today' | 'week' | 'month') {
+    const dateRange = this.getDateRange(period);
+
+    // მთლიანი დაჭერების რაოდენობა
+    const totalClicks = await this.analyticsModel.countDocuments({
+      eventType: 'button_click',
+      eventName: 'რადარის დაფიქსირება',
+      timestamp: { $gte: dateRange.start, $lte: dateRange.end },
+    });
+
+    // საათების მიხედვით დაჭერები
+    const clicksByHour = await this.analyticsModel.aggregate([
+      {
+        $match: {
+          eventType: 'button_click',
+          eventName: 'რადარის დაფიქსირება',
+          timestamp: { $gte: dateRange.start, $lte: dateRange.end },
+        },
+      },
+      {
+        $group: {
+          _id: '$params.hour',
+          count: { $sum: 1 },
+        },
+      },
+      {
+        $sort: { _id: 1 },
+      },
+    ]);
+
+    // დღეების მიხედვით დაჭერები
+    const clicksByDate = await this.analyticsModel.aggregate([
+      {
+        $match: {
+          eventType: 'button_click',
+          eventName: 'რადარის დაფიქსირება',
+          timestamp: { $gte: dateRange.start, $lte: dateRange.end },
+        },
+      },
+      {
+        $group: {
+          _id: '$params.date',
+          count: { $sum: 1 },
+        },
+      },
+      {
+        $sort: { _id: 1 },
+      },
+    ]);
+
+    // პლატფორმების მიხედვით
+    const clicksByPlatform = await this.analyticsModel.aggregate([
+      {
+        $match: {
+          eventType: 'button_click',
+          eventName: 'რადარის დაფიქსირება',
+          timestamp: { $gte: dateRange.start, $lte: dateRange.end },
+        },
+      },
+      {
+        $group: {
+          _id: '$params.platform',
+          count: { $sum: 1 },
+        },
+      },
+    ]);
+
+    return {
+      totalClicks,
+      clicksByHour: clicksByHour.map((item) => ({
+        hour: item._id,
+        count: item.count,
+      })),
+      clicksByDate: clicksByDate.map((item) => ({
+        date: item._id,
+        count: item.count,
+      })),
+      clicksByPlatform: clicksByPlatform.map((item) => ({
+        platform: item._id || 'უცნობი',
+        count: item.count,
+      })),
+    };
+  }
+
+  /**
+   * Android გადმოწერების სტატისტიკა
+   */
+  async getDownloadStats(period: 'today' | 'week' | 'month') {
+    const dateRange = this.getDateRange(period);
+
+    // მთლიანი გადმოწერების რაოდენობა
+    const totalDownloads = await this.analyticsModel.countDocuments({
+      eventType: 'app_download',
+      timestamp: { $gte: dateRange.start, $lte: dateRange.end },
+    });
+
+    // Android გადმოწერები
+    const androidDownloads = await this.analyticsModel.countDocuments({
+      eventType: 'app_download',
+      'params.platform': 'android',
+      timestamp: { $gte: dateRange.start, $lte: dateRange.end },
+    });
+
+    // iOS გადმოწერები
+    const iosDownloads = await this.analyticsModel.countDocuments({
+      eventType: 'app_download',
+      'params.platform': 'ios',
+      timestamp: { $gte: dateRange.start, $lte: dateRange.end },
+    });
+
+    // საათების მიხედვით გადმოწერები
+    const downloadsByHour = await this.analyticsModel.aggregate([
+      {
+        $match: {
+          eventType: 'app_download',
+          timestamp: { $gte: dateRange.start, $lte: dateRange.end },
+        },
+      },
+      {
+        $group: {
+          _id: '$params.hour',
+          count: { $sum: 1 },
+          android: {
+            $sum: {
+              $cond: [{ $eq: ['$params.platform', 'android'] }, 1, 0],
+            },
+          },
+          ios: {
+            $sum: {
+              $cond: [{ $eq: ['$params.platform', 'ios'] }, 1, 0],
+            },
+          },
+        },
+      },
+      {
+        $sort: { _id: 1 },
+      },
+    ]);
+
+    // დღეების მიხედვით გადმოწერები
+    const downloadsByDate = await this.analyticsModel.aggregate([
+      {
+        $match: {
+          eventType: 'app_download',
+          timestamp: { $gte: dateRange.start, $lte: dateRange.end },
+        },
+      },
+      {
+        $group: {
+          _id: '$params.date',
+          count: { $sum: 1 },
+          android: {
+            $sum: {
+              $cond: [{ $eq: ['$params.platform', 'android'] }, 1, 0],
+            },
+          },
+          ios: {
+            $sum: {
+              $cond: [{ $eq: ['$params.platform', 'ios'] }, 1, 0],
+            },
+          },
+        },
+      },
+      {
+        $sort: { _id: 1 },
+      },
+    ]);
+
+    return {
+      totalDownloads,
+      androidDownloads,
+      iosDownloads,
+      downloadsByHour: downloadsByHour.map((item) => ({
+        hour: item._id,
+        total: item.count,
+        android: item.android,
+        ios: item.ios,
+      })),
+      downloadsByDate: downloadsByDate.map((item) => ({
+        date: item._id,
+        total: item.count,
+        android: item.android,
+        ios: item.ios,
+      })),
+    };
   }
 }
