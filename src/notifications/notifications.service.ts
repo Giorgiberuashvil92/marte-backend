@@ -821,6 +821,41 @@ export class NotificationsService {
   }
 
   /**
+   * Get platform statistics (Android/iOS users count)
+   */
+  async getPlatformStatistics() {
+    const allTokens = await this.deviceTokenModel.find({}).lean().exec();
+    
+    // Get unique user IDs per platform
+    const androidUsers = new Set<string>();
+    const iosUsers = new Set<string>();
+    const allUsers = new Set<string>();
+    
+    allTokens.forEach((token: any) => {
+      const userId = String(token.userId || '').trim();
+      if (!userId) return;
+      
+      allUsers.add(userId);
+      const platform = String(token.platform || '').toLowerCase();
+      
+      if (platform === 'android') {
+        androidUsers.add(userId);
+      } else if (platform === 'ios') {
+        iosUsers.add(userId);
+      }
+    });
+    
+    return {
+      totalUsers: allUsers.size,
+      androidUsers: androidUsers.size,
+      iosUsers: iosUsers.size,
+      totalDevices: allTokens.length,
+      androidDevices: allTokens.filter((t: any) => String(t.platform || '').toLowerCase() === 'android').length,
+      iosDevices: allTokens.filter((t: any) => String(t.platform || '').toLowerCase() === 'ios').length,
+    };
+  }
+
+  /**
    * Backward compatibility: sendPushToTargets
    * Converts targets to userIds and calls sendPushToUsers
    */

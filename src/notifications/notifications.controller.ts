@@ -154,6 +154,27 @@ export class NotificationsController {
     }
   }
 
+  @Get('platform-stats')
+  async getPlatformStatistics() {
+    try {
+      const stats = await this.notificationsService.getPlatformStatistics();
+      return {
+        success: true,
+        data: stats,
+      };
+    } catch (error) {
+      console.error(
+        '❌ [NOTIFICATIONS] Error getting platform statistics:',
+        error,
+      );
+      throw new BadRequestException({
+        success: false,
+        message: 'Platform სტატისტიკის მიღება ვერ მოხერხდა',
+        error: error instanceof Error ? error.message : 'Unknown error',
+      });
+    }
+  }
+
   @Post('broadcast')
   async broadcastNotification(
     @Body()
@@ -229,7 +250,8 @@ export class NotificationsController {
       // თუ არაფერი არ არის მოწოდებული, ვერ გავაგზავნოთ - უსაფრთხოების მიზნით
       throw new BadRequestException({
         success: false,
-        message: 'გთხოვთ მიუთითოთ userIds, role ან active პარამეტრი. Broadcast to all არ არის დაშვებული.',
+        message:
+          'გთხოვთ მიუთითოთ userIds, role ან active პარამეტრი. Broadcast to all არ არის დაშვებული.',
       });
     } catch (error) {
       throw new BadRequestException({
