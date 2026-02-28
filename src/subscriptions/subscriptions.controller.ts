@@ -79,7 +79,9 @@ export class SubscriptionsController {
    * Body: { phone: string, period?: 'monthly' | 'yearly' | 'lifetime' }
    */
   @Post('grant-premium')
-  async grantPremiumByPhone(@Body() body: { phone: string; period?: 'monthly' | 'yearly' | 'lifetime' }) {
+  async grantPremiumByPhone(
+    @Body() body: { phone: string; period?: 'monthly' | 'yearly' | 'lifetime' },
+  ) {
     try {
       if (!body.phone || body.phone.trim().length === 0) {
         return {
@@ -95,7 +97,9 @@ export class SubscriptionsController {
         body.period || 'monthly',
       );
 
-      this.logger.log(`✅ Premium პაკეტი წარმატებით მიენიჭა phone: ${body.phone}`);
+      this.logger.log(
+        `✅ Premium პაკეტი წარმატებით მიენიჭა phone: ${body.phone}`,
+      );
 
       return {
         success: true,

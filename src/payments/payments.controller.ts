@@ -347,6 +347,58 @@ export class PaymentsController {
         };
       }
 
+      // შევამოწმოთ აქვს თუ არა unpaid rejected payment
+      const userPayments = await this.paymentsService.getUserPayments(userId);
+      const subscriptionPayments = userPayments.filter(
+        (p) =>
+          (p.context === 'subscription' ||
+            p.context === 'test_subscription' ||
+            p.metadata?.planId === subscription.planId) &&
+          p.isRecurring === true,
+      );
+
+      // ვნახოთ აქვს თუ არა rejected payment რომელსაც არ მოსდევს completed payment
+      const rejectedPayments = subscriptionPayments.filter(
+        (p) => p.status === 'rejected',
+      );
+
+      let hasUnpaidRejectedPayment = false;
+
+      for (const rejectedPayment of rejectedPayments) {
+        const rejectedDate = new Date(rejectedPayment.paymentDate).getTime();
+        const hasCompletedAfter = subscriptionPayments.some((other) => {
+          if (other.status !== 'completed' && other.status !== 'success')
+            return false;
+          const otherDate = new Date(other.paymentDate).getTime();
+          return otherDate > rejectedDate;
+        });
+
+        if (!hasCompletedAfter) {
+          hasUnpaidRejectedPayment = true;
+          this.logger.log(
+            `⚠️ User ${userId} has unpaid rejected payment: ${rejectedPayment.orderId}`,
+          );
+          break;
+        }
+      }
+
+      // თუ აქვს unpaid rejected payment, subscription-ი არ უნდა ითვლებოდეს active-ად
+      if (hasUnpaidRejectedPayment) {
+        this.logger.log(
+          `⚠️ User ${userId} has unpaid rejected payment, subscription will be treated as inactive`,
+        );
+        const subscriptionObj = subscription.toObject();
+        return {
+          success: true,
+          message: 'Subscription found but has unpaid rejected payment',
+          data: {
+            ...subscriptionObj,
+            status: 'pending', // არ ითვლება active-ად premium-ისთვის
+            _hasUnpaidRejectedPayment: true,
+          },
+        };
+      }
+
       this.logger.log(`✅ Subscription found for user ${userId}`);
 
       return {
