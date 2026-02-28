@@ -317,6 +317,7 @@ function RootLayoutNav() {
               <Stack.Screen name="bog-test" options={{headerShown: false}} />
               <Stack.Screen name="car-rental/[id]" options={{headerShown: false}} />
               <Stack.Screen name="car-rental-list" options={{headerShown: false}} />
+              <Stack.Screen name="radars" options={{headerShown: false}} />
               </Stack>
             </ThemeProvider>
               </ModalProvider>

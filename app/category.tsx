@@ -11,6 +11,8 @@ import { useUser } from '../contexts/UserContext';
 import { engagementApi } from '../services/engagementApi';
 import { analyticsService } from '../services/analytics';
 import { useFocusEffect } from 'expo-router';
+import AnalyticsTracker, { useButtonTracking, useCategoryTracking } from '../components/AnalyticsTracker';
+import { analyticsApi } from '../services/analyticsApi';
 
 const { width, height } = Dimensions.get('window');
 
@@ -114,14 +116,29 @@ export default function CategoryScreen() {
     : CATEGORY_CONFIG[categoryType] || CATEGORY_CONFIG.carwash;
   
   const categoryName = params.name as string || category?.name || config.title || 'კატეგორია';
+  const screenName = `კატეგორია: ${categoryName}`;
+  const trackButton = useButtonTracking('', screenName);
+  const trackCategory = useCategoryTracking();
 
   // Track screen view when focused
   useFocusEffect(
     React.useCallback(() => {
-      const screenName = `კატეგორია: ${categoryName}`;
       analyticsService.logScreenViewWithBackend(screenName, screenName, user?.id);
       analyticsService.logCategoryView(categoryType, categoryName, user?.id);
-    }, [categoryType, categoryName, user?.id])
+      
+      // Track category page entry
+      analyticsApi.trackEvent(
+        'category_page_entry',
+        `${categoryName} - გვერდზე შესვლა`,
+        user?.id,
+        screenName,
+        {
+          category_type: categoryType,
+          category_name: categoryName,
+          category_id: categoryId,
+        }
+      ).catch(() => {});
+    }, [categoryType, categoryName, categoryId, user?.id, screenName])
   );
 
   useEffect(() => {
@@ -235,6 +252,19 @@ export default function CategoryScreen() {
 
   const onRefresh = () => {
     setRefreshing(true);
+    
+    // Track refresh action
+    analyticsApi.trackEvent(
+      'category_refresh',
+      `${categoryName} - განახლება`,
+      user?.id,
+      screenName,
+      {
+        category_type: categoryType,
+        category_name: categoryName,
+      }
+    ).catch(() => {});
+    
     fetchCategoryServices(true);
   };
 
@@ -243,11 +273,29 @@ export default function CategoryScreen() {
     const serviceType = service.type || categoryType;
     
     // Track service click
-    analyticsService.logButtonClick(`სერვისი: ${service.name}`, 'კატეგორია', {
+    analyticsService.logButtonClick(`სერვისი: ${service.name}`, screenName, {
       service_id: serviceId,
       service_type: serviceType,
       category: categoryName,
     }, user?.id);
+    
+    // Track detailed service interaction
+    analyticsApi.trackEvent(
+      'category_service_click',
+      `${categoryName} - სერვისი: ${service.name}`,
+      user?.id,
+      screenName,
+      {
+        service_id: serviceId,
+        service_name: service.name,
+        service_type: serviceType,
+        category_name: categoryName,
+        category_type: categoryType,
+        service_rating: service.rating,
+        service_price: service.price,
+        filter_applied: filter,
+      }
+    ).catch(() => {});
     
     // Track engagement based on service type
     if (user?.id && serviceId) {
@@ -297,6 +345,7 @@ export default function CategoryScreen() {
 
   return (
     <View style={styles.container}>
+      <AnalyticsTracker screenName={screenName} trackAllInteractions={true} />
       <StatusBar barStyle="light-content" />
       
       {/* Header */}
@@ -354,7 +403,17 @@ export default function CategoryScreen() {
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filters}>
           <TouchableOpacity
             style={[styles.filterButton, filter === 'all' && styles.filterButtonActive]}
-            onPress={() => setFilter('all')}
+            onPress={() => {
+              setFilter('all');
+              analyticsService.logFilterApplied('category_filter', 'all');
+              analyticsApi.trackEvent(
+                'category_filter',
+                `${categoryName} - ფილტრი: ყველა`,
+                user?.id,
+                screenName,
+                { filter_type: 'all', category_name: categoryName }
+              ).catch(() => {});
+            }}
           >
             <BlurView intensity={filter === 'all' ? 50 : 30} tint="dark" style={styles.filterBlur}>
               <Ionicons name="apps" size={16} color={filter === 'all' ? '#FFF' : '#9CA3AF'} />
@@ -364,7 +423,17 @@ export default function CategoryScreen() {
           
           <TouchableOpacity
             style={[styles.filterButton, filter === 'nearby' && styles.filterButtonActive]}
-            onPress={() => setFilter('nearby')}
+            onPress={() => {
+              setFilter('nearby');
+              analyticsService.logFilterApplied('category_filter', 'nearby');
+              analyticsApi.trackEvent(
+                'category_filter',
+                `${categoryName} - ფილტრი: ახლოს`,
+                user?.id,
+                screenName,
+                { filter_type: 'nearby', category_name: categoryName }
+              ).catch(() => {});
+            }}
           >
             <BlurView intensity={filter === 'nearby' ? 50 : 30} tint="dark" style={styles.filterBlur}>
               <Ionicons name="location" size={16} color={filter === 'nearby' ? '#FFF' : '#9CA3AF'} />
@@ -374,7 +443,17 @@ export default function CategoryScreen() {
           
           <TouchableOpacity
             style={[styles.filterButton, filter === 'topRated' && styles.filterButtonActive]}
-            onPress={() => setFilter('topRated')}
+            onPress={() => {
+              setFilter('topRated');
+              analyticsService.logFilterApplied('category_filter', 'topRated');
+              analyticsApi.trackEvent(
+                'category_filter',
+                `${categoryName} - ფილტრი: რეიტინგით`,
+                user?.id,
+                screenName,
+                { filter_type: 'topRated', category_name: categoryName }
+              ).catch(() => {});
+            }}
           >
             <BlurView intensity={filter === 'topRated' ? 50 : 30} tint="dark" style={styles.filterBlur}>
               <Ionicons name="star" size={16} color={filter === 'topRated' ? '#FFF' : '#9CA3AF'} />
