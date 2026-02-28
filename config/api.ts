@@ -21,15 +21,18 @@ const getApiUrl = () => {
     return override;
   }
 
+  // Development-ზე localhost, production-ზე Railway
   if (__DEV__) {
-    // Development რეჟიმში localhost-ს ვიყენებთ
-    const localhostUrl = 'http://localhost:3000';
-    console.log('🌐 [DEV] Using localhost:', localhostUrl);
-    return localhostUrl;
+    const lanIp = getLanIpFromHost();
+    const localUrl = lanIp ? `http://${lanIp}:3000` : 'http://localhost:3000';
+    console.log('🌐 Using Local API (DEV):', localUrl);
+    return localUrl;
   }
 
-  // Production რეჟიმში Railway-ს ვიყენებთ
-  return 'https://marte-backend-production.up.railway.app';
+  // Production-ზე Railway
+  const railwayUrl = 'https://marte-backend-production.up.railway.app';
+  console.log('🌐 Using Railway API (PROD):', railwayUrl);
+  return railwayUrl;
 };
 
 const API_BASE_URL = getApiUrl();

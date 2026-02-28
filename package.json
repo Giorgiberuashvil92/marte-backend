@@ -46,6 +46,7 @@
     "@types/react": "~19.0.10",
     "expo": "~53.0.24",
     "expo-asset": "~11.1.7",
+    "expo-av": "^16.0.8",
     "expo-blur": "~14.1.5",
     "expo-build-properties": "~0.14.8",
     "expo-constants": "~17.1.7",

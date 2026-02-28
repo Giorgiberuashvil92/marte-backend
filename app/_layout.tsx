@@ -33,6 +33,8 @@ import { analyticsService } from '../services/analytics';
 import ForceUpdateModal from '../components/ui/ForceUpdateModal';
 import { getCurrentAppVersion, checkVersionUpdate, compareVersions } from '../services/versionCheck';
 import SessionTracker from '../components/SessionTracker';
+import CookiePolicyModal, { hasCookieConsent } from '../components/ui/CookiePolicyModal';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 
 export {
@@ -83,6 +85,7 @@ function RootLayoutNav() {
   const [showForceUpdate, setShowForceUpdate] = useState(false);
   const [minVersion, setMinVersion] = useState('');
   const [currentVersion, setCurrentVersion] = useState('');
+  const [showCookieModal, setShowCookieModal] = useState(false);
 
   // Debug: log when showForceUpdate changes
   useEffect(() => {
@@ -187,6 +190,22 @@ function RootLayoutNav() {
     // შევამოწმოთ ვერსია app-ის დაწყებისას
     checkForUpdate();
 
+    // Check cookie consent
+    const checkCookieConsent = async () => {
+      try {
+        const hasConsent = await hasCookieConsent();
+        if (!hasConsent) {
+          // Small delay to ensure app is fully loaded
+          setTimeout(() => {
+            setShowCookieModal(true);
+          }, 1000);
+        }
+      } catch (error) {
+        console.error('Error checking cookie consent:', error);
+      }
+    };
+    checkCookieConsent();
+
 
     const handleAppStateChange = (nextAppState: AppStateStatus) => {
       if (appState.current.match(/inactive|background/) && nextAppState === 'active') {
@@ -251,6 +270,16 @@ function RootLayoutNav() {
                   onClose={() => setShowForceUpdate(false)}
                 />
               )}
+              <CookiePolicyModal
+                visible={showCookieModal}
+                onAccept={(preferences) => {
+                  setShowCookieModal(false);
+                }}
+                onReject={() => {
+                  setShowCookieModal(false);
+                }}
+                
+              />
               <Stack>
               <Stack.Screen name="index" options={{ headerShown: false }} />
               <Stack.Screen name="login" options={{ headerShown: false }} />
@@ -317,7 +346,9 @@ function RootLayoutNav() {
               <Stack.Screen name="bog-test" options={{headerShown: false}} />
               <Stack.Screen name="car-rental/[id]" options={{headerShown: false}} />
               <Stack.Screen name="car-rental-list" options={{headerShown: false}} />
+              <Stack.Screen name="car-rental-add" options={{headerShown: false}} />
               <Stack.Screen name="radars" options={{headerShown: false}} />
+              <Stack.Screen name="review" options={{headerShown: false}} />
               </Stack>
             </ThemeProvider>
               </ModalProvider>

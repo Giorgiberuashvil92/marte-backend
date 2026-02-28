@@ -52,7 +52,7 @@ interface SavedCard {
 export default function PaymentCardScreen() {
   const router = useRouter();
   const { user } = useUser();
-  const { subscription, hasActiveSubscription, isPremiumUser, isBasicUser } = useSubscription();
+  const { subscription, hasActiveSubscription, isPremiumUser, isBasicUser, refreshSubscription } = useSubscription();
   const insets = useSafeAreaInsets();
   const params = useLocalSearchParams<{
     amount?: string;
@@ -107,7 +107,6 @@ export default function PaymentCardScreen() {
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const slideAnim = useRef(new Animated.Value(20)).current;
 
-  // Payment-ის მონაცემების წამოღება ბაზიდან (განსაკუთრებით subscription-ისთვის)
   useEffect(() => {
     const fetchPaymentData = async () => {
       if (!user?.id) {
@@ -117,16 +116,15 @@ export default function PaymentCardScreen() {
       }
 
       try {
-        console.log('💳 ========== FETCHING PAYMENTS FROM DB ==========');
-        console.log('👤 User ID:', user.id);
+        
         
         const response = await fetch(`${API_BASE_URL}/api/payments/user/${user.id}`);
         const result = await response.json();
 
-        console.log('📊 Payments API Response:', result.success ? 'Success' : 'Failed');
+        
         
         if (result.success && result.data && result.data.length > 0) {
-          console.log('📦 Total payments found:', result.data.length);
+         
           
           // ვიღებთ subscription-ის გადახდას
           const subscriptionPayment = result.data.find((p: any) => 
@@ -134,21 +132,12 @@ export default function PaymentCardScreen() {
           );
 
           if (subscriptionPayment) {
-            console.log('✅ Subscription payment found!');
-            console.log('📦 Subscription Payment Data:', JSON.stringify(subscriptionPayment, null, 2));
-            console.log('📦 Plan ID:', subscriptionPayment.metadata?.planId);
-            console.log('📦 Plan Name:', subscriptionPayment.metadata?.planName);
-            console.log('📦 Plan Price:', subscriptionPayment.metadata?.planPrice);
-            console.log('📦 Plan Currency:', subscriptionPayment.metadata?.planCurrency);
-            console.log('📦 Plan Period:', subscriptionPayment.metadata?.planPeriod);
-            console.log('📦 Amount:', subscriptionPayment.amount, subscriptionPayment.currency);
-            console.log('📦 Description:', subscriptionPayment.description);
+           
             
             setPaymentFromDB(subscriptionPayment);
             
-            // თუ payment-ში plan-ის მონაცემები არ არის, subscription API-დან ან Context-დან წამოვიღოთ
+           
             if (!subscriptionPayment.metadata?.planId) {
-              console.log('📋 Payment-ში plan-ის მონაცემები არ არის, subscription API-დან ვიღებთ...');
               let subscriptionData = null;
               
               try {
@@ -157,10 +146,8 @@ export default function PaymentCardScreen() {
                 
                 if (subResult.success && subResult.data) {
                   subscriptionData = subResult.data;
-                  console.log('✅ Subscription found from API!');
-                  console.log('📦 Subscription from API:', JSON.stringify(subResult.data, null, 2));
+                  
                 } else {
-                  console.log('⚠️ No subscription found in API, trying Context...');
                 }
               } catch (subError) {
                 console.error('❌ Subscription API-დან წამოღების შეცდომა:', subError);
@@ -417,7 +404,13 @@ export default function PaymentCardScreen() {
       
       // Production URL-ები redirect-ისთვის (mobile app-ში localhost არ მუშაობს)
       const PRODUCTION_BASE_URL = 'https://marte-backend-production.up.railway.app';
-      const successUrl = paymentData.successUrl || `${PRODUCTION_BASE_URL}/payment/success`;
+      
+      // თუ successUrl relative URL-ია (იწყება /-ით), გადავაქციოთ absolute URL-ად
+      let successUrl = paymentData.successUrl || `${PRODUCTION_BASE_URL}/payment/success`;
+      if (successUrl.startsWith('/')) {
+        successUrl = `${PRODUCTION_BASE_URL}${successUrl}`;
+      }
+      
       const failUrl = `${PRODUCTION_BASE_URL}/payment/fail`;
       
       const orderData = {
@@ -720,7 +713,6 @@ export default function PaymentCardScreen() {
           </ScrollView>
         </SafeAreaView>
 
-        {/* BOG Payment Modal */}
         <BOGPaymentModal
           visible={showBOGPaymentModal}
           paymentUrl={bogPaymentUrl}
@@ -729,6 +721,14 @@ export default function PaymentCardScreen() {
             setShowBOGPaymentModal(false);
             setShowSuccessModal(true);
             await savePaymentInfo();
+
+            if (paymentData.isSubscription) {
+              try {
+                await refreshSubscription();
+              } catch (error) {
+                console.error('❌ Error refreshing subscription:', error);
+              }
+            }
 
             if (paymentData.context === 'dismantler' && paymentData.metadata) {
               try {
@@ -762,7 +762,6 @@ export default function PaymentCardScreen() {
                 };
                 
                 await addItemApi.createDismantler(dismantlerData, metadata.userId || user?.id);
-                console.log('✅ დაშლილების განცხადება წარმატებით შეიქმნა გადახდის შემდეგ');
               } catch (error) {
                 console.error('❌ დაშლილების განცხადების შენახვისას მოხდა შეცდომა:', error);
                 Alert.alert('შეცდომა', 'განცხადების შენახვისას მოხდა შეცდომა. გთხოვთ დაუკავშირდეთ მხარდაჭერას.');
@@ -1137,6 +1136,7 @@ export default function PaymentCardScreen() {
               setTimeout(() => {
                 setShowSuccessModal(false);
                 if (paymentData.isSubscription) {
+                  // Subscription-ის შემთხვევაში refresh-ის შემდეგ მთავარ გვერდზე გადავიდეთ
                   router.replace('/(tabs)');
                 } else {
                   router.back();

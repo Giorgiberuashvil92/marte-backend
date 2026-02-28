@@ -14,6 +14,7 @@ export interface Radar {
   address?: string;
   isActive: boolean;
   source?: string;
+  radarSubType?: string; // დამატებითი ტიპი (speed_camera, traffic_monitoring, traffic_signals, etc.)
 }
 
 export interface RadarsResponse {

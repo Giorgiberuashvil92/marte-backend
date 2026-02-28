@@ -199,7 +199,6 @@ export default function AllRequestsScreen() {
     return { bg: 'rgba(99, 102, 241, 0.15)', border: 'rgba(99, 102, 241, 0.35)', text: '#6366F1' };
   };
 
-  // შეთავაზებების/შეტყობინებების ბეჯის ფერები აქტივობის მიხედვით
   const getAttentionBadgeColors = (count?: number) => {
     const hasNew = !!count && count > 0;
     if (hasNew) {

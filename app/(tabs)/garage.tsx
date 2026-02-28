@@ -2587,22 +2587,7 @@ const styles = StyleSheet.create({
                 />
               </View>
               
-              <View style={styles.inputGroup}>
-                <Text style={styles.inputLabel}>ფერი</Text>
-                <View style={styles.colorPicker}>
-                  {['#3B82F6', '#EF4444', '#10B981', '#F59E0B', '#8B5CF6', '#1E40AF'].map((color) => (
-                    <TouchableOpacity
-                      key={color}
-                      style={[
-                        styles.colorOption,
-                        { backgroundColor: color },
-                        newCarData.color === color && styles.selectedColor
-                      ]}
-                      onPress={() => setNewCarData({...newCarData, color})}
-                    />
-                  ))}
-                </View>
-              </View>
+             
               
               <View style={styles.modalActions}>
                 <TouchableOpacity style={styles.cancelModalButton} onPress={() => setAddCarModalVisible(false)}>

@@ -10,6 +10,7 @@ import {
   ScrollView,
   Alert,
   TextInput,
+  ActivityIndicator,
 } from 'react-native';
 import { Ionicons, Feather } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -18,6 +19,8 @@ import MapView, { Marker, PROVIDER_GOOGLE, Circle } from 'react-native-maps';
 import * as ExpoLocation from 'expo-location';
 import type { LocationObject } from 'expo-location';
 import { radarsApi, Radar } from '../services/radarsApi';
+import { overpassApi, SpeedLimit, RadarLocation } from '../services/overpassApi';
+import { geojsonRadarsService } from '../services/geojsonRadars';
 import API_BASE_URL from '../config/api';
 import { useCars } from '../contexts/CarContext';
 import { Vibration } from 'react-native';
@@ -52,6 +55,14 @@ export default function RadarsScreen() {
   const [showRadarAlert, setShowRadarAlert] = useState(false);
   const [nearbyRadar, setNearbyRadar] = useState<Radar | null>(null);
   const [loading, setLoading] = useState(false);
+  const [initialLoading, setInitialLoading] = useState(true); // Initial loading state
+  const [loadingProgress, setLoadingProgress] = useState({ current: 0, total: 2, message: 'რადარების ჩატვირთვა...' });
+  const [osmSpeedLimit, setOsmSpeedLimit] = useState<SpeedLimit | null>(null);
+  const [loadingSpeedLimit, setLoadingSpeedLimit] = useState(false);
+  const [osmRadarLocations, setOsmRadarLocations] = useState<RadarLocation[]>([]);
+  const [loadingOsmRadars, setLoadingOsmRadars] = useState(false);
+  const [geojsonLoaded, setGeojsonLoaded] = useState(false);
+  const [allRadarsLoaded, setAllRadarsLoaded] = useState(false); // Flag to prevent re-loading
   const [selectedFilter, setSelectedFilter] = useState<'all' | 'fixed' | 'mobile' | 'average_speed'>('all');
   const [showList, setShowList] = useState(false);
   const [cardExpanded, setCardExpanded] = useState(false);
@@ -73,7 +84,15 @@ export default function RadarsScreen() {
   const mapRef = useRef<any>(null);
   const alertScale = useRef(new Animated.Value(0)).current;
   const alertOpacity = useRef(new Animated.Value(0)).current;
-  const cardTranslateY = useRef(new Animated.Value(height * 0.5 - 100)).current;
+  const cardTranslateY = useRef(new Animated.Value(0)).current;
+  const cardOpacity = useRef(new Animated.Value(0)).current;
+  
+  // Loading animation values
+  const loadingDots = [
+    useRef(new Animated.Value(0.3)).current,
+    useRef(new Animated.Value(0.3)).current,
+    useRef(new Animated.Value(0.3)).current,
+  ];
   
   // Modal animations
   const modalScale = useRef(new Animated.Value(0)).current;
@@ -89,6 +108,13 @@ export default function RadarsScreen() {
   const [isSpeedExceeded, setIsSpeedExceeded] = useState(false);
   const [lastAlertTime, setLastAlertTime] = useState(0);
   const speedExceededAnimation = useRef(new Animated.Value(1)).current;
+  
+  // ხმის დაკვრის ფუნქცია - ვიბრაცია (expo-av არ არის დამატებული)
+  const playAlertSound = async () => {
+    // ვიბრაცია უკვე იკრება alert-ის გამოჩენისას
+    // ხმა დაემატება მომავალში expo-av-ის დამატების შემდეგ
+    console.log('Alert sound - vibration only (expo-av not installed)');
+  };
   
   // სიჩქარის გამოთვლა (m/s -> km/h)
   const getCurrentSpeed = (): number | null => {
@@ -121,15 +147,8 @@ export default function RadarsScreen() {
   const currentSpeed = getCurrentSpeed();
   
   // Debug log to see what speed we're getting
-  useEffect(() => {
-    if (userLocation) {
-      console.log('🚗 Speed Debug:', {
-        speed: userLocation.coords.speed,
-        calculatedSpeed: currentSpeed,
-        hasSpeed: userLocation.coords.speed !== null && userLocation.coords.speed !== undefined,
-      });
-    }
-  }, [userLocation, currentSpeed]);
+ 
+
 
   const styles = StyleSheet.create({
     container: {
@@ -189,7 +208,7 @@ export default function RadarsScreen() {
     zoomControls: {
       position: 'absolute',
       right: 16,
-      bottom: 180,
+      bottom: 240, // Location button-ის ზემოთ
       backgroundColor: 'rgba(17,24,39,0.85)',
       borderRadius: 14,
       borderWidth: 1,
@@ -214,24 +233,24 @@ export default function RadarsScreen() {
     },
     radarInfoCard: {
       position: 'absolute',
-      bottom: 0,
-      left: 0,
-      right: 0,
-      backgroundColor: 'rgba(17,24,39,0.98)', // Waze-style: more opaque
-      borderTopLeftRadius: 28,
-      borderTopRightRadius: 28,
-      paddingTop: 12,
+      bottom: 20,
+      left: 16,
+      right: 16,
+      backgroundColor: 'rgba(17,24,39,0.95)', // Floating card style
+      borderRadius: 24,
+      padding: 20,
+      paddingTop: 20,
       paddingBottom: insets.bottom + 20,
-      paddingHorizontal: 20,
-      borderTopWidth: 2,
-      borderTopColor: 'rgba(255,255,255,0.15)',
+      borderWidth: 1.5,
+      borderColor: 'rgba(255,255,255,0.2)',
       shadowColor: '#000',
-      shadowOffset: { width: 0, height: -12 },
-      shadowOpacity: 0.4,
+      shadowOffset: { width: 0, height: 8 },
+      shadowOpacity: 0.5,
       shadowRadius: 24,
       elevation: 120,
       zIndex: 2000,
       overflow: 'hidden',
+      maxHeight: height * 0.6, // Max height
     },
     infoHeader: {
       flexDirection: 'row',
@@ -395,198 +414,250 @@ export default function RadarsScreen() {
     },
   });
 
-  // Load radars
+  // Load radars from GeoJSON + OSM (Overpass API) - ერთხელ
   useEffect(() => {
     const loadRadars = async () => {
+      if (allRadarsLoaded) {
+        return; // Already loaded
+      }
+
       try {
-        setLoading(true);
+        setInitialLoading(true);
+        const allRadars: Radar[] = [];
         
-        // პირველ რიგში სინქრონიზაცია (თუ რადარები არ არის)
+        // Step 1: Load GeoJSON radars (static)
+        setLoadingProgress({ current: 1, total: 2, message: 'GeoJSON რადარების ჩატვირთვა...' });
         try {
-          await fetch(`${API_BASE_URL}/radars/sync`, { method: 'POST' });
-        } catch (syncError) {
-          console.log('Sync error (might be ok if radars already exist):', syncError);
+          const { geojsonData } = require('../geojson/export');
+          
+          if (geojsonData && geojsonData.features) {
+            const geojsonRadars = geojsonRadarsService.loadRadarsFromInlineGeoJSON(geojsonData);
+            
+            if (geojsonRadars.length > 0) {
+              allRadars.push(...geojsonRadars);
+              setGeojsonLoaded(true);
+            }
+          }
+        } catch (importError) {
         }
-        
-        // რადარების მიღება
-        const radarsData = await radarsApi.getAllRadars();
-        console.log('📡 რადარების მიღებული:', radarsData.length);
-        
-        // თუ რადარები არ არის, გამოვიყენოთ mock მონაცემები
-        if (radarsData.length === 0) {
-          console.log('⚠️ რადარები არ მოიძებნა, გამოიყენება mock მონაცემები');
-          const mockRadars: Radar[] = [
-            {
-              _id: '1',
-              latitude: 41.7151,
-              longitude: 44.8271,
-              type: 'fixed',
-              speedLimit: 60,
-              address: 'ვაზიანის გზატკეცილი, თბილისი',
-              direction: 'თბილისი-რუსთავი',
-              fineCount: 15,
-              lastFineDate: new Date('2024-01-15').toISOString(),
-              description: 'ფიქსირებული რადარი ვაზიანის გზატკეცილზე',
-              isActive: true,
-            },
-            {
-              _id: '2',
-              latitude: 41.7201,
-              longitude: 44.7801,
-              type: 'fixed',
-              speedLimit: 50,
-              address: 'რუსთაველის გამზირი, თბილისი',
-              direction: 'ცენტრი-ვაკე',
-              fineCount: 23,
-              lastFineDate: new Date('2024-01-20').toISOString(),
-              description: 'ფიქსირებული რადარი რუსთაველის გამზირზე, ცენტრალურ ნაწილში',
-              isActive: true,
-            },
-            {
-              _id: '3',
-              latitude: 41.7080,
-              longitude: 44.7900,
-              type: 'fixed',
-              speedLimit: 50,
-              address: 'აგმაშენების გამზირი, თბილისი',
-              direction: 'ცენტრი-ისანი',
-              fineCount: 8,
-              lastFineDate: new Date('2024-01-10').toISOString(),
-              description: 'ფიქსირებული რადარი აგმაშენების გამზირზე',
-              isActive: true,
-            },
-            {
-              _id: '4',
-              latitude: 41.7300,
-              longitude: 44.7500,
-              type: 'mobile',
-              speedLimit: 60,
-              address: 'ქავთარაძის გამზირი, თბილისი',
-              direction: 'ვაკე-დიღომი',
-              fineCount: 12,
-              lastFineDate: new Date('2024-01-18').toISOString(),
-              description: 'მობილური რადარი ქავთარაძის გამზირზე',
-              isActive: true,
-            },
-            {
-              _id: '5',
-              latitude: 41.7400,
-              longitude: 44.8200,
-              type: 'fixed',
-              speedLimit: 50,
-              address: 'თბილისის ზღვა, თბილისი',
-              direction: 'ცენტრი-საბურთალო',
-              fineCount: 5,
-              lastFineDate: new Date('2024-01-12').toISOString(),
-              description: 'ფიქსირებული რადარი თბილისის ზღვის მიდამოებში',
-              isActive: true,
-            },
-            {
-              _id: '6',
-              latitude: 41.7500,
-              longitude: 44.8500,
-              type: 'average_speed',
-              speedLimit: 80,
-              address: 'კახეთის გზატკეცილი, თბილისი',
-              direction: 'თბილისი-კახეთი',
-              fineCount: 18,
-              lastFineDate: new Date('2024-01-22').toISOString(),
-              description: 'საშუალო სიჩქარის რადარი კახეთის გზატკეცილზე',
-              isActive: true,
-            },
-            {
-              _id: '7',
-              latitude: 41.7000,
-              longitude: 44.7600,
-              type: 'fixed',
-              speedLimit: 50,
-              address: 'ვარკეთილის გამზირი, თბილისი',
-              direction: 'ცენტრი-ნაძალადევი',
-              fineCount: 10,
-              lastFineDate: new Date('2024-01-16').toISOString(),
-              description: 'ფიქსირებული რადარი ვარკეთილის გამზირზე',
-              isActive: true,
-            },
-            {
-              _id: '8',
-              latitude: 41.7100,
-              longitude: 44.7700,
-              type: 'mobile',
-              speedLimit: 60,
-              address: 'ბათონის გამზირი, თბილისი',
-              direction: 'ცენტრი-დიდუბე',
-              fineCount: 7,
-              lastFineDate: new Date('2024-01-14').toISOString(),
-              description: 'მობილური რადარი ბათონის გამზირზე',
-              isActive: true,
-            },
-          ];
-          console.log('✅ Mock რადარები დაყენებული:', mockRadars.length);
-          setRadars(mockRadars);
-        } else {
-          console.log('✅ რადარები ჩატვირთული:', radarsData.length);
-          setRadars(radarsData);
+
+        // Step 2: Load OSM radars from Overpass API (საქართველოსთვის)
+        setLoadingProgress({ current: 2, total: 2, message: 'OSM რადარების ჩატვირთვა...' });
+        try {
+          // Georgia bounding box (approximate) - მთელი საქართველო
+          const georgiaBbox = {
+            minLat: 41.0,
+            maxLat: 43.6,
+            minLng: 39.9,
+            maxLng: 46.7,
+          };
+
+         
+          const osmLocations = await overpassApi.getRadarLocations(
+            georgiaBbox.minLat,
+            georgiaBbox.maxLat,
+            georgiaBbox.minLng,
+            georgiaBbox.maxLng
+          );
+
+
+          if (osmLocations.length > 0) {
+            const osmRadars: Radar[] = osmLocations.map((location, index) => {
+              // Check for maxspeed in different formats (maxspeed, max-speed, max_speed)
+              const maxSpeedValue = location.tags?.maxspeed || location.tags?.['max-speed'] || location.tags?.max_speed;
+              const maxSpeed = maxSpeedValue ? parseInt(String(maxSpeedValue)) : undefined;
+              
+              // 🔍 დეტალური ლოგი location-ისთვის
+            
+              
+              // განვსაზღვროთ რადარის ტიპი tags-ების მიხედვით
+              let radarType: 'fixed' | 'mobile' | 'average_speed' = 'fixed';
+              if (location.tags?.highway === 'speed_camera') {
+                radarType = 'fixed'; // სიჩქარის კამერა
+              } else if (location.tags?.enforcement === 'average_speed') {
+                radarType = 'average_speed'; // საშუალო სიჩქარის კონტროლი
+              } else if (location.tags?.enforcement === 'traffic_signals') {
+                radarType = 'fixed'; // სინათლის კამერა
+              } else if (location.tags?.surveillance === 'traffic_monitoring' || location.tags?.man_made === 'surveillance') {
+                radarType = 'fixed'; // ტრაფიკის მონიტორინგი/CCTV
+              }
+              
+              return {
+                _id: `osm-${location.latitude}-${location.longitude}-${index}`,
+                latitude: location.latitude,
+                longitude: location.longitude,
+                type: radarType,
+                speedLimit: maxSpeed,
+                address: location.name || location.description,
+                description: location.description || `OSM: ${location.type || 'რადარი'}`,
+                isActive: true,
+                fineCount: 0,
+                source: 'osm',
+                // დავამატოთ დამატებითი ინფორმაცია tags-ებიდან
+                radarSubType: location.tags?.highway || location.tags?.enforcement || location.tags?.surveillance,
+              };
+            });
+
+            // Add OSM radars (avoid duplicates by coordinates)
+            const existingCoords = new Set(
+              allRadars.map(r => `${r.latitude.toFixed(6)}-${r.longitude.toFixed(6)}`)
+            );
+            const newOsmRadars = osmRadars.filter(r => {
+              const coordKey = `${r.latitude.toFixed(6)}-${r.longitude.toFixed(6)}`;
+              return !existingCoords.has(coordKey);
+            });
+            
+            allRadars.push(...newOsmRadars);
+          }
+        } catch (osmError) {
+          console.error('❌ OSM რადარების ჩატვირთვის შეცდომა:', osmError);
         }
+
+        // Set all radars
+        setRadars(allRadars);
+        setAllRadarsLoaded(true);
+        setInitialLoading(false);
       } catch (error) {
         console.error('❌ რადარების ჩატვირთვის შეცდომა:', error);
-        // Fallback to mock data on error
-        const mockRadars: Radar[] = [
-          {
-            _id: '1',
-            latitude: 41.7151,
-            longitude: 44.8271,
-            type: 'fixed',
-            speedLimit: 60,
-            address: 'ვაზიანის გზატკეცილი, თბილისი',
-            direction: 'თბილისი-რუსთავი',
-            fineCount: 15,
-            isActive: true,
-          },
-          {
-            _id: '2',
-            latitude: 41.7201,
-            longitude: 44.7801,
-            type: 'fixed',
-            speedLimit: 50,
-            address: 'რუსთაველის გამზირი, თბილისი',
-            direction: 'ცენტრი-ვაკე',
-            fineCount: 23,
-            isActive: true,
-          },
-        ];
-        setRadars(mockRadars);
-      } finally {
-        setLoading(false);
+        setRadars([]);
+        setAllRadarsLoaded(true);
+        setInitialLoading(false);
       }
     };
 
     loadRadars();
-  }, []);
+  }, []); // Run only once on mount
+
+  // Loading dots animation
+  useEffect(() => {
+    if (!initialLoading) return;
+
+    const animateDots = () => {
+      const animations = loadingDots.map((dot, index) => {
+        return Animated.sequence([
+          Animated.delay(index * 200),
+          Animated.timing(dot, {
+            toValue: 1,
+            duration: 400,
+            useNativeDriver: true,
+          }),
+          Animated.timing(dot, {
+            toValue: 0.3,
+            duration: 400,
+            useNativeDriver: true,
+          }),
+        ]);
+      });
+
+      Animated.loop(Animated.parallel(animations)).start();
+    };
+
+    animateDots();
+  }, [initialLoading]);
+
+  // აღარ ვიტვირთავთ რადარებს userLocation-ის ან region-ის ცვლილებისას
+  // ყველა რადარი უკვე ჩატვირთულია component mount-ისას
+
+  // Load speed limit from Overpass API (OpenStreetMap)
+  useEffect(() => {
+    const loadSpeedLimit = async () => {
+      if (!userLocation || !isReadyToDrive) {
+        return;
+      }
+
+      try {
+        setLoadingSpeedLimit(true);
+        const speedLimit = await overpassApi.getSpeedLimitAtLocation(
+          userLocation.coords.latitude,
+          userLocation.coords.longitude,
+          0.001 // ~100 მეტრი რადიუსი
+        );
+
+        if (speedLimit) {
+          setOsmSpeedLimit(speedLimit);
+        } else {
+          setOsmSpeedLimit(null);
+        }
+      } catch (error) {
+        console.error('❌ OSM სიჩქარის ლიმიტის ჩატვირთვის შეცდომა:', error);
+        setOsmSpeedLimit(null);
+      } finally {
+        setLoadingSpeedLimit(false);
+      }
+    };
+
+    // Debounce - სიჩქარის ლიმიტის განახლება 3 წამში ერთხელ
+    const debounceTimer = setTimeout(() => {
+      loadSpeedLimit();
+    }, 3000);
+
+    return () => {
+      clearTimeout(debounceTimer);
+    };
+  }, [userLocation?.coords.latitude, userLocation?.coords.longitude, isReadyToDrive]);
 
   // Load user location - GPS tracking for real-time speed
   useEffect(() => {
     let locationSubscription: any;
     
+    // Helper function to set Tbilisi location
+    const setTbilisiLocation = () => {
+      const tbilisiLocation: LocationObject = {
+        coords: {
+          latitude: 41.7151, // თბილისი, საქართველო
+          longitude: 44.8271,
+          altitude: null,
+          accuracy: 50,
+          altitudeAccuracy: null,
+          heading: null,
+          speed: null,
+        },
+        timestamp: Date.now(),
+      };
+      setUserLocation(tbilisiLocation);
+      
+      // Update map region to Tbilisi
+      const tbilisiRegion = {
+        latitude: 41.7151,
+        longitude: 44.8271,
+        latitudeDelta: 0.05,
+        longitudeDelta: 0.05,
+      };
+      setMapRegion(tbilisiRegion);
+      
+      // Animate camera to Tbilisi
+      setTimeout(() => {
+        mapRef.current?.animateCamera(
+          {
+            center: {
+              latitude: 41.7151,
+              longitude: 44.8271,
+            },
+            altitude: 200,
+            pitch: 70,
+            heading: 0,
+          },
+          { duration: 1000 }
+        );
+      }, 500);
+    };
+    
+    // Helper function to check if location is in America (rough bounds)
+    const isLocationInAmerica = (lat: number, lng: number): boolean => {
+      // America bounds: roughly 25-50 N, -125 to -65 W
+      return lat >= 25 && lat <= 50 && lng >= -125 && lng <= -65;
+    };
+    
     (async () => {
       try {
+        // Default: Use Tbilisi location (სტატიკურად თბილისი)
+        // Set Tbilisi immediately
+        setTbilisiLocation();
+        
         // Request location permission
         const { status } = await ExpoLocation.requestForegroundPermissionsAsync();
         if (status !== 'granted') {
-          console.log('Location permission denied, using Tbilisi fallback');
-          // Fallback to Tbilisi
-          const tbilisiLocation: LocationObject = {
-            coords: {
-              latitude: 41.7151,
-              longitude: 44.8271,
-              altitude: null,
-              accuracy: 50,
-              altitudeAccuracy: null,
-              heading: null,
-              speed: null,
-            },
-            timestamp: Date.now(),
-          };
-          setUserLocation(tbilisiLocation);
+          // Already set to Tbilisi above
           return;
         }
 
@@ -594,6 +665,15 @@ export default function RadarsScreen() {
         const location = await ExpoLocation.getCurrentPositionAsync({
           accuracy: ExpoLocation.Accuracy.High,
         });
+        
+        // Check if location is in America - if so, use Tbilisi instead
+        if (isLocationInAmerica(location.coords.latitude, location.coords.longitude)) {
+          console.log('📍 Location is in America, using Tbilisi instead');
+          // Already set to Tbilisi above, so just return
+          return;
+        }
+        
+        // Location is valid (not in America), use it
         setUserLocation(location);
         
         // Update map region
@@ -621,48 +701,42 @@ export default function RadarsScreen() {
           );
         }, 500);
 
-        // Real-time location tracking for speed
-        locationSubscription = await ExpoLocation.watchPositionAsync(
-          {
-            accuracy: ExpoLocation.Accuracy.High,
-            timeInterval: 1000, // Update every 1 second for smooth speed display
-            distanceInterval: 5, // Or every 5 meters
-          },
-          (newLocation) => {
-            setUserLocation(newLocation);
-            // Update map camera to follow car
-            if (mapRef.current) {
-              mapRef.current.animateCamera(
-                {
-                  center: {
-                    latitude: newLocation.coords.latitude,
-                    longitude: newLocation.coords.longitude,
+        // Real-time location tracking for speed (only if location is valid)
+        if (!isLocationInAmerica(location.coords.latitude, location.coords.longitude)) {
+          locationSubscription = await ExpoLocation.watchPositionAsync(
+            {
+              accuracy: ExpoLocation.Accuracy.High,
+              timeInterval: 1000, // Update every 1 second for smooth speed display
+              distanceInterval: 5, // Or every 5 meters
+            },
+            (newLocation) => {
+              // Check if new location is in America - if so, ignore it
+              if (isLocationInAmerica(newLocation.coords.latitude, newLocation.coords.longitude)) {
+                return; // Ignore America locations
+              }
+              
+              setUserLocation(newLocation);
+              // Update map camera to follow car
+              if (mapRef.current) {
+                mapRef.current.animateCamera(
+                  {
+                    center: {
+                      latitude: newLocation.coords.latitude,
+                      longitude: newLocation.coords.longitude,
+                    },
+                    altitude: 200,
+                    pitch: 70,
+                    heading: newLocation.coords.heading || 0,
                   },
-                  altitude: 200,
-                  pitch: 70,
-                  heading: newLocation.coords.heading || 0,
-                },
-                { duration: 500 }
-              );
+                  { duration: 500 }
+                );
+              }
             }
-          }
-        );
+          );
+        }
       } catch (error) {
-        console.log('Error getting location:', error);
-        // Fallback to Tbilisi
-        const tbilisiLocation: LocationObject = {
-          coords: {
-            latitude: 41.7151,
-            longitude: 44.8271,
-            altitude: null,
-            accuracy: 50,
-            altitudeAccuracy: null,
-            heading: null,
-            speed: null,
-          },
-          timestamp: Date.now(),
-        };
-        setUserLocation(tbilisiLocation);
+        // Fallback to Tbilisi - default location (already set above)
+        console.log('📍 Error getting location, using Tbilisi');
       }
     })();
 
@@ -728,8 +802,9 @@ export default function RadarsScreen() {
         });
       }
       
-      // Update speed limit from closest radar
+      // Update speed limit from closest radar or OSM
       if (closestRadar && closestRadar.speedLimit) {
+        // Priority: Use radar speed limit if available
         if (currentSpeedLimit !== closestRadar.speedLimit) {
           setCurrentSpeedLimit(closestRadar.speedLimit);
           // Animate in - slide from top
@@ -747,8 +822,27 @@ export default function RadarsScreen() {
             }),
           ]).start();
         }
-      } else if (!closestRadar && currentSpeedLimit) {
-        // Hide if no radar nearby
+      } else if (osmSpeedLimit && osmSpeedLimit.maxSpeed) {
+        // Fallback: Use OSM speed limit if no radar nearby
+        if (currentSpeedLimit !== osmSpeedLimit.maxSpeed) {
+          setCurrentSpeedLimit(osmSpeedLimit.maxSpeed);
+          // Animate in - slide from top
+          Animated.parallel([
+            Animated.spring(speedLimitSlideY, {
+              toValue: 0,
+              useNativeDriver: true,
+              tension: 50,
+              friction: 8,
+            }),
+            Animated.timing(speedLimitOpacity, {
+              toValue: 1,
+              duration: 400,
+              useNativeDriver: true,
+            }),
+          ]).start();
+        }
+      } else if (!closestRadar && !osmSpeedLimit && currentSpeedLimit) {
+        // Hide if no radar or OSM speed limit available
         Animated.parallel([
           Animated.timing(speedLimitSlideY, {
             toValue: -100,
@@ -769,7 +863,7 @@ export default function RadarsScreen() {
     updateWazeInfo();
     const interval = setInterval(updateWazeInfo, 1000);
     return () => clearInterval(interval);
-  }, [userLocation, radars, nextRadar, currentSpeedLimit]);
+  }, [userLocation, radars, nextRadar, currentSpeedLimit, osmSpeedLimit]);
 
   // Check for speed limit violation and play alert
   useEffect(() => {
@@ -811,25 +905,14 @@ export default function RadarsScreen() {
         }),
       ]).start();
 
-      // Vibration - Pattern: vibrate for 400ms, pause 200ms, vibrate 400ms
       try {
         Vibration.vibrate([400, 200, 400]);
       } catch (error) {
-        console.log('Vibration error:', error);
       }
 
-      // Sound alert - Use Alert.alert with sound (system beep)
-      console.log('🚨 სიჩქარის ლიმიტი გადააჭარბა!', {
-        currentSpeed,
-        speedLimit: nextRadar.speedLimit,
-        difference: currentSpeed - nextRadar.speedLimit,
-      });
-      
-      // System beep sound (works on iOS and Android)
-      // On iOS, Alert.alert plays a system sound
-      // On Android, we can use a simple vibration pattern
+
+     
       if (Platform.OS === 'ios') {
-        // iOS plays system sound automatically with Alert
         Alert.alert('', '', [{ text: 'OK' }], { cancelable: true });
       }
     } else if (!speedExceeded) {
@@ -837,14 +920,13 @@ export default function RadarsScreen() {
     }
   }, [currentSpeed, nextRadar, lastAlertTime]);
 
-  // Check for nearby radars and show alert
   useEffect(() => {
     if (!userLocation || radars.length === 0) return;
 
     const checkNearbyRadars = () => {
       const userLat = userLocation.coords.latitude;
       const userLng = userLocation.coords.longitude;
-      const alertRadius = 0.5; // 500 მეტრი
+      const alertRadius = 0.2; // 200 მეტრი - შეანელე მოძრაობა
 
       for (const radar of radars) {
         const distance = getDistanceKm(userLat, userLng, radar.latitude, radar.longitude);
@@ -869,7 +951,16 @@ export default function RadarsScreen() {
               }),
             ]).start();
 
-            // Auto-hide after 8 seconds
+            // Vibration alert
+            try {
+              Vibration.vibrate([300, 100, 300, 100, 300]);
+            } catch (error) {
+            }
+
+            // Sound alert
+            playAlertSound();
+
+            // Auto-hide after 10 seconds (უფრო მეტი დრო რომ შეანელოს)
             setTimeout(() => {
               Animated.parallel([
                 Animated.timing(alertScale, {
@@ -885,9 +976,13 @@ export default function RadarsScreen() {
               ]).start(() => {
                 setShowRadarAlert(false);
               });
-            }, 8000);
+            }, 10000);
           }
           break;
+        } else if (showRadarAlert && nearbyRadar?._id === radar._id) {
+          // თუ გავცდით რადარს, დავხუროთ alert
+          setShowRadarAlert(false);
+          setNearbyRadar(null);
         }
       }
     };
@@ -912,34 +1007,70 @@ export default function RadarsScreen() {
     return R * c;
   };
 
-  const getRadarIcon = (type: string) => {
-    switch (type) {
+  const getRadarIcon = (radar: Radar) => {
+    // განვასხვავოთ radarSubType-ის მიხედვით
+    if (radar.radarSubType === 'speed_camera') {
+      return 'camera'; // 📷 სიჩქარის კამერა
+    } else if (radar.radarSubType === 'traffic_signals') {
+      return 'stop-circle'; // 🚦 სინათლის კამერა (traffic signals)
+    } else if (radar.radarSubType === 'average_speed') {
+      return 'speedometer'; // ⚡ საშუალო სიჩქარის კონტროლი
+    } else if (radar.radarSubType === 'traffic_monitoring' || radar.radarSubType === 'surveillance') {
+      return 'videocam'; // 📹 ტრაფიკის მონიტორინგი/CCTV
+    }
+    
+    // Fallback to type-based icons
+    switch (radar.type) {
       case 'fixed':
-        return 'radio';
+        return 'radio'; // 📡 ფიქსირებული რადარი
       case 'mobile':
-        return 'alert-circle';
+        return 'alert-circle'; // ⚠️ მობილური რადარი
       case 'average_speed':
-        return 'speedometer';
+        return 'speedometer'; // ⚡ საშუალო სიჩქარის რადარი
       default:
         return 'radio';
     }
   };
 
-  const getRadarColor = (type: string) => {
-    switch (type) {
+  const getRadarColor = (radar: Radar) => {
+    // განვასხვავოთ radarSubType-ის მიხედვით
+    if (radar.radarSubType === 'speed_camera') {
+      return '#3B82F6'; // ლურჯი - სიჩქარის კამერა
+    } else if (radar.radarSubType === 'traffic_signals') {
+      return '#F59E0B'; // ყვითელი - სინათლის კამერა
+    } else if (radar.radarSubType === 'average_speed') {
+      return '#8B5CF6'; // იისფერი - საშუალო სიჩქარის კონტროლი
+    } else if (radar.radarSubType === 'traffic_monitoring' || radar.radarSubType === 'surveillance') {
+      return '#10B981'; // მწვანე - ტრაფიკის მონიტორინგი/CCTV
+    }
+    
+    // Fallback to type-based colors
+    switch (radar.type) {
       case 'fixed':
-        return '#EF4444'; // წითელი
+        return '#3B82F6'; // ლურჯი
       case 'mobile':
         return '#F59E0B'; // ყვითელი
       case 'average_speed':
         return '#8B5CF6'; // იისფერი
       default:
-        return '#EF4444';
+        return '#3B82F6'; // ლურჯი
     }
   };
 
-  const getRadarTypeName = (type: string) => {
-    switch (type) {
+  const getRadarTypeName = (radar: Radar) => {
+    // განვასხვავოთ radarSubType-ის მიხედვით
+    if (radar.radarSubType === 'speed_camera') {
+      return 'სიჩქარის კამერა';
+    } else if (radar.radarSubType === 'traffic_signals') {
+      return 'სინათლის კამერა';
+    } else if (radar.radarSubType === 'average_speed') {
+      return 'საშუალო სიჩქარის კონტროლი';
+    } else if (radar.radarSubType === 'traffic_monitoring' || radar.radarSubType === 'surveillance') {
+      return 'ტრაფიკის მონიტორინგი';
+    }
+    
+    // Fallback to type-based names
+    switch (radar.type) {
       case 'fixed':
         return 'ფიქსირებული რადარი';
       case 'mobile':
@@ -954,13 +1085,7 @@ export default function RadarsScreen() {
   const onZoomIn = async () => {
     try {
       const camera = await mapRef.current?.getCamera();
-      console.log('🔍 ZOOM IN - Current Camera:', {
-        zoom: camera?.zoom,
-        center: camera?.center,
-        pitch: camera?.pitch,
-        heading: camera?.heading,
-        altitude: camera?.altitude,
-      });
+     
       
       if (camera && typeof camera.zoom === 'number') {
         // Zoom in - zoom level-ის გაზრდა (უფრო მაღალი zoom = უფრო ახლოს) + ზემოთ გადაადგილება
@@ -983,20 +1108,11 @@ export default function RadarsScreen() {
           heading: camera.heading || 0,
         };
         
-        console.log('🔍 ZOOM IN - New Camera:', newCamera);
         
         await mapRef.current?.animateCamera(newCamera, { duration: 200 });
         
         // დავალოგოთ რა მოხდა
-        setTimeout(async () => {
-          const afterCamera = await mapRef.current?.getCamera();
-          console.log('🔍 ZOOM IN - After Animation:', {
-            zoom: afterCamera?.zoom,
-            center: afterCamera?.center,
-            pitch: afterCamera?.pitch,
-            heading: afterCamera?.heading,
-          });
-        }, 250);
+
         
         return;
       }
@@ -1086,17 +1202,24 @@ export default function RadarsScreen() {
   const handleRadarPress = (radar: Radar) => {
     setSelectedRadar(radar);
     setShowRadarInfo(true);
-    setCardExpanded(false); // Default-ად დაკეცილი
+    setCardExpanded(true); // Default-ად გახსნილი (უფრო მიმზიდველი)
     
-    // Waze-style: ნელ-ნელა გამოჩნდეს bottom sheet (slide up from bottom)
-    const collapsedY = height * 0.5 - 100;
-    cardTranslateY.setValue(height); // Start from bottom (off-screen)
-    Animated.spring(cardTranslateY, {
-      toValue: collapsedY,
-      useNativeDriver: true,
-      tension: 50,
-      friction: 8,
-    }).start();
+    // Auto-show with smooth animation
+    cardTranslateY.setValue(0); // Start from bottom
+    cardOpacity.setValue(0); // Start invisible
+    Animated.parallel([
+      Animated.spring(cardTranslateY, {
+        toValue: 0,
+        useNativeDriver: true,
+        tension: 60,
+        friction: 9,
+      }),
+      Animated.timing(cardOpacity, {
+        toValue: 1,
+        duration: 300,
+        useNativeDriver: true,
+      }),
+    ]).start();
     
     // Focus on radar - maintain 3D perspective
     mapRef.current?.animateCamera(
@@ -1216,18 +1339,10 @@ export default function RadarsScreen() {
     ? radars 
     : radars.filter((r) => r.type === selectedFilter);
 
-  // Filter radars by distance - show only nearby radars (within 2km)
-  const nearbyFilteredRadars = userLocation
-    ? filteredRadars.filter((radar) => {
-        const distance = getDistanceKm(
-          userLocation.coords.latitude,
-          userLocation.coords.longitude,
-          radar.latitude,
-          radar.longitude
-        );
-        return distance <= 2; // მხოლოდ 2 კმ-ის რადიუსში
-      })
-    : filteredRadars;
+  // Show ALL radars (no map region filtering)
+  const nearbyFilteredRadars = filteredRadars;
+
+
 
   const handleAddRadar = () => {
     if (!userLocation) {
@@ -1349,8 +1464,8 @@ export default function RadarsScreen() {
     if (selectedCar?.imageUri) {
       return selectedCar.imageUri;
     }
-    // Fallback - default car image (Porsche 911 style)
-    return 'https://images.unsplash.com/photo-1503376780353-7e6692767b70?q=80&w=800&auto=format&fit=crop';
+    // Fallback - default car image (მოდერნული სპორტული მანქანა)
+    return 'https://images.unsplash.com/photo-1492144534655-ae79c964c9d7?q=80&w=1920&auto=format&fit=crop';
   };
 
   // Intro Screen - Fullscreen onboarding
@@ -1392,9 +1507,8 @@ export default function RadarsScreen() {
                 textShadowOffset: { width: 0, height: 1 },
                 textShadowRadius: 4,
               }}>
-                {selectedCar 
-                  ? `იხილე რადარები და ჯარიმების ინფორმაცია ${selectedCar.make} ${selectedCar.model}-ისთვის`
-                  : 'იხილე რადარები და ჯარიმების ინფორმაცია'}
+                რადარის სისტემა ფუნქციონირებს სატესტო რეჟიმში.
+                მიმდინარეობს ტექნიკური მონიტორინგი და ოპტიმიზაცია.
               </Text>
             </View>
 
@@ -1402,7 +1516,6 @@ export default function RadarsScreen() {
             <TouchableOpacity
               onPress={() => {
                 setShowIntroScreen(false);
-                // Waze-style: გადაიტანოს კამერა მანქანაზე როცა იწყება
                 setTimeout(() => {
                   if (userLocation && mapRef.current) {
                     mapRef.current.animateCamera(
@@ -1562,152 +1675,192 @@ export default function RadarsScreen() {
         )}
 
         {/* Next Radar Distance */}
-        {nextRadar && userLocation && (
-          <Animated.View
-            style={{
-              transform: [{ translateY: nextRadarSlideY }],
-              opacity: nextRadarOpacity,
-              maxWidth: width * 0.7,
-            }}
-          >
-            <View
-              style={{
-                backgroundColor: 'rgba(17,24,39,0.95)',
-                borderRadius: 20,
-                paddingHorizontal: 18,
-                paddingVertical: 16,
-                borderWidth: 2,
-                borderColor: '#EF4444',
-                shadowColor: '#EF4444',
-                shadowOffset: { width: 0, height: 6 },
-                shadowOpacity: 0.6,
-                shadowRadius: 16,
-                elevation: 12,
-                overflow: 'hidden',
-              }}
-            >
-              {/* Gradient overlay effect */}
-              <View style={{
-                position: 'absolute',
-                top: 0,
-                left: 0,
-                right: 0,
-                height: 3,
-                backgroundColor: '#EF4444',
-                opacity: 0.8,
-              }} />
-              
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
-                {/* Icon Container */}
-                <View style={{
-                  width: 48,
-                  height: 48,
-                  borderRadius: 24,
-                  backgroundColor: '#EF4444',
+
+      </View>
+
+      {/* Radar Alert - 200 მეტრით ადრე */}
+      {showRadarAlert && nearbyRadar && (
+        <Animated.View
+          style={[
+            styles.alertContainer,
+            {
+              opacity: alertOpacity,
+              transform: [{ scale: alertScale }],
+            },
+          ]}
+        >
+          <View style={[styles.alertCard, { padding: 12, maxHeight: 120 }]}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+              <View
+                style={{
+                  width: 40,
+                  height: 40,
+                  borderRadius: 20,
+                  backgroundColor: '#FFFFFF',
                   alignItems: 'center',
                   justifyContent: 'center',
                   borderWidth: 2,
-                  borderColor: '#FFFFFF',
-                  shadowColor: '#EF4444',
-                  shadowOffset: { width: 0, height: 2 },
-                  shadowOpacity: 0.5,
+                  borderColor: '#EF4444',
+                }}
+              >
+                <Ionicons name="warning" size={22} color="#EF4444" />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={[styles.alertTitle, { fontSize: 14, marginBottom: 2 }]}>
+                  შეანელე!
+                </Text>
+                <Text style={[styles.alertText, { fontSize: 11 }]}>
+                  რადარი {getDistanceKm(
+                    userLocation?.coords.latitude || 0,
+                    userLocation?.coords.longitude || 0,
+                    nearbyRadar.latitude,
+                    nearbyRadar.longitude
+                  ).toFixed(1)} კმ
+                </Text>
+              </View>
+              {nearbyRadar.speedLimit && (
+                <View style={{
+                  backgroundColor: '#FFFFFF',
+                  borderRadius: 12,
+                  width: 50,
+                  height: 50,
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  borderWidth: 2,
+                  borderColor: '#EF4444',
+                }}>
+                  <Text style={{
+                    fontSize: 20,
+                    fontFamily: 'Poppins_700Bold',
+                    color: '#EF4444',
+                  }}>
+                    {nearbyRadar.speedLimit}
+                  </Text>
+                </View>
+              )}
+            </View>
+          </View>
+        </Animated.View>
+      )}
+      
+      {/* Initial Loading Overlay - Beautiful Animation */}
+      {initialLoading && (
+        <Animated.View
+          style={{
+            position: 'absolute',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            backgroundColor: 'rgba(0, 0, 0, 0.9)',
+            zIndex: 10000,
+            justifyContent: 'center',
+            alignItems: 'center',
+          }}
+        >
+          <Animated.View
+            style={{
+              backgroundColor: 'rgba(17, 24, 39, 0.98)',
+              borderRadius: 28,
+              padding: 40,
+              alignItems: 'center',
+              minWidth: 300,
+              maxWidth: 340,
+              borderWidth: 1.5,
+              borderColor: 'rgba(59, 130, 246, 0.3)',
+              shadowColor: '#3B82F6',
+              shadowOffset: { width: 0, height: 8 },
+              shadowOpacity: 0.4,
+              shadowRadius: 24,
+              elevation: 15,
+            }}
+          >
+            {/* Animated Radar Icon */}
+            <Animated.View
+              style={{
+                width: 80,
+                height: 80,
+                borderRadius: 40,
+                backgroundColor: 'rgba(59, 130, 246, 0.15)',
+                alignItems: 'center',
+                justifyContent: 'center',
+                marginBottom: 24,
+                borderWidth: 3,
+                borderColor: '#3B82F6',
+              }}
+            >
+              <ActivityIndicator size="large" color="#3B82F6" />
+            </Animated.View>
+            
+            <Text
+              style={{
+                color: '#FFFFFF',
+                fontSize: 18,
+                fontFamily: 'Poppins_700Bold',
+                marginBottom: 8,
+                textAlign: 'center',
+              }}
+            >
+              {loadingProgress.message}
+            </Text>
+            
+            <Text
+              style={{
+                color: '#9CA3AF',
+                fontSize: 13,
+                fontFamily: 'Poppins_500Medium',
+                marginBottom: 20,
+                textAlign: 'center',
+              }}
+            >
+              {loadingProgress.current} / {loadingProgress.total}
+            </Text>
+            
+            {/* Beautiful Progress Bar with Animation */}
+            <View
+              style={{
+                width: 260,
+                height: 6,
+                backgroundColor: 'rgba(255, 255, 255, 0.1)',
+                borderRadius: 10,
+                overflow: 'hidden',
+                marginBottom: 12,
+              }}
+            >
+              <Animated.View
+                style={{
+                  width: `${(loadingProgress.current / loadingProgress.total) * 100}%`,
+                  height: '100%',
+                  backgroundColor: '#3B82F6',
+                  borderRadius: 10,
+                  shadowColor: '#3B82F6',
+                  shadowOffset: { width: 0, height: 0 },
+                  shadowOpacity: 0.8,
                   shadowRadius: 8,
                   elevation: 5,
-                }}>
-                  <Ionicons name={getRadarIcon(nextRadar.type) as any} size={24} color="#FFFFFF" />
-                </View>
-                
-                {/* Content */}
-                <View style={{ flex: 1 }}>
-                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 4 }}>
-                    <Text style={{
-                      color: '#9CA3AF',
-                      fontSize: 10,
-                      fontFamily: 'Poppins_500Medium',
-                    }}>
-                      შემდეგი რადარი
-                    </Text>
-                    <View style={{
-                      width: 4,
-                      height: 4,
-                      borderRadius: 2,
-                      backgroundColor: '#EF4444',
-                    }} />
-                    <Text style={{
-                      color: '#EF4444',
-                      fontSize: 10,
-                      fontFamily: 'Poppins_600SemiBold',
-                    }}>
-                      {getRadarTypeName(nextRadar.type)}
-                    </Text>
-                  </View>
-                  <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 6 }}>
-                    <Text style={{
-                      color: '#FFFFFF',
-                      fontSize: 24,
-                      fontFamily: 'Poppins_700Bold',
-                      letterSpacing: -0.5,
-                    }}>
-                      {getDistanceKm(
-                        userLocation.coords.latitude,
-                        userLocation.coords.longitude,
-                        nextRadar.latitude,
-                        nextRadar.longitude
-                      ).toFixed(1)}
-                    </Text>
-                    <Text style={{
-                      color: '#9CA3AF',
-                      fontSize: 14,
-                      fontFamily: 'Poppins_500Medium',
-                    }}>
-                      კმ
-                    </Text>
-                  </View>
-                </View>
-                
-                {/* Speed Limit Badge */}
-                {nextRadar.speedLimit && (
-                  <View style={{
-                    backgroundColor: '#EF4444',
-                    borderRadius: 12,
-                    paddingHorizontal: 14,
-                    paddingVertical: 10,
-                    borderWidth: 2,
-                    borderColor: '#FFFFFF',
-                    shadowColor: '#EF4444',
-                    shadowOffset: { width: 0, height: 2 },
-                    shadowOpacity: 0.4,
-                    shadowRadius: 6,
-                    elevation: 6,
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    minWidth: 50,
-                  }}>
-                    <Text style={{
-                      color: '#FFFFFF',
-                      fontSize: 10,
-                      fontFamily: 'Poppins_500Medium',
-                      marginBottom: 2,
-                    }}>
-                      ლიმიტი
-                    </Text>
-                    <Text style={{
-                      color: '#FFFFFF',
-                      fontSize: 18,
-                      fontFamily: 'Poppins_700Bold',
-                    }}>
-                      {nextRadar.speedLimit}
-                    </Text>
-                  </View>
-                )}
-              </View>
+                }}
+              />
+            </View>
+            
+            {/* Loading Dots Animation */}
+            <View style={{ flexDirection: 'row', gap: 8, marginTop: 8 }}>
+              {loadingDots.map((dot, index) => (
+                <Animated.View
+                  key={index}
+                  style={{
+                    width: 8,
+                    height: 8,
+                    borderRadius: 4,
+                    backgroundColor: '#3B82F6',
+                    opacity: dot,
+                  }}
+                />
+              ))}
             </View>
           </Animated.View>
-        )}
-      </View>
+        </Animated.View>
+      )}
 
-      {/* Radar Alert */}
-      
       {/* Map */}
       <View style={styles.mapContainer}>
         <MapView
@@ -1813,9 +1966,9 @@ export default function RadarsScreen() {
             />
           )}
 
-          {/* Radar markers - მხოლოდ ახლო რადარები */}
+          {/* Radar markers - ყველა რადარი */}
           {nearbyFilteredRadars.map((radar, index) => {
-            const radarColor = getRadarColor(radar.type);
+            const radarColor = getRadarColor(radar);
             const isSelected = selectedRadar?._id === radar._id;
 
             return (
@@ -1845,12 +1998,31 @@ export default function RadarsScreen() {
                     transform: isSelected ? [{ scale: 1.2 }] : [],
                   }}
                 >
-                  <Ionicons name={getRadarIcon(radar.type) as any} size={22} color="#FFFFFF" />
+                  <Ionicons name={getRadarIcon(radar) as any} size={22} color="#FFFFFF" />
                 </View>
               </Marker>
             );
           })}
         </MapView>
+
+        {/* Zoom Controls */}
+        <View style={styles.zoomControls}>
+          <TouchableOpacity 
+            style={styles.zoomButton}
+            onPress={onZoomIn}
+            activeOpacity={0.7}
+          >
+            <Ionicons name="add" size={22} color="#FFFFFF" />
+          </TouchableOpacity>
+          <View style={styles.zoomDivider} />
+          <TouchableOpacity 
+            style={styles.zoomButton}
+            onPress={onZoomOut}
+            activeOpacity={0.7}
+          >
+            <Ionicons name="remove" size={22} color="#FFFFFF" />
+          </TouchableOpacity>
+        </View>
 
         {/* Location Button */}
         <TouchableOpacity 
@@ -1913,34 +2085,7 @@ export default function RadarsScreen() {
         </TouchableOpacity>
 
         {/* Info Add Button - Bottom Right */}
-        <TouchableOpacity
-          style={{
-            position: 'absolute',
-            bottom: (insets.bottom || 20) + (showRadarInfo ? height * 0.5 : 0) + 20, // Bottom right, above radar info card if visible
-            right: 16,
-            backgroundColor: 'rgba(17,24,39,0.95)',
-            width: 56,
-            height: 56,
-            borderRadius: 28,
-            alignItems: 'center',
-            justifyContent: 'center',
-            shadowColor: '#000',
-            shadowOffset: { width: 0, height: 4 },
-            shadowOpacity: 0.3,
-            shadowRadius: 8,
-            elevation: 10,
-            borderWidth: 2,
-            borderColor: 'rgba(255,255,255,0.2)',
-            zIndex: 1000,
-          }}
-          onPress={() => {
-            // TODO: Add info functionality
-            Alert.alert('ინფორმაცია', 'ინფორმაციის დამატების ფუნქცია მალე დაემატება');
-          }}
-          activeOpacity={0.8}
-        >
-          <Ionicons name="information-circle" size={28} color="#60A5FA" />
-        </TouchableOpacity>
+       
       </View>
 
       {/* Add Radar Modal */}
@@ -2387,32 +2532,53 @@ export default function RadarsScreen() {
         </Animated.View>
       )}
 
-      {/* Radar Info Card */}
+      {/* Radar Info Card - Floating Style */}
       {showRadarInfo && selectedRadar && (
         <Animated.View
           style={[
             styles.radarInfoCard,
             {
+              opacity: cardOpacity,
               transform: [{ translateY: cardTranslateY }],
-              height: height * 0.5,
             },
           ]}
         >
-          {/* Drag Handle */}
-          <View style={styles.dragHandleContainer} {...panResponder.panHandlers}>
-            <View style={styles.dragHandle} />
-            <TouchableOpacity
-              style={styles.collapseButton}
-              onPress={toggleCard}
-              activeOpacity={0.7}
-            >
-              <Feather 
-                name={cardExpanded ? "chevron-down" : "chevron-up"} 
-                size={20} 
-                color="#9CA3AF" 
-              />
-            </TouchableOpacity>
-          </View>
+          {/* Close Button - Top Right */}
+          <TouchableOpacity
+            style={{
+              position: 'absolute',
+              top: 16,
+              right: 16,
+              width: 32,
+              height: 32,
+              borderRadius: 16,
+              backgroundColor: 'rgba(255,255,255,0.1)',
+              alignItems: 'center',
+              justifyContent: 'center',
+              zIndex: 10,
+            }}
+            onPress={() => {
+              Animated.parallel([
+                Animated.timing(cardOpacity, {
+                  toValue: 0,
+                  duration: 200,
+                  useNativeDriver: true,
+                }),
+                Animated.timing(cardTranslateY, {
+                  toValue: 50,
+                  duration: 200,
+                  useNativeDriver: true,
+                }),
+              ]).start(() => {
+                setShowRadarInfo(false);
+                setSelectedRadar(null);
+                setCardExpanded(false);
+              });
+            }}
+            activeOpacity={0.7}
+          >
+            <Feather name="x" size={18} color="#FFFFFF" />
+          </TouchableOpacity>
           
           <View style={styles.infoHeader}>
             <View style={{ flex: 1 }}>
@@ -2422,12 +2588,12 @@ export default function RadarsScreen() {
                     width: 48,
                     height: 48,
                     borderRadius: 24,
-                    backgroundColor: getRadarColor(selectedRadar.type) + '25',
+                    backgroundColor: getRadarColor(selectedRadar) + '25',
                     alignItems: 'center',
                     justifyContent: 'center',
                     borderWidth: 2.5,
-                    borderColor: getRadarColor(selectedRadar.type),
-                    shadowColor: getRadarColor(selectedRadar.type),
+                    borderColor: getRadarColor(selectedRadar),
+                    shadowColor: getRadarColor(selectedRadar),
                     shadowOffset: { width: 0, height: 4 },
                     shadowOpacity: 0.3,
                     shadowRadius: 8,
@@ -2435,14 +2601,14 @@ export default function RadarsScreen() {
                   }}
                 >
                   <Ionicons 
-                    name={getRadarIcon(selectedRadar.type) as any} 
+                    name={getRadarIcon(selectedRadar) as any} 
                     size={24} 
-                    color={getRadarColor(selectedRadar.type)} 
+                    color={getRadarColor(selectedRadar)} 
                   />
                 </View>
                 <View style={{ flex: 1 }}>
                   <Text style={[styles.infoTitle, { fontSize: 20, marginBottom: 4 }]}>
-                    {getRadarTypeName(selectedRadar.type)}
+                    {getRadarTypeName(selectedRadar)}
                   </Text>
                   {selectedRadar.address && (
                     <Text style={{ color: '#9CA3AF', fontSize: 13, fontFamily: 'Poppins_500Medium' }} numberOfLines={1}>
@@ -2452,40 +2618,10 @@ export default function RadarsScreen() {
                 </View>
               </View>
             </View>
-            <View style={{ flexDirection: 'row', gap: 8 }}>
-              <TouchableOpacity
-                style={styles.closeButton}
-                onPress={toggleCard}
-                activeOpacity={0.7}
-              >
-                <Feather 
-                  name={cardExpanded ? "chevron-down" : "chevron-up"} 
-                  size={18} 
-                  color="#9CA3AF" 
-                />
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={styles.closeButton}
-                onPress={() => {
-                  // Waze-style: slide down and hide
-                  Animated.timing(cardTranslateY, {
-                    toValue: height,
-                    duration: 300,
-                    useNativeDriver: true,
-                  }).start(() => {
-                    setShowRadarInfo(false);
-                    setSelectedRadar(null);
-                    setCardExpanded(false);
-                  });
-                }}
-              >
-                <Feather name="x" size={18} color="#9CA3AF" />
-              </TouchableOpacity>
-            </View>
           </View>
 
-          {cardExpanded ? (
-            <ScrollView 
+          {/* Content - Always visible */}
+          <ScrollView 
               showsVerticalScrollIndicator={false}
               style={{ flex: 1 }}
               contentContainerStyle={{ paddingBottom: 20 }}
@@ -2506,7 +2642,7 @@ export default function RadarsScreen() {
                   </View>
                   <View style={{ flex: 1 }}>
                     <Text style={{ color: '#9CA3AF', fontSize: 11, fontFamily: 'Poppins_500Medium' }}>
-                      სიჩქარის ლიმიტი
+                      რამდენია დაშვებული
                     </Text>
                     <Text style={{ color: '#FFFFFF', fontSize: 24, fontFamily: 'Poppins_700Bold', marginTop: 2 }}>
                       {selectedRadar.speedLimit} კმ/სთ
@@ -2531,7 +2667,17 @@ export default function RadarsScreen() {
               )}
               {userLocation && (
                 <View style={[styles.infoCard, { flex: 1, backgroundColor: 'rgba(34,197,94,0.15)', borderColor: 'rgba(34,197,94,0.3)' }]}>
-                  <Ionicons name="resize" size={20} color="#22C55E" />
+                  <View style={{
+                    width: 40,
+                    height: 40,
+                    borderRadius: 20,
+                    backgroundColor: '#22C55E',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    marginBottom: 4,
+                  }}>
+                    <Ionicons name="car-sport" size={24} color="#FFFFFF" />
+                  </View>
                   <Text style={{ color: '#9CA3AF', fontSize: 10, fontFamily: 'Poppins_500Medium', marginTop: 6 }}>
                     მანძილი
                   </Text>
@@ -2601,13 +2747,6 @@ export default function RadarsScreen() {
               </Text>
             </View>
           </ScrollView>
-          ) : (
-            <View style={{ paddingTop: 8 }}>
-              <Text style={{ color: '#9CA3AF', fontSize: 12, fontFamily: 'Poppins_500Medium', textAlign: 'center' }}>
-                დაჭერე ზემოთ რომ ნახო დეტალები
-              </Text>
-            </View>
-          )}
         </Animated.View>
       )}
     </View>

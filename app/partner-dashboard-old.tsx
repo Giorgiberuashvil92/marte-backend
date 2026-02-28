@@ -837,7 +837,6 @@ export default function PartnerDashboardScreen() {
                     </View>
                   </View>
 
-                  {/* Submit Button */}
                   <Pressable
                     style={styles.submitButton}
                     onPress={handleSubmitOffer}

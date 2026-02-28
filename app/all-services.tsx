@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, StatusBar, Dimensions, Animated, ActivityIndicator, RefreshControl } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, StatusBar, Dimensions, Animated, ActivityIndicator, RefreshControl, Image } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -174,61 +174,82 @@ export default function AllServicesScreen() {
               <Text style={styles.emptySubtext}>სცადეთ სხვა ფილტრი</Text>
             </View>
           ) : (
-            filteredServices.map((service) => (
+            filteredServices.map((service, index) => (
             <TouchableOpacity
               key={service.id}
               style={styles.serviceCard}
               onPress={() => handleServicePress(service)}
-              activeOpacity={0.9}
+              activeOpacity={0.8}
             >
-              <View style={styles.serviceCardView}>
-                <View style={styles.serviceContent}>
-                  {/* Icon */}
-                  <View style={styles.serviceIconBox}>
-                    <Ionicons 
-                      name={service.type === 'carwash' ? 'water' : service.type === 'mechanic' ? 'construct' : 'storefront'} 
-                      size={24} 
-                      color="#3B82F6" 
-                    />
-                  </View>
-
-                  {/* Info */}
-                  <View style={styles.serviceInfo}>
-                    <View style={styles.serviceHeader}>
-                      <Text style={styles.serviceName} numberOfLines={1}>{service.name}</Text>
-                      {service.isOpen && (
-                        <View style={styles.openBadge}>
-                          <View style={styles.openDot} />
-                          <Text style={styles.openText}>ღიაა</Text>
-                        </View>
-                      )}
-                    </View>
-                    
-                    <View style={styles.serviceMeta}>
-                      <View style={styles.metaItem}>
-                        <Ionicons name="location" size={12} color="#6B7280" />
-                        <Text style={styles.metaText}>{service.location}</Text>
+              <LinearGradient
+                colors={['#FFFFFF', '#F8FAFC']}
+                style={styles.serviceCardGradient}
+              >
+                {/* Image Section */}
+                <View style={styles.serviceImageContainer}>
+                  <Image
+                    source={{ uri: service.image }}
+                    style={styles.serviceImage}
+                    resizeMode="cover"
+                  />
+                  <LinearGradient
+                    colors={['transparent', 'rgba(0,0,0,0.7)']}
+                    style={styles.serviceImageOverlay}
+                  />
+                  
+                  {/* Badges */}
+                  <View style={styles.serviceBadges}>
+                    {service.isOpen && (
+                      <View style={styles.openBadge}>
+                        <View style={styles.openDot} />
+                        <Text style={styles.openText}>ღიაა</Text>
                       </View>
-                      <View style={styles.metaItem}>
-                        <Ionicons name="time" size={12} color="#6B7280" />
-                        <Text style={styles.metaText}>{service.waitTime}</Text>
-                      </View>
-                    </View>
-
-                    <View style={styles.serviceFooter}>
-                      <View style={styles.ratingBox}>
-                        <Ionicons name="star" size={14} color="#F59E0B" />
-                        <Text style={styles.ratingText}>{service.rating}</Text>
-                        <Text style={styles.reviewsText}>({service.reviews})</Text>
-                      </View>
-                      <Text style={styles.priceText}>{service.price}</Text>
+                    )}
+                    <View style={styles.typeBadge}>
+                      <Ionicons 
+                        name={service.type === 'carwash' ? 'water' : service.type === 'mechanic' ? 'construct' : 'storefront'} 
+                        size={12} 
+                        color="#FFFFFF" 
+                      />
                     </View>
                   </View>
 
-                  {/* Arrow */}
-                  <Ionicons name="chevron-forward" size={20} color="#9CA3AF" />
+                  {/* Rating Badge */}
+                  <View style={styles.ratingBadge}>
+                    <Ionicons name="star" size={14} color="#F59E0B" />
+                    <Text style={styles.ratingBadgeText}>{service.rating}</Text>
+                  </View>
                 </View>
-              </View>
+
+                {/* Content Section */}
+                <View style={styles.serviceCardContent}>
+                  <View style={styles.serviceCardHeader}>
+                    <Text style={styles.serviceName} numberOfLines={2}>{service.name}</Text>
+                    <Text style={styles.priceText}>{service.price}</Text>
+                  </View>
+                  
+                  <View style={styles.serviceCardMeta}>
+                    <View style={styles.metaItem}>
+                      <Ionicons name="location" size={14} color="#6366F1" />
+                      <Text style={styles.metaText} numberOfLines={1}>{service.location}</Text>
+                    </View>
+                    <View style={styles.metaItem}>
+                      <Ionicons name="time" size={14} color="#6366F1" />
+                      <Text style={styles.metaText}>{service.waitTime}</Text>
+                    </View>
+                  </View>
+
+                  <View style={styles.serviceCardFooter}>
+                    <View style={styles.reviewsBox}>
+                      <Text style={styles.reviewsText}>{service.reviews} მიმოხილვა</Text>
+                    </View>
+                    <View style={styles.distanceBox}>
+                      <Ionicons name="navigate" size={12} color="#8B5CF6" />
+                      <Text style={styles.distanceText}>{service.distance}</Text>
+                    </View>
+                  </View>
+                </View>
+              </LinearGradient>
             </TouchableOpacity>
           ))
           )}
@@ -258,17 +279,12 @@ const styles = StyleSheet.create({
     flex: 1, 
     alignItems: 'center', 
     justifyContent: 'center', 
-    backgroundColor: '#FFFFFF', 
+    backgroundColor: 'rgba(255, 255, 255, 0.2)', 
     borderRadius: 22,
-    borderWidth: 1, 
-    borderColor: '#E5E7EB',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
   },
-  headerText: { fontSize: 20, fontWeight: '700', color: '#111827', fontFamily: 'FiraGO-Bold' },
+  headerText: { fontSize: 20, fontWeight: '700', color: '#FFFFFF', fontFamily: 'FiraGO-Bold' },
+  headerTitleContainer: { flex: 1, alignItems: 'center' },
+  headerSubtext: { fontSize: 12, color: 'rgba(255, 255, 255, 0.8)', fontFamily: 'FiraGO-Regular', marginTop: 2 },
   headerButton: { width: 44, height: 44, borderRadius: 22 },
   
   // Filters
@@ -300,57 +316,172 @@ const styles = StyleSheet.create({
   filterTextActive: { color: '#3B82F6', fontFamily: 'FiraGO-Bold' },
   
   // Services
-  scrollView: { flex: 1, backgroundColor: '#F8FAFC' },
-  servicesList: { padding: 20, gap: 12 },
+  scrollView: { flex: 1, backgroundColor: '#F1F5F9' },
+  servicesList: { padding: 16, gap: 16 },
   serviceCard: { 
-    borderRadius: 16,
+    borderRadius: 20,
+    overflow: 'hidden',
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.08,
-    shadowRadius: 12,
-    elevation: 4,
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.12,
+    shadowRadius: 20,
+    elevation: 8,
   },
-  serviceCardView: { 
-    backgroundColor: '#FFFFFF', 
-    borderRadius: 16,
-    borderWidth: 1, 
-    borderColor: '#E5E7EB',
+  serviceCardGradient: {
+    borderRadius: 20,
+    overflow: 'hidden',
   },
-  serviceContent: { flexDirection: 'row', alignItems: 'center', padding: 16, gap: 12 },
-  serviceIconBox: { 
-    width: 48, 
-    height: 48, 
-    borderRadius: 14, 
-    backgroundColor: '#EEF2FF', 
-    alignItems: 'center', 
-    justifyContent: 'center', 
-    borderWidth: 1, 
-    borderColor: '#DBEAFE',
+  serviceImageContainer: {
+    width: '100%',
+    height: 200,
+    position: 'relative',
   },
-  serviceInfo: { flex: 1, gap: 6 },
-  serviceHeader: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  serviceName: { fontSize: 16, fontWeight: '700', color: '#111827', fontFamily: 'FiraGO-Bold', flex: 1 },
+  serviceImage: {
+    width: '100%',
+    height: '100%',
+  },
+  serviceImageOverlay: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    height: 80,
+  },
+  serviceBadges: {
+    position: 'absolute',
+    top: 12,
+    left: 12,
+    right: 12,
+    flexDirection: 'row',
+    gap: 8,
+    alignItems: 'center',
+  },
   openBadge: { 
     flexDirection: 'row', 
     alignItems: 'center', 
     gap: 4, 
-    backgroundColor: '#DCFCE7', 
-    paddingHorizontal: 8, 
-    paddingVertical: 3, 
-    borderRadius: 8, 
-    borderWidth: 1, 
-    borderColor: '#BBF7D0',
+    backgroundColor: 'rgba(16, 185, 129, 0.95)', 
+    paddingHorizontal: 10, 
+    paddingVertical: 5, 
+    borderRadius: 20, 
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
+    elevation: 3,
   },
-  openDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: '#10B981' },
-  openText: { fontSize: 10, color: '#059669', fontFamily: 'FiraGO-Bold' },
-  serviceMeta: { flexDirection: 'row', gap: 12 },
-  metaItem: { flexDirection: 'row', alignItems: 'center', gap: 4 },
-  metaText: { fontSize: 12, color: '#6B7280', fontFamily: 'FiraGO-Regular' },
-  serviceFooter: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  ratingBox: { flexDirection: 'row', alignItems: 'center', gap: 4 },
-  ratingText: { fontSize: 14, fontWeight: '700', color: '#111827', fontFamily: 'FiraGO-Bold' },
-  reviewsText: { fontSize: 12, color: '#6B7280', fontFamily: 'FiraGO-Regular' },
-  priceText: { fontSize: 16, fontWeight: '800', color: '#3B82F6', fontFamily: 'FiraGO-Bold' },
+  openDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: '#FFFFFF' },
+  openText: { fontSize: 11, color: '#FFFFFF', fontFamily: 'FiraGO-Bold', fontWeight: '700' },
+  typeBadge: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: 'rgba(99, 102, 241, 0.9)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  ratingBadge: {
+    position: 'absolute',
+    bottom: 12,
+    right: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: 'rgba(255, 255, 255, 0.95)',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 20,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  ratingBadgeText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#111827',
+    fontFamily: 'FiraGO-Bold',
+  },
+  serviceCardContent: {
+    padding: 16,
+    gap: 12,
+  },
+  serviceCardHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    gap: 12,
+  },
+  serviceName: { 
+    fontSize: 18, 
+    fontWeight: '700', 
+    color: '#111827', 
+    fontFamily: 'FiraGO-Bold', 
+    flex: 1,
+    lineHeight: 24,
+  },
+  priceText: { 
+    fontSize: 18, 
+    fontWeight: '800', 
+    color: '#6366F1', 
+    fontFamily: 'FiraGO-Bold' 
+  },
+  serviceCardMeta: {
+    flexDirection: 'row',
+    gap: 16,
+    flexWrap: 'wrap',
+  },
+  metaItem: { 
+    flexDirection: 'row', 
+    alignItems: 'center', 
+    gap: 6,
+    flex: 1,
+    minWidth: '45%',
+  },
+  metaText: { 
+    fontSize: 13, 
+    color: '#475569', 
+    fontFamily: 'FiraGO-Medium',
+    flex: 1,
+  },
+  serviceCardFooter: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingTop: 8,
+    borderTopWidth: 1,
+    borderTopColor: '#E2E8F0',
+  },
+  reviewsBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  reviewsText: { 
+    fontSize: 12, 
+    color: '#64748B', 
+    fontFamily: 'FiraGO-Regular' 
+  },
+  distanceBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: '#F3F4F6',
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 12,
+  },
+  distanceText: {
+    fontSize: 12,
+    color: '#8B5CF6',
+    fontFamily: 'FiraGO-Medium',
+    fontWeight: '600',
+  },
   
   // Empty State
   emptyState: { alignItems: 'center', justifyContent: 'center', paddingVertical: 60, gap: 12 },

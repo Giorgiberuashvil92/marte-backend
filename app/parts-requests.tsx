@@ -1088,7 +1088,11 @@ export default function PartsRequestsScreen() {
           transparent={true}
           onRequestClose={() => setShowOfferModal(false)}
         >
-          <View style={styles.modalOverlay}>
+          <KeyboardAvoidingView
+            style={styles.modalOverlay}
+            behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+            keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
+          >
             <View style={styles.modalContentSimple}>
               <View style={styles.modalHeaderSimple}>
                 <Text style={styles.modalTitleSimple}>შეთავაზების გაგზავნა</Text>
@@ -1104,7 +1108,12 @@ export default function PartsRequestsScreen() {
                 </Pressable>
               </View>
 
-              <View style={styles.modalBodySimple}>
+              <ScrollView
+                style={styles.modalBodySimple}
+                contentContainerStyle={styles.modalScrollContent}
+                keyboardShouldPersistTaps="handled"
+                showsVerticalScrollIndicator={false}
+              >
                 {selectedRequestForOffer && (
                   <>
                     <View style={styles.offerRequestInfo}>
@@ -1143,9 +1152,9 @@ export default function PartsRequestsScreen() {
                     </Pressable>
                   </>
                 )}
-              </View>
+              </ScrollView>
             </View>
-          </View>
+          </KeyboardAvoidingView>
         </Modal>
 
         {/* Car Picker Modal */}

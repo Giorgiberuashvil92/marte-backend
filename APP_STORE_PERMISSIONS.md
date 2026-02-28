@@ -30,10 +30,10 @@
 - ✅ `ACCESS_FINE_LOCATION`
 
 #### 2. **Media Permissions**
-- ✅ `CAMERA`
-- ✅ `READ_EXTERNAL_STORAGE`
-- ✅ `WRITE_EXTERNAL_STORAGE`
-- ✅ `READ_MEDIA_IMAGES`
+- ✅ `CAMERA` - კამერის გამოსაყენებლად
+- ❌ `READ_EXTERNAL_STORAGE` - **მოხსნილია** (არ არის საჭირო Android 13+)
+- ❌ `WRITE_EXTERNAL_STORAGE` - **მოხსნილია** (არ არის საჭირო Android 13+)
+- ✅ **Photo Picker API** - `expo-image-picker` ავტომატურად იყენებს Photo Picker API-ს Android 13+ (API 33+), რომელიც არ საჭიროებს persistent permissions-ს
 
 #### 3. **Audio Permission**
 - ✅ `RECORD_AUDIO`

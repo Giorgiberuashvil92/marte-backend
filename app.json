@@ -2,7 +2,7 @@
   "expo": {
     "name": "Marte",
     "slug": "marte",
-    "version": "1.0.16",
+    "version": "1.0.18",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "carappx",
@@ -10,7 +10,7 @@
     "description": "MARTE - ყველაფერი მანქანისთვის ერთ ადგილზე",
     "splash": {
       "image": "./assets/images/splash.png",
-      "resizeMode": "contain",
+      "resizeMode": "cover",
       "backgroundColor": "#ffffff"
     },
     "assetBundlePatterns": [
@@ -27,6 +27,11 @@
       },
       "bundleIdentifier": "com.marte.marte",
       "googleServicesFile": "./GoogleService-Info.plist",
+      "splash": {
+        "image": "./assets/images/splash.png",
+        "resizeMode": "cover",
+        "backgroundColor": "#ffffff"
+      },
       "infoPlist": {
         "CFBundleIconName": "AppIcon",
         "NSCameraUsageDescription": "აპს სჭირდება კამერაზე წვდომა პროფილის ფოტოს გადასაღებად და ასატვირთად.",
@@ -68,14 +73,20 @@
         }
       },
       "googleServicesFile": "./google-services.json",
+      "splash": {
+        "image": "./assets/images/splash.png",
+        "resizeMode": "cover",
+        "backgroundColor": "#ffffff"
+      },
       "permissions": [
         "android.permission.ACCESS_COARSE_LOCATION",
         "android.permission.ACCESS_FINE_LOCATION",
         "android.permission.CAMERA",
-        "android.permission.READ_EXTERNAL_STORAGE",
-        "android.permission.WRITE_EXTERNAL_STORAGE",
-        "android.permission.READ_MEDIA_IMAGES",
         "android.permission.RECORD_AUDIO"
+      ],
+      "blockedPermissions": [
+        "android.permission.READ_MEDIA_IMAGES",
+        "android.permission.READ_MEDIA_VIDEO"
       ],
       "package": "com.marte.marte",
       "versionCode": 16
@@ -88,6 +99,14 @@
     "plugins": [
       "expo-router",
       "expo-font",
+      [
+        "expo-splash-screen",
+        {
+          "image": "./assets/images/splash.png",
+          "resizeMode": "cover",
+          "backgroundColor": "#ffffff"
+        }
+      ],
       "@react-native-firebase/app",
       [
         "expo-image-picker",
@@ -138,7 +157,8 @@
         {
           "userTrackingPermission": "აპს სჭირდება tracking permission გამოცდილების გასაუმჯობესებლად და პერსონალიზებული კონტენტის მისაწოდებლად."
         }
-      ]
+      ],
+      "./plugins/withRemoveMediaPermissions"
     ],
     "experiments": {
       "typedRoutes": true

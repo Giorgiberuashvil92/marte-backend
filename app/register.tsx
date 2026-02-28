@@ -19,6 +19,7 @@ import { useColorScheme } from '../components/useColorScheme';
 import { useUser } from '../contexts/UserContext';
 import { useToast } from '../contexts/ToastContext';
 import API_BASE_URL from '../config/api';
+import { hasCookieConsent } from '../components/ui/CookiePolicyModal';
 
 // Constants
 const MAX_NAME_LENGTH = 30;
@@ -93,6 +94,12 @@ export default function RegisterScreen() {
   }, [registerStep]);
 
   const handleCompleteRegistration = useCallback(async () => {
+    const hasConsent = await hasCookieConsent();
+    if (!hasConsent) {
+      error('შეცდომა', 'გთხოვთ დაეთანხმოთ ქუქი-ფაილების პოლიტიკას რეგისტრაციის გასაგრძელებლად');
+      return;
+    }
+
     if (!userId) {
       error('შეცდომა', 'დაბრუნდით თავიდან');
       router.back();

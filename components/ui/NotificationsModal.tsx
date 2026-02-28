@@ -29,6 +29,8 @@ export function NotificationsModal({ visible, onClose }: Props) {
   
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
   const [activeTab, setActiveTab] = useState<'business' | 'user'>('user');
+  const [showTesting, setShowTesting] = useState(false);
+  const [testingLoading, setTestingLoading] = useState<string | null>(null);
 
   const formatTimeAgo = (ts: number) => {
     const now = Date.now();
@@ -63,16 +65,16 @@ export function NotificationsModal({ visible, onClose }: Props) {
           id: String(n._id || n.id),
           title: String(payload.title || n.title || 'შეტყობინება'),
           message: String(payload.body || n.body || n.message || ''),
-          type: String(n.type || n.category || 'info'),
+          type: String(n.type || n.category || payloadData.type || 'info'),
           createdAt: ts,
           isRead: status === 'read',
           data: {
             ...payloadData,
-            target: target, // დავამატოთ target ინფორმაცია
-            // დავამატოთ requestId/offerId სხვადასხვა ველებიდან
+            type: payloadData.type || n.type || payloadData.type,
+            screen: payloadData.screen || payloadData.screen,
+            target: target, 
             requestId: payloadData.requestId || payloadData.reqId || payloadData.request_id,
             offerId: payloadData.offerId || payloadData.offer_id,
-            screen: payloadData.screen,
             chatId: payloadData.chatId || payloadData.chat_id,
             carwashId: payloadData.carwashId || payloadData.carwash_id,
           },
@@ -134,6 +136,7 @@ export function NotificationsModal({ visible, onClose }: Props) {
   const handleNavigation = (notification: NotificationItem) => {
     const d = notification.data || {};
     const screen = d.screen as string | undefined;
+    const type = (d.type as string | undefined) || notification.type;
     const requestId = d.requestId as string | undefined;
     const offerId = d.offerId as string | undefined;
     const carwashId = d.carwashId as string | undefined;
@@ -193,7 +196,23 @@ export function NotificationsModal({ visible, onClose }: Props) {
       return;
     }
     
-    // Garage reminder-ებისთვის
+    const title = notification.title || '';
+    const titleLower = title.toLowerCase();
+    if (titleLower.includes('carfax') || type === 'carfax' || d.type === 'carfax' || screen === 'Carfax') {
+      onClose();
+      console.log('🔔 [NOTIFICATIONS] Navigating to Carfax');
+      router.push('/carfax' as any);
+      return;
+    }
+    
+    // Review notification
+    if (type === 'review' || d.type === 'review' || d.type === 'review_us' || screen === 'Review' || screen === 'ReviewUs' || titleLower.includes('review') || titleLower.includes('შეფასება')) {
+      onClose();
+      console.log('🔔 [NOTIFICATIONS] Navigating to Review');
+      router.push('/review' as any);
+      return;
+    }
+    
     if (screen === 'Garage' || d.type === 'garage_reminder') {
       onClose();
       console.log('🔔 [NOTIFICATIONS] Navigating to Garage');
@@ -211,7 +230,6 @@ export function NotificationsModal({ visible, onClose }: Props) {
     
     onClose();
     
-    // ბიზნესის ნოტიფიკაციებისთვის
     if (isBusiness || isBusinessType) {
       let route = '';
       if (screen === 'RequestDetails' && hasValidRequestId) {
@@ -230,7 +248,6 @@ export function NotificationsModal({ visible, onClose }: Props) {
       console.log('🔔 [NOTIFICATIONS] Navigating to BUSINESS route:', route);
       router.push(route as any);
     } 
-    // იუზერის ნოტიფიკაციებისთვის
     else if (isUserType || !isBusiness) {
       let route = '';
       if (screen === 'AIRecommendations' || screen === 'PartDetails') {

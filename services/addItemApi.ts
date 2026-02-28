@@ -140,11 +140,13 @@ class AddItemApiService {
     location?: string;
     status?: string;
     ownerId?: string;
+    page?: number;
+    limit?: number;
   }): Promise<ApiResponse<any[]>> {
     const queryParams = new URLSearchParams();
     if (filters) {
       Object.entries(filters).forEach(([key, value]) => {
-        if (value !== undefined) {
+        if (value !== undefined && value !== null && value !== '') {
           queryParams.append(key, value.toString());
         }
       });
@@ -180,11 +182,13 @@ class AddItemApiService {
     minPrice?: number;
     maxPrice?: number;
     status?: string;
+    page?: number;
+    limit?: number;
   }): Promise<ApiResponse<any[]>> {
     const queryParams = new URLSearchParams();
     if (filters) {
       Object.entries(filters).forEach(([key, value]) => {
-        if (value !== undefined) {
+        if (value !== undefined && value !== null && value !== '') {
           queryParams.append(key, value.toString());
         }
       });

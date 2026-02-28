@@ -44,6 +44,8 @@ import { useFocusEffect } from 'expo-router';
 import { getResponsiveDimensions, getResponsiveCardWidth } from '../../utils/responsive';
 import { analyticsService } from '../../services/analytics';
 import CredoBankBannerTracker from '../../components/CredoBankBannerTracker';
+import AnalyticsTracker, { useButtonTracking } from '../../components/AnalyticsTracker';
+import { analyticsApi } from '../../services/analyticsApi';
 
 const { screenWidth, contentWidth, horizontalMargin, isTablet } = getResponsiveDimensions();
 const H_MARGIN = 20;
@@ -56,6 +58,7 @@ const RENTAL_CARD_WIDTH = 280;
 
 export default function TabOneScreen() {
   const router = useRouter();
+  const screenName = 'მთავარი';
   // უბრალოდ light mode გამოვიყენოთ error-ის თავიდან ასაცილებლად
   const colors = Colors['light'];
   const { user, shouldOpenPremiumModal, clearPremiumModalFlag, logout } = useUser();
@@ -196,7 +199,6 @@ export default function TabOneScreen() {
    
   ];
 
-  // CarFAX კარდი ცალკე, ქვემოთ
   const carfaxCard = {
     key: 'carfax',
     title: 'კარფაქსი',
@@ -209,18 +211,16 @@ export default function TabOneScreen() {
   };
 
   
-  // Stories state
   const [stories, setStories] = useState<any[]>([]);
 
   useEffect(() => {
     refreshStories();
   }, [refreshStories]);
 
-  // Validate user on mount and when user changes
   useEffect(() => {
     const validateUser = async () => {
       if (!user?.id) {
-        return; // No user, nothing to validate
+        return; 
       }
 
       // Check if user role is 'customer' - should logout
@@ -231,7 +231,6 @@ export default function TabOneScreen() {
         return;
       }
 
-      // Verify user exists in backend
       try {
         const verifyResponse = await fetch(`${API_BASE_URL}/auth/verify-user/${user.id}`);
         const verifyData = await verifyResponse.json();
@@ -244,7 +243,7 @@ export default function TabOneScreen() {
         }
       } catch (verifyError) {
         console.error('❌ [HOME] Error verifying user:', verifyError);
-        // If verification fails, log warning but don't logout (might be network issue)
+       
         console.warn('⚠️ [HOME] Could not verify user, but continuing');
       }
     };
@@ -252,7 +251,6 @@ export default function TabOneScreen() {
     validateUser();
   }, [user?.id, user?.role, logout, router]);
 
-  // Handle Premium Info Modal opening from push notifications
   React.useEffect(() => {
     if (shouldOpenPremiumModal) {
       if (subscription?.plan !== 'premium' && subscription?.plan !== 'basic') {
@@ -264,14 +262,10 @@ export default function TabOneScreen() {
     }
   }, [shouldOpenPremiumModal, subscription?.plan, clearPremiumModalFlag]);
 
-  // Handle showPremiumInfoModal - თუ plan არის free, გახსნას SubscriptionModal-ის ნაცვლად
   React.useEffect(() => {
     if (showPremiumInfoModal) {
-      // თუ plan არის free ან subscription არ არის, PremiumInfoModal-ის ნაცვლად გახსნას SubscriptionModal
       if (!subscription || subscription.plan === 'free' || (subscription.plan !== 'premium' && subscription.plan !== 'basic')) {
-        // დავხუროთ PremiumInfoModal და გავხსნათ SubscriptionModal
         setShowPremiumInfoModal(false);
-        // მცირე დაყოვნება რომ state-ები სწორად განახლდეს
         setTimeout(() => {
           setShowSubscriptionModal(true);
         }, 100);
@@ -279,13 +273,11 @@ export default function TabOneScreen() {
     }
   }, [showPremiumInfoModal, subscription?.plan]);
 
-  // Show subscription modal on main page load if user doesn't have active subscription
   React.useEffect(() => {
     if (user && !hasActiveSubscription && subscription?.plan === 'free') {
-      // Show modal after a short delay to allow page to load
       const timer = setTimeout(() => {
         setShowSubscriptionModal(true);
-      }, 2000); // 2 seconds delay
+      }, 2000);
       
       return () => clearTimeout(timer);
     }
@@ -297,7 +289,6 @@ export default function TabOneScreen() {
     setCurrentBannerIndex(index);
   };
 
-  // Fetch popular services function
   const fetchServices = async (isRefresh = false) => {
     try {
       if (!isRefresh) setLoading(true);
@@ -316,34 +307,33 @@ export default function TabOneScreen() {
       const data = JSON.parse(text);
       const formattedServices = data.map((service: any) => ({
         id: service.id,
-        name: service.title, // title-ი name-ად
+        name: service.title, 
         location: service.location,
-        rating: service.rating || 4.5, // default rating
+        rating: service.rating || 4.5, 
         price: service.price 
           ? (typeof service.price === 'string' ? service.price : `${service.price}₾`)
-          : undefined, // თუ price არ არის, undefined დავტოვოთ
+          : undefined, 
         image: typeof service.images?.[0] === 'string'
           ? { uri: service.images[0] }
           : require('../../assets/images/car-bg.png'),
         images: service.images && Array.isArray(service.images) && service.images.length > 0
           ? service.images.map((img: any) => typeof img === 'string' ? img : (img?.uri || img))
           : undefined,
-        category: service.category || service.type, // category ან type
-        address: service.location, // location address-ად
+        category: service.category || service.type, 
+        address: service.location, 
         phone: service.phone || 'N/A',
-        services: [], // დეტალური სერვისები
-        isOpen: service.isOpen !== undefined ? service.isOpen : true, // default ღია
-        waitTime: 0, // default wait time
-        socialMedia: {}, // default social media
-        reviews: service.reviews || Math.floor(Math.random() * 50) + 10, // random reviews თუ არ არის
-        type: service.type, // ახალი ველი - სერვისის ტიპი
-        description: service.description, // აღწერა
+        services: [], 
+        isOpen: service.isOpen !== undefined ? service.isOpen : true, 
+        waitTime: 0, 
+        socialMedia: {}, 
+        reviews: service.reviews || Math.floor(Math.random() * 50) + 10, 
+        type: service.type,
+        description: service.description,
       }));
       
       setPopularServices(formattedServices);
     } catch (error) {
       console.error('❌ Error fetching services:', error);
-      // Fallback static data
       setPopularServices([
         {
           id: '1',
@@ -1608,6 +1598,7 @@ export default function TabOneScreen() {
           />
         }
       >
+        <AnalyticsTracker screenName={screenName} trackAllInteractions={true} />
         {/* Header (new) */}
         <View style={styles.header}>
         <View style={styles.profileRow}>
@@ -1748,6 +1739,34 @@ export default function TabOneScreen() {
             </LinearGradient>
           </TouchableOpacity>
         )}
+
+        {/* რადარების ბანერი */}
+        <TouchableOpacity
+          onPress={() => {
+            analyticsService.logButtonClick('რადარები', 'მთავარი', undefined, user?.id);
+            router.push('/radars');
+          }}
+          activeOpacity={0.8}
+          style={styles.referralBanner}
+        >
+          <LinearGradient
+            colors={['#EF4444', '#DC2626']}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+            style={styles.referralBannerGradient}
+          >
+            <View style={styles.referralBannerContent}>
+              <View style={styles.referralBannerLeft}>
+                <Ionicons name="camera" size={24} color="#FFFFFF" />
+                <View style={styles.referralBannerTextContainer}>
+                  <Text style={styles.referralBannerTitle}>რადარი</Text>
+                  <Text style={styles.referralBannerSubtitle}>იხილე რადარები და ჯარიმების ინფორმაცია</Text>
+                </View>
+              </View>
+              <Ionicons name="chevron-forward" size={20} color="#FFFFFF" />
+            </View>
+          </LinearGradient>
+        </TouchableOpacity>
 
         {/* ინოვაციური Stories სექცია */}
         <View style={{ 
@@ -1981,7 +2000,25 @@ export default function TabOneScreen() {
                   key={action.key}
                   style={styles.quickActionCard}
                   activeOpacity={0.9}
-                  onPress={() => router.push(action.route)}
+                  onPress={() => {
+                    // Track category click from home
+                    analyticsService.logButtonClick(action.title, 'მთავარი', {
+                      category_key: action.key,
+                      category_route: action.route,
+                    }, user?.id);
+                    analyticsApi.trackEvent(
+                      'home_category_click',
+                      `მთავარი - კატეგორია: ${action.title}`,
+                      user?.id,
+                      'მთავარი',
+                      {
+                        category_key: action.key,
+                        category_title: action.title,
+                        category_route: action.route,
+                      }
+                    ).catch(() => {});
+                    router.push(action.route);
+                  }}
                 >
                   <LinearGradient
                     colors={action.colors as [string, string]}

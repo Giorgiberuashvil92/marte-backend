@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, Platform } from 'react-native';
 import { BottomTabBarProps } from '@react-navigation/bottom-tabs';
 import FontAwesome from '@expo/vector-icons/FontAwesome';
+import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import Colors from '@/constants/Colors';
 import { useColorScheme } from '@/components/useColorScheme';
@@ -67,7 +68,7 @@ export default function CustomTabBar({ state, descriptors, navigation }: BottomT
   };
 
   // Only show specific routes in tab bar
-  const allowedRoutes = ['index', 'garage', 'marketplace', 'map'];
+  const allowedRoutes = ['index', 'garage', 'marketplace', 'ecommerce'];
   const visibleRoutes = state.routes.filter((route) => {
     return allowedRoutes.includes(route.name);
   });
@@ -104,7 +105,7 @@ export default function CustomTabBar({ state, descriptors, navigation }: BottomT
         <View style={styles.side}>{tabItems.slice(2)}</View>
       </View>
       <TouchableOpacity activeOpacity={0.9} style={styles.fab} onPress={handleAIButtonPress}>
-        <FontAwesome name="search" size={20} color="#FFFFFF" />
+        <Ionicons name="add" size={24} color="#FFFFFF" />
       </TouchableOpacity>
 
       {/* AI Selection Modal */}

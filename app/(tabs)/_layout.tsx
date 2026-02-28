@@ -62,10 +62,16 @@ export default function TabLayout() {
         }}
       />
       <Tabs.Screen
+        name="ecommerce"
+        options={{
+          title: 'Shop',
+          tabBarIcon: ({ color }) => <TabBarIcon name="shopping-cart" color={color} />,
+        }}
+      />
+      <Tabs.Screen
         name="map"
         options={{
-          title: 'რუკა',
-          tabBarIcon: ({ color }) => <TabBarIcon name="map" color={color} />,
+          href: null, // Hide from tab bar
         }}
       />
       <Tabs.Screen

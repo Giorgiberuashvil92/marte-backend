@@ -11,12 +11,15 @@ import {
   Linking,
   Alert,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
+import { LinearGradient } from 'expo-linear-gradient';
 import API_BASE_URL from '../config/api';
 import CarRentalCard from '../components/ui/CarRentalCard';
 import Colors from '../constants/Colors';
+import { useUser } from '../contexts/UserContext';
+import { analyticsService } from '../services/analytics';
 
 const { width } = Dimensions.get('window');
 
@@ -74,7 +77,9 @@ interface FilterData {
 
 export default function CarRentalListScreen() {
   const router = useRouter();
+  const { user } = useUser();
   const colors = Colors['light'];
+  const insets = useSafeAreaInsets();
 
   const [cars, setCars] = useState<RentalCar[]>([]);
   const [loading, setLoading] = useState(true);
@@ -83,7 +88,6 @@ export default function CarRentalListScreen() {
   const [filters, setFilters] = useState<FilterData | null>(null);
   const [loadingFilters, setLoadingFilters] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
-  const [showSearch, setShowSearch] = useState(false);
 
   // დინამიური კატეგორიები filters-იდან
   const categories = [
@@ -180,12 +184,6 @@ export default function CarRentalListScreen() {
   });
 
 
-  const toggleSearch = () => {
-    setShowSearch(!showSearch);
-    if (showSearch) {
-      setSearchQuery('');
-    }
-  };
 
   const renderHeader = () => (
     <View style={styles.headerContainer}>
@@ -194,29 +192,25 @@ export default function CarRentalListScreen() {
           <Ionicons name="arrow-back" size={24} color="#111827" />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>მანქანების გაქირავება</Text>
-        <TouchableOpacity onPress={toggleSearch} style={styles.searchButton}>
-          <Ionicons name={showSearch ? "close" : "search"} size={22} color="#111827" />
-        </TouchableOpacity>
+        <View style={{ width: 40 }} />
       </View>
       
-      {showSearch && (
-        <View style={styles.searchContainer}>
-          <Ionicons name="search" size={20} color="#9CA3AF" style={styles.searchIcon} />
-          <TextInput
-            style={styles.searchInput}
-            placeholder="ძიება ბრენდით, მოდელით..."
-            placeholderTextColor="#9CA3AF"
-            value={searchQuery}
-            onChangeText={setSearchQuery}
-            autoFocus
-          />
-          {searchQuery.length > 0 && (
-            <TouchableOpacity onPress={() => setSearchQuery('')}>
-              <Ionicons name="close-circle" size={20} color="#9CA3AF" />
-            </TouchableOpacity>
-          )}
-        </View>
-      )}
+      {/* Search - ყოველთვის ხილული */}
+      <View style={styles.searchContainer}>
+        <Ionicons name="search" size={20} color="#9CA3AF" style={styles.searchIcon} />
+        <TextInput
+          style={styles.searchInput}
+          placeholder="ძიება ბრენდით, მოდელით..."
+          placeholderTextColor="#9CA3AF"
+          value={searchQuery}
+          onChangeText={setSearchQuery}
+        />
+        {searchQuery.length > 0 && (
+          <TouchableOpacity onPress={() => setSearchQuery('')}>
+            <Ionicons name="close-circle" size={20} color="#9CA3AF" />
+          </TouchableOpacity>
+        )}
+      </View>
     </View>
   );
 
@@ -346,6 +340,26 @@ export default function CarRentalListScreen() {
         refreshing={refreshing}
         onRefresh={onRefresh}
       />
+
+      {/* Floating Action Button - დამატების ღილაკი */}
+      <TouchableOpacity
+        style={[styles.fab, { bottom: Math.max(20, insets.bottom + 20) }]}
+        onPress={() => {
+          analyticsService.logButtonClick('განცხადების დადება', 'მანქანების გაქირავება', undefined, user?.id);
+          router.push('/car-rental-add' as any);
+        }}
+        activeOpacity={0.85}
+      >
+        <LinearGradient
+          colors={['#8B5CF6', '#7C3AED']}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={styles.fabGradient}
+        >
+          <Ionicons name="car" size={20} color="#FFFFFF" />
+          <Text style={styles.fabText}>მანქანის დამატება</Text>
+        </LinearGradient>
+      </TouchableOpacity>
     </SafeAreaView>
   );
 }
@@ -388,12 +402,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  searchButton: {
-    width: 40,
-    height: 40,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
   headerTitle: {
     fontSize: 18,
     fontWeight: '600',
@@ -407,7 +415,7 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     paddingHorizontal: 16,
     marginHorizontal: 20,
-    marginTop: 8,
+    marginTop: 0,
     marginBottom: 12,
     height: 44,
   },
@@ -497,6 +505,32 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     fontFamily: 'Outfit',
     color: '#FFFFFF',
+  },
+  fab: {
+    position: 'absolute',
+    right: 20,
+    borderRadius: 30,
+    overflow: 'hidden',
+    shadowColor: '#8B5CF6',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.4,
+    shadowRadius: 12,
+    elevation: 10,
+  },
+  fabGradient: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 20,
+    paddingVertical: 14,
+    gap: 10,
+  },
+  fabText: {
+    fontSize: 14,
+    fontWeight: '500',
+    fontFamily: 'Outfit',
+    color: '#FFFFFF',
+    letterSpacing: 0.2,
   },
 });
 

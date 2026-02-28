@@ -14,6 +14,7 @@ import {
   Linking,
   FlatList,
   Dimensions,
+  ActivityIndicator,
 } from 'react-native';
   import { SafeAreaView } from 'react-native-safe-area-context';
   import { Ionicons } from '@expo/vector-icons';
@@ -78,6 +79,14 @@ import {
     const [error, setError] = useState<string | null>(null);
     const [locations, setLocations] = useState<string[]>([]);
     
+    // Pagination states
+    const [dismantlersPage, setDismantlersPage] = useState(1);
+    const [partsPage, setPartsPage] = useState(1);
+    const [hasMoreDismantlers, setHasMoreDismantlers] = useState(true);
+    const [hasMoreParts, setHasMoreParts] = useState(true);
+    const [loadingMore, setLoadingMore] = useState(false);
+    const ITEMS_PER_PAGE = 20; // Android-ისთვის ნაკლები ელემენტი
+    
     // Parts likes state
     const [partsLikes, setPartsLikes] = useState<Record<string, { likesCount: number; isLiked: boolean }>>({});
     const [loadingLikes, setLoadingLikes] = useState(false);
@@ -116,13 +125,23 @@ import {
     );
 
     // Load real data functions
-    const loadDismantlers = async () => {
+    const loadDismantlers = async (page: number = 1, append: boolean = false) => {
       try {
-        setLoading(true);
+        if (!append) {
+          setLoading(true);
+          setDismantlersPage(1);
+        } else {
+          setLoadingMore(true);
+        }
         setError(null);
-        const response = await addItemApi.getDismantlers(dismantlerFilters as any);
         
-
+        const filters = {
+          ...dismantlerFilters,
+          page,
+          limit: ITEMS_PER_PAGE,
+        };
+        
+        const response = await addItemApi.getDismantlers(filters as any);
         
         if (response.success && response.data) {
           const allDismantlers = response.data;
@@ -131,8 +150,16 @@ import {
           // Regular dismantlers - მხოლოდ არა-VIP (isVip !== true ან undefined/false)
           const regular = allDismantlers.filter((d: any) => d.isVip !== true);
           
-          setVipDismantlers(vip);
-          setDismantlers(regular);
+          if (append) {
+            setDismantlers(prev => [...prev, ...regular]);
+            setVipDismantlers(prev => [...prev, ...vip]);
+          } else {
+            setDismantlers(regular);
+            setVipDismantlers(vip);
+          }
+          
+          // Check if there are more items
+          setHasMoreDismantlers(allDismantlers.length === ITEMS_PER_PAGE);
           
           // Load likes for all dismantlers
           if (allDismantlers.length > 0 && user?.id) {
@@ -143,24 +170,33 @@ import {
           }
         } else {
           setError('დაშლილების ჩატვირთვა ვერ მოხერხდა');
+          setHasMoreDismantlers(false);
         }
       } catch (error) {
         console.error('Error loading dismantlers:', error);
         setError('დაშლილების ჩატვირთვა ვერ მოხერხდა');
+        setHasMoreDismantlers(false);
       } finally {
         setLoading(false);
+        setLoadingMore(false);
       }
     };
 
-    const loadParts = async () => {
+    const loadParts = async (page: number = 1, append: boolean = false) => {
       try {
-        setLoading(true);
+        if (!append) {
+          setLoading(true);
+          setPartsPage(1);
+        } else {
+          setLoadingMore(true);
+        }
         setError(null);
-        // Prepare filters for API - convert priceMin/priceMax to numbers
         const apiFilters: any = {
           ...partsFilters,
           minPrice: partsFilters.priceMin ? Number(partsFilters.priceMin) : undefined,
           maxPrice: partsFilters.priceMax ? Number(partsFilters.priceMax) : undefined,
+          page,
+          limit: ITEMS_PER_PAGE,
         };
         // Remove priceMin/priceMax as they're replaced by minPrice/maxPrice
         delete apiFilters.priceMin;
@@ -178,8 +214,16 @@ import {
           const vip = allParts.filter((p: any) => p.isVip === true);
           const regular = allParts.filter((p: any) => p.isVip !== true);
           
-          setVipParts(vip);
-          setParts(regular);
+          if (append) {
+            setParts(prev => [...prev, ...regular]);
+            setVipParts(prev => [...prev, ...vip]);
+          } else {
+            setParts(regular);
+            setVipParts(vip);
+          }
+          
+          // Check if there are more items
+          setHasMoreParts(allParts.length === ITEMS_PER_PAGE);
           
           if (allParts.length > 0 && user?.id) {
             const partIds = allParts.map((p: any) => p.id || p._id).filter(Boolean);
@@ -189,12 +233,15 @@ import {
           }
         } else {
           setError('ნაწილების ჩატვირთვა ვერ მოხერხდა');
+          setHasMoreParts(false);
         }
       } catch (error) {
         console.error('Error loading parts:', error);
         setError('ნაწილების ჩატვირთვა ვერ მოხერხდა');
+        setHasMoreParts(false);
       } finally {
         setLoading(false);
+        setLoadingMore(false);
       }
     };
 
@@ -280,6 +327,289 @@ import {
             </LinearGradient>
           </ImageBackground>
         </TouchableOpacity>
+      );
+    };
+
+    // Render Dismantler Card for FlatList
+    const renderDismantlerCard = ({ item: dismantler, index }: { item: any; index: number }) => {
+      const dismantlerId = dismantler.id || dismantler._id;
+      return (
+        <View key={dismantlerId || index} style={styles.modernDismantlerCard}>
+          <ImageBackground 
+            source={{
+              uri: dismantler.photos && dismantler.photos.length > 0 
+                ? dismantler.photos[0] 
+                : dismantler.images && dismantler.images.length > 0 
+                  ? dismantler.images[0]
+                  : dismantler.image || 'https://images.unsplash.com/photo-1563298723-dcfebaa392e3?q=80&w=800&auto=format&fit=crop'
+            }}
+            style={styles.modernDismantlerBackgroundImage}
+            resizeMode="cover"
+          >
+            <LinearGradient
+              colors={['rgba(0,0,0,0.4)', 'rgba(0,0,0,0.2)', 'rgba(0,0,0,0.5)']}
+              style={styles.modernDismantlerGradientOverlay}
+            >
+              <View style={styles.modernDismantlerHeader}>
+                <View style={styles.modernDismantlerProfileSection}>
+                  <View style={styles.modernDismantlerAvatarPlaceholder}>
+                    <Image 
+                      source={{
+                        uri: dismantler.photos && dismantler.photos.length > 0 
+                          ? dismantler.photos[0] 
+                          : dismantler.image || 'https://images.unsplash.com/photo-1563298723-dcfebaa392e3?q=80&w=800&auto=format&fit=crop'
+                      }} 
+                      style={styles.modernDismantlerAvatar} 
+                    />
+                  </View>
+                  <Text style={styles.modernDismantlerUsername}>{dismantler.name}</Text>
+                </View>
+                <TouchableOpacity 
+                  style={styles.modernDismantlerLikeButton}
+                  onPress={async (e) => {
+                    e.stopPropagation();
+                    if (!user?.id || !dismantlerId) return;
+                    try {
+                      const currentLike = dismantlersLikes[dismantlerId];
+                      const newLikesCount = currentLike?.isLiked 
+                        ? (currentLike.likesCount - 1) 
+                        : (currentLike?.likesCount || 0) + 1;
+                      setDismantlersLikes((prev) => ({
+                        ...prev,
+                        [dismantlerId]: {
+                          likesCount: newLikesCount,
+                          isLiked: !currentLike?.isLiked,
+                        },
+                      }));
+                      const result = await engagementApi.toggleDismantlerLike(dismantlerId, user.id);
+                      setDismantlersLikes((prev) => ({
+                        ...prev,
+                        [dismantlerId]: {
+                          likesCount: result.likesCount,
+                          isLiked: result.isLiked,
+                        },
+                      }));
+                    } catch (error) {
+                      console.error('Error toggling dismantler like:', error);
+                      const currentLike = dismantlersLikes[dismantlerId];
+                      setDismantlersLikes((prev) => ({
+                        ...prev,
+                        [dismantlerId]: currentLike || { likesCount: 0, isLiked: false },
+                      }));
+                    }
+                  }}
+                  activeOpacity={0.7}
+                >
+                  <Ionicons 
+                    name={dismantlersLikes[dismantlerId]?.isLiked ? "heart" : "heart-outline"} 
+                    size={16} 
+                    color={dismantlersLikes[dismantlerId]?.isLiked ? "#EF4444" : "#FFFFFF"} 
+                  />
+                  <Text style={styles.modernDismantlerActionText}>
+                    {dismantlersLikes[dismantlerId]?.likesCount || 0}
+                  </Text>
+                </TouchableOpacity>
+              </View>
+              
+              <TouchableOpacity 
+                style={styles.modernDismantlerMainCard}
+                onPress={() => {
+                  if (user?.id && dismantlerId) {
+                    engagementApi.trackDismantlerView(dismantlerId, user.id).catch((err) => {
+                      console.error('❌ [DISMANTLERS] Error tracking dismantler view:', err);
+                    });
+                  }
+                  const detailItem = convertDismantlerToDetailItem(dismantler);
+                  setSelectedDetailItem(detailItem);
+                  setShowDetailModal(true);
+                }}
+                activeOpacity={0.95}
+              >
+                <View style={styles.modernDismantlerInfoSection} />
+                <View style={styles.modernDismantlerSeparator} />
+                <View style={styles.modernDismantlerTypeSection}>
+                  <View style={styles.modernDismantlerInfoSection}>
+                    <View style={styles.modernDismantlerCarInfoButton}>
+                      <Text style={styles.modernDismantlerCarInfoText}>
+                        {dismantler.brand && dismantler.model ? 
+                          `${dismantler.brand} ${dismantler.model}` : 
+                          'დაშლილი მანქანები'
+                        }
+                      </Text>
+                    </View>
+                    {dismantler.yearFrom && dismantler.yearTo && (
+                      <View style={styles.modernDismantlerYearButton}>
+                        <Text style={styles.modernDismantlerYearText}>
+                          {dismantler.yearFrom} - {dismantler.yearTo}
+                        </Text>
+                      </View>
+                    )}
+                  </View>
+                </View>
+                <View style={styles.modernDismantlerActionsFooter}>
+                  <View style={styles.modernDismantlerActionsLeft}>
+                    <View style={styles.modernDismantlerLocationButton}>
+                      <Ionicons name="location-outline" size={16} color="#FFFFFF" />
+                      <Text style={styles.modernDismantlerLocationButtonText}>
+                        {dismantler.location || 'მდებარეობა'}
+                      </Text>
+                    </View>
+                  </View>
+                  <TouchableOpacity 
+                    style={styles.modernDismantlerContactButton}
+                    onPress={(e) => {
+                      e.stopPropagation();
+                      const detailItem = convertDismantlerToDetailItem(dismantler);
+                      setSelectedDetailItem(detailItem);
+                      setShowDetailModal(true);
+                    }}
+                    activeOpacity={0.8}
+                  >
+                    <Ionicons name="information-outline" size={14} color="#FFFFFF" />
+                    <Text style={styles.modernDismantlerContactButtonText}>ინფო</Text>
+                  </TouchableOpacity>
+                </View>
+              </TouchableOpacity>
+            </LinearGradient>
+          </ImageBackground>
+        </View>
+      );
+    };
+
+    // Render Part Card for FlatList
+    const renderPartCard = ({ item: part, index }: { item: any; index: number }) => {
+      const partId = part.id || part._id;
+      return (
+        <View key={partId || index} style={styles.modernPartCard}>
+          <ImageBackground 
+            source={{
+              uri: part.photos && part.photos.length > 0 
+                ? part.photos[0] 
+                : part.images && part.images.length > 0 
+                  ? part.images[0]
+                  : part.image || 'https://images.unsplash.com/photo-1486262715619-67b85e0b08d3?q=80&w=800&auto=format&fit=crop'
+            }}
+            style={styles.modernPartBackgroundImage}
+            resizeMode="cover"
+          >
+            <LinearGradient
+              colors={['rgba(0,0,0,0.4)', 'rgba(0,0,0,0.2)', 'rgba(0,0,0,0.5)']}
+              style={styles.modernPartGradientOverlay}
+            >
+              <View style={styles.modernPartHeader}>
+                <View style={styles.modernPartProfileSection}>
+                  <View style={styles.modernPartAvatarPlaceholder}>
+                    <Image 
+                      source={{
+                        uri: part.photos && part.photos.length > 0 
+                          ? part.photos[0] 
+                          : part.image || 'https://images.unsplash.com/photo-1486262715619-67b85e0b08d3?q=80&w=800&auto=format&fit=crop'
+                      }} 
+                      style={styles.modernPartAvatar} 
+                    />
+                  </View>
+                  <Text style={styles.modernPartUsername}>{part.name}</Text>
+                </View>
+                <TouchableOpacity 
+                  style={styles.modernPartLikeButton}
+                  onPress={async (e) => {
+                    e.stopPropagation();
+                    if (!user?.id || !partId) return;
+                    try {
+                      const currentLike = partsLikes[partId];
+                      const newLikesCount = currentLike?.isLiked 
+                        ? (currentLike.likesCount - 1) 
+                        : (currentLike?.likesCount || 0) + 1;
+                      setPartsLikes((prev) => ({
+                        ...prev,
+                        [partId]: {
+                          likesCount: newLikesCount,
+                          isLiked: !currentLike?.isLiked,
+                        },
+                      }));
+                      const result = await engagementApi.togglePartLike(partId, user.id);
+                      setPartsLikes((prev) => ({
+                        ...prev,
+                        [partId]: {
+                          likesCount: result.likesCount,
+                          isLiked: result.isLiked,
+                        },
+                      }));
+                    } catch (error) {
+                      console.error('Error toggling part like:', error);
+                      const currentLike = partsLikes[partId];
+                      setPartsLikes((prev) => ({
+                        ...prev,
+                        [partId]: currentLike || { likesCount: 0, isLiked: false },
+                      }));
+                    }
+                  }}
+                  activeOpacity={0.7}
+                >
+                  <Ionicons 
+                    name={partsLikes[partId]?.isLiked ? "heart" : "heart-outline"} 
+                    size={16} 
+                    color={partsLikes[partId]?.isLiked ? "#EF4444" : "#FFFFFF"} 
+                  />
+                  <Text style={styles.modernPartActionText}>
+                    {partsLikes[partId]?.likesCount || 0}
+                  </Text>
+                </TouchableOpacity>
+              </View>
+              <TouchableOpacity 
+                style={styles.modernPartMainCard}
+                onPress={() => {
+                  const detailItem = convertPartToDetailItem(part);
+                  setSelectedDetailItem(detailItem);
+                  setShowDetailModal(true);
+                }}
+                activeOpacity={0.95}
+              >
+                <View style={styles.modernPartInfoSection}>
+                  <Text style={styles.modernPartNameInfo}>
+                    {part.title || part.name || 'ავტონაწილი'}
+                  </Text>
+                  {part.category && (
+                    <Text style={styles.modernPartCategoryInfo}>
+                      {part.category}
+                    </Text>
+                  )}
+                </View>
+                <View style={styles.modernPartSeparator} />
+                <View style={styles.modernPartTypeSection}>
+                  <View style={styles.modernPartTypeLeft}>
+                    <Text style={styles.modernPartLocationText}>
+                      {part.price ? `${part.price}` : (part.category || 'ნაწილი')}
+                    </Text>
+                  </View>
+                </View>
+                <View style={styles.modernPartActionsFooter}>
+                  <View style={styles.modernPartActionsLeft}>
+                    <View style={styles.modernPartLocationButton}>
+                      <Ionicons name="location-outline" size={16} color="#FFFFFF" />
+                      <Text style={styles.modernPartLocationButtonText}>
+                        {part.location || 'მდებარეობა'}
+                      </Text>
+                    </View>
+                  </View>
+                  <TouchableOpacity 
+                    style={styles.modernPartContactButton}
+                    onPress={(e) => {
+                      e.stopPropagation();
+                      const detailItem = convertPartToDetailItem(part);
+                      setSelectedDetailItem(detailItem);
+                      setShowDetailModal(true);
+                    }}
+                    activeOpacity={0.8}
+                  >
+                    <Ionicons name="information-outline" size={14} color="#FFFFFF" />
+                    <Text style={styles.modernPartContactButtonText}>ინფო</Text>
+                  </TouchableOpacity>
+                </View>
+              </TouchableOpacity>
+            </LinearGradient>
+          </ImageBackground>
+        </View>
       );
     };
 
@@ -442,25 +772,42 @@ import {
     // Load data when tab changes
     useEffect(() => {
       if (activeTab === 'დაშლილები') {
-        loadDismantlers();
+        loadDismantlers(1, false);
         loadUserDismantlers(); // Reload user dismantlers when switching to dismantlers tab
       } else if (activeTab === 'ნაწილები') {
-        loadParts();
+        loadParts(1, false);
       }
     }, [activeTab]);
 
     // Reload data when filters change
     useEffect(() => {
       if (activeTab === 'დაშლილები') {
-        loadDismantlers();
+        loadDismantlers(1, false);
       }
     }, [dismantlerFilters]);
 
     useEffect(() => {
       if (activeTab === 'ნაწილები') {
-        loadParts();
+        loadParts(1, false);
       }
     }, [partsFilters]);
+    
+    // Load more items when reaching end
+    const loadMoreDismantlers = () => {
+      if (!loadingMore && hasMoreDismantlers) {
+        const nextPage = dismantlersPage + 1;
+        setDismantlersPage(nextPage);
+        loadDismantlers(nextPage, true);
+      }
+    };
+    
+    const loadMoreParts = () => {
+      if (!loadingMore && hasMoreParts) {
+        const nextPage = partsPage + 1;
+        setPartsPage(nextPage);
+        loadParts(nextPage, true);
+      }
+    };
 
 
     // Load car models when brand changes
@@ -897,172 +1244,28 @@ import {
                     
                   </View>
                   {dismantlers.length > 0 ? (
-                    <View style={styles.modernDismantlersContainer}>
-                      {dismantlers?.map((dismantler, index) => (
-                        <View key={dismantler.id || dismantler._id || index} style={styles.modernDismantlerCard}>
-                          {/* Background Image */}
-                          <ImageBackground 
-                            source={{
-                              uri: dismantler.photos && dismantler.photos.length > 0 
-                                ? dismantler.photos[0] 
-                                : dismantler.images && dismantler.images.length > 0 
-                                  ? dismantler.images[0]
-                                  : dismantler.image || 'https://images.unsplash.com/photo-1563298723-dcfebaa392e3?q=80&w=800&auto=format&fit=crop'
-                            }}
-                            style={styles.modernDismantlerBackgroundImage}
-                            resizeMode="cover"
-                          >
-                            {/* Gradient Overlay */}
-                            <LinearGradient
-                              colors={['rgba(0,0,0,0.4)', 'rgba(0,0,0,0.2)', 'rgba(0,0,0,0.5)']}
-                              style={styles.modernDismantlerGradientOverlay}
-                            >
-                              {/* Header */}
-                              <View style={styles.modernDismantlerHeader}>
-                                <View style={styles.modernDismantlerProfileSection}>
-                                  <View style={styles.modernDismantlerAvatarPlaceholder}>
-                                    <Image 
-                                      source={{
-                                        uri: dismantler.photos && dismantler.photos.length > 0 
-                                          ? dismantler.photos[0] 
-                                          : dismantler.image || 'https://images.unsplash.com/photo-1563298723-dcfebaa392e3?q=80&w=800&auto=format&fit=crop'
-                                      }} 
-                                      style={styles.modernDismantlerAvatar} 
-                                    />
-                                  </View>
-                                  <Text style={styles.modernDismantlerUsername}>{dismantler.name}</Text>
-                                </View>
-                                <TouchableOpacity 
-                                  style={styles.modernDismantlerLikeButton}
-                                  onPress={async (e) => {
-                                    e.stopPropagation();
-                                    const dismantlerId = dismantler.id || dismantler._id;
-                                    if (!user?.id || !dismantlerId) {
-                                      return;
-                                    }
-                                    try {
-                                      // Optimistic update
-                                      const currentLike = dismantlersLikes[dismantlerId];
-                                      const newLikesCount = currentLike?.isLiked 
-                                        ? (currentLike.likesCount - 1) 
-                                        : (currentLike?.likesCount || 0) + 1;
-                                      setDismantlersLikes((prev) => ({
-                                        ...prev,
-                                        [dismantlerId]: {
-                                          likesCount: newLikesCount,
-                                          isLiked: !currentLike?.isLiked,
-                                        },
-                                      }));
-                                      
-                                      // Call API
-                                      const result = await engagementApi.toggleDismantlerLike(dismantlerId, user.id);
-                                      setDismantlersLikes((prev) => ({
-                                        ...prev,
-                                        [dismantlerId]: {
-                                          likesCount: result.likesCount,
-                                          isLiked: result.isLiked,
-                                        },
-                                      }));
-                                    } catch (error) {
-                                      console.error('Error toggling dismantler like:', error);
-                                      // Revert optimistic update
-                                      const currentLike = dismantlersLikes[dismantlerId];
-                                      setDismantlersLikes((prev) => ({
-                                        ...prev,
-                                        [dismantlerId]: currentLike || { likesCount: 0, isLiked: false },
-                                      }));
-                                    }
-                                  }}
-                                  activeOpacity={0.7}
-                                >
-                                  <Ionicons 
-                                    name={dismantlersLikes[dismantler.id || dismantler._id]?.isLiked ? "heart" : "heart-outline"} 
-                                    size={16} 
-                                    color={dismantlersLikes[dismantler.id || dismantler._id]?.isLiked ? "#EF4444" : "#FFFFFF"} 
-                                  />
-                                  <Text style={styles.modernDismantlerActionText}>
-                                    {dismantlersLikes[dismantler.id || dismantler._id]?.likesCount || 0}
-                                  </Text>
-                                </TouchableOpacity>
-                              </View>
-                              
-                              {/* Main Card */}
-                              <TouchableOpacity 
-                                style={styles.modernDismantlerMainCard}
-                                onPress={() => {
-                                  const dismantlerId = dismantler.id || dismantler._id;
-                                  // Track view
-                                  if (user?.id && dismantlerId) {
-                                    engagementApi.trackDismantlerView(dismantlerId, user.id).catch((err) => {
-                                      console.error('❌ [DISMANTLERS] Error tracking dismantler view:', err);
-                                    });
-                                  }
-                                  const detailItem = convertDismantlerToDetailItem(dismantler);
-                                  setSelectedDetailItem(detailItem);
-                                  setShowDetailModal(true);
-                                }}
-                                activeOpacity={0.95}
-                              >
-                                {/* Dismantler Info */}
-                                <View style={styles.modernDismantlerInfoSection}>
-                                  
-                                </View>
-                                
-                                {/* Separator Line */}
-                                <View style={styles.modernDismantlerSeparator} />
-                                
-                                 {/* Dismantler Type Section */}
-                                 <View style={styles.modernDismantlerTypeSection}>
-                                   <View style={styles.modernDismantlerInfoSection}>
-                                    <View style={styles.modernDismantlerCarInfoButton}>
-                                      <Text style={styles.modernDismantlerCarInfoText}>
-                                        {dismantler.brand && dismantler.model ? 
-                                          `${dismantler.brand} ${dismantler.model}` : 
-                                          'დაშლილი მანქანები'
-                                        }
-                                      </Text>
-                                    </View>
-                                    {dismantler.yearFrom && dismantler.yearTo && (
-                                      <View style={styles.modernDismantlerYearButton}>
-                                        <Text style={styles.modernDismantlerYearText}>
-                                          {dismantler.yearFrom} - {dismantler.yearTo}
-                                        </Text>
-                                      </View>
-                                    )}
-                                   </View>
-                                </View>
-                                
-                                {/* Actions Footer */}
-                                <View style={styles.modernDismantlerActionsFooter}>
-                                  <View style={styles.modernDismantlerActionsLeft}>
-                                    <View style={styles.modernDismantlerLocationButton}>
-                                      <Ionicons name="location-outline" size={16} color="#FFFFFF" />
-                                      <Text style={styles.modernDismantlerLocationButtonText}>
-                                        {dismantler.location || 'მდებარეობა'}
-                                      </Text>
-                                    </View>
-                                  </View>
-                                  
-                                  <TouchableOpacity 
-                                    style={styles.modernDismantlerContactButton}
-                                    onPress={(e) => {
-                                      e.stopPropagation();
-                                      const detailItem = convertDismantlerToDetailItem(dismantler);
-                                      setSelectedDetailItem(detailItem);
-                                      setShowDetailModal(true);
-                                    }}
-                                    activeOpacity={0.8}
-                                  >
-                                    <Ionicons name="information-outline" size={14} color="#FFFFFF" />
-                                    <Text style={styles.modernDismantlerContactButtonText}>ინფო</Text>
-                                  </TouchableOpacity>
-                                </View>
-                              </TouchableOpacity>
-                            </LinearGradient>
-                          </ImageBackground>
-                        </View>
-                      ))}
-                    </View>
+                    <FlatList
+                      data={dismantlers}
+                      renderItem={renderDismantlerCard}
+                      keyExtractor={(item, index) => item.id || item._id || index.toString()}
+                      ListFooterComponent={
+                        loadingMore ? (
+                          <View style={styles.loadingMoreContainer}>
+                            <ActivityIndicator size="small" color="#8B5CF6" />
+                            <Text style={styles.loadingMoreText}>იტვირთება...</Text>
+                          </View>
+                        ) : null
+                      }
+                      onEndReached={loadMoreDismantlers}
+                      onEndReachedThreshold={0.5}
+                      scrollEnabled={false}
+                      nestedScrollEnabled={true}
+                      removeClippedSubviews={true}
+                      initialNumToRender={10}
+                      maxToRenderPerBatch={5}
+                      windowSize={3}
+                      updateCellsBatchingPeriod={100}
+                    />
                   ) : (
                     <View style={styles.emptyState}>
                       <Text style={styles.emptyText}>დაშლილები არ მოიძებნა</Text>
@@ -1096,161 +1299,28 @@ import {
                     
                   </View>
                   {filteredParts.length > 0 ? (
-                    <View style={styles.modernPartsContainer}>
-                      {filteredParts?.map((part, index) => (
-                        <View key={part.id || index} style={styles.modernPartCard}>
-                          {/* Background Image */}
-                          <ImageBackground 
-                            source={{
-                              uri: part.photos && part.photos.length > 0 
-                                ? part.photos[0] 
-                                : part.images && part.images.length > 0 
-                                  ? part.images[0]
-                                  : part.image || 'https://images.unsplash.com/photo-1486262715619-67b85e0b08d3?q=80&w=800&auto=format&fit=crop'
-                            }}
-                            style={styles.modernPartBackgroundImage}
-                            resizeMode="cover"
-                          >
-                            {/* Gradient Overlay */}
-                            <LinearGradient
-                              colors={['rgba(0,0,0,0.4)', 'rgba(0,0,0,0.2)', 'rgba(0,0,0,0.5)']}
-                              style={styles.modernPartGradientOverlay}
-                            >
-                              {/* Header */}
-                              <View style={styles.modernPartHeader}>
-                                <View style={styles.modernPartProfileSection}>
-                                  <View style={styles.modernPartAvatarPlaceholder}>
-                                    <Image 
-                                      source={{
-                                        uri: part.photos && part.photos.length > 0 
-                                          ? part.photos[0] 
-                                          : part.image || 'https://images.unsplash.com/photo-1486262715619-67b85e0b08d3?q=80&w=800&auto=format&fit=crop'
-                                      }} 
-                                      style={styles.modernPartAvatar} 
-                                    />
-                                  </View>
-                                  <Text style={styles.modernPartUsername}>{part.name}</Text>
-                                </View>
-                                <TouchableOpacity 
-                                  style={styles.modernPartLikeButton}
-                                  onPress={async (e) => {
-                                    e.stopPropagation();
-                                    const partId = part.id || part._id;
-                                    if (!user?.id || !partId) {
-                                      return;
-                                    }
-                                    try {
-                                      // Optimistic update
-                                      const currentLike = partsLikes[partId];
-                                      const newLikesCount = currentLike?.isLiked 
-                                        ? (currentLike.likesCount - 1) 
-                                        : (currentLike?.likesCount || 0) + 1;
-                                      setPartsLikes((prev) => ({
-                                        ...prev,
-                                        [partId]: {
-                                          likesCount: newLikesCount,
-                                          isLiked: !currentLike?.isLiked,
-                                        },
-                                      }));
-                                      
-                                      // Call API
-                                      const result = await engagementApi.togglePartLike(partId, user.id);
-                                      setPartsLikes((prev) => ({
-                                        ...prev,
-                                        [partId]: {
-                                          likesCount: result.likesCount,
-                                          isLiked: result.isLiked,
-                                        },
-                                      }));
-                                    } catch (error) {
-                                      console.error('Error toggling part like:', error);
-                                      // Revert optimistic update
-                                      const currentLike = partsLikes[partId];
-                                      setPartsLikes((prev) => ({
-                                        ...prev,
-                                        [partId]: currentLike || { likesCount: 0, isLiked: false },
-                                      }));
-                                    }
-                                  }}
-                                  activeOpacity={0.7}
-                                >
-                                  <Ionicons 
-                                    name={partsLikes[part.id || part._id]?.isLiked ? "heart" : "heart-outline"} 
-                                    size={16} 
-                                    color={partsLikes[part.id || part._id]?.isLiked ? "#EF4444" : "#FFFFFF"} 
-                                  />
-                                  <Text style={styles.modernPartActionText}>
-                                    {partsLikes[part.id || part._id]?.likesCount || 0}
-                                  </Text>
-                                </TouchableOpacity>
-                              </View>
-                              
-                              {/* Main Card */}
-                              <TouchableOpacity 
-                                style={styles.modernPartMainCard}
-                                onPress={() => {
-                                  const detailItem = convertPartToDetailItem(part);
-                                  setSelectedDetailItem(detailItem);
-                                  setShowDetailModal(true);
-                                }}
-                                activeOpacity={0.95}
-                              >
-                                {/* Part Info */}
-                                <View style={styles.modernPartInfoSection}>
-                                  <Text style={styles.modernPartNameInfo}>
-                                    {part.title || part.name || 'ავტონაწილი'}
-                                  </Text>
-                                  {part.category && (
-                                    <Text style={styles.modernPartCategoryInfo}>
-                                      {part.category}
-                                    </Text>
-                                  )}
-                                </View>
-                                
-                                {/* Separator Line */}
-                                <View style={styles.modernPartSeparator} />
-                                
-                                {/* Part Type Section */}
-                                <View style={styles.modernPartTypeSection}>
-                                  <View style={styles.modernPartTypeLeft}>
-                                    <Text style={styles.modernPartLocationText}>
-                                      {part.price ? `${part.price}` : (part.category || 'ნაწილი')}
-                                    </Text>
-                                  </View>
-                                </View>
-                                
-                                {/* Actions Footer */}
-                                <View style={styles.modernPartActionsFooter}>
-                                  <View style={styles.modernPartActionsLeft}>
-                                    <View style={styles.modernPartLocationButton}>
-                                      <Ionicons name="location-outline" size={16} color="#FFFFFF" />
-                                      <Text style={styles.modernPartLocationButtonText}>
-                                        {part.location || 'მდებარეობა'}
-                                      </Text>
-                                    </View>
-                                  </View>
-                                  
-                                  <TouchableOpacity 
-                                    style={styles.modernPartContactButton}
-                                    onPress={(e) => {
-                                      e.stopPropagation();
-                                      // Contact part functionality
-                                      const detailItem = convertPartToDetailItem(part);
-                                      setSelectedDetailItem(detailItem);
-                                      setShowDetailModal(true);
-                                    }}
-                                    activeOpacity={0.8}
-                                  >
-                                    <Ionicons name="information-outline" size={14} color="#FFFFFF" />
-                                    <Text style={styles.modernPartContactButtonText}>ინფო</Text>
-                                  </TouchableOpacity>
-                                </View>
-                              </TouchableOpacity>
-                            </LinearGradient>
-                          </ImageBackground>
-                        </View>
-                      ))}
-                    </View>
+                    <FlatList
+                      data={filteredParts}
+                      renderItem={renderPartCard}
+                      keyExtractor={(item, index) => item.id || item._id || index.toString()}
+                      ListFooterComponent={
+                        loadingMore ? (
+                          <View style={styles.loadingMoreContainer}>
+                            <ActivityIndicator size="small" color="#8B5CF6" />
+                            <Text style={styles.loadingMoreText}>იტვირთება...</Text>
+                          </View>
+                        ) : null
+                      }
+                      onEndReached={loadMoreParts}
+                      onEndReachedThreshold={0.5}
+                      scrollEnabled={false}
+                      nestedScrollEnabled={true}
+                      removeClippedSubviews={true}
+                      initialNumToRender={10}
+                      maxToRenderPerBatch={5}
+                      windowSize={3}
+                      updateCellsBatchingPeriod={100}
+                    />
                   ) : (
                     <View style={styles.emptyState}>
                       <Text style={styles.emptyText}>ნაწილები არ მოიძებნა</Text>
@@ -3938,6 +4008,17 @@ import {
     color: '#FFFFFF',
     fontFamily: 'Outfit',
     fontWeight: '600',
+  },
+  loadingMoreContainer: {
+    paddingVertical: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  loadingMoreText: {
+    marginTop: 8,
+    fontSize: 14,
+    color: '#6B7280',
+    fontFamily: 'Outfit',
   },
 });
 

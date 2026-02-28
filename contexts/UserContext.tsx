@@ -7,7 +7,7 @@ import messaging from '@react-native-firebase/messaging';
 // @ts-ignore
 import notifee, { AndroidImportance, AndroidColor } from '@notifee/react-native';
 import { router } from 'expo-router';
-import { Platform } from 'react-native';
+import { Platform, Alert } from 'react-native';
 import * as Device from 'expo-device';
 import Constants from 'expo-constants';
 import { analyticsService } from '../services/analytics';
@@ -150,71 +150,171 @@ export function UserProvider({ children }: { children: ReactNode }) {
     let unsubscribeOnNotificationOpened: (() => void) | undefined;
     const processedMessageIds = new Set<string>();
     const handleNavigateFromData = (data?: Record<string, any>) => {
-      if (!data) return;
+      console.log('📱 [PUSH NOTIFICATION] ============================================');
+      console.log('📱 [PUSH NOTIFICATION] Received notification data:', JSON.stringify(data, null, 2));
+      console.log('📱 [PUSH NOTIFICATION] Data keys:', data ? Object.keys(data) : 'no data');
+      
+      if (!data) {
+        console.log('📱 [PUSH NOTIFICATION] ❌ No data provided, returning');
+        return;
+      }
+      
       // Prefer explicit screen param
       const screen = data.screen as string | undefined;
-      if (screen) {
-        // Map known screens to routes if necessary
-        if (screen === 'AIRecommendations' && data.requestId) {
-          router.push('/offers');
-          return;
-        }
-        if (screen === 'PartDetails' && data.partId) {
-          router.push('/offers');
-          return;
-        }
-        if (screen === 'RequestDetails' && data.requestId) {
-          router.push(`/offers/${data.requestId}`);
-          return;
-        }
-      }
       const type = data.type as string | undefined;
-      if (type === 'chat_message' && data.offerId) {
-        router.push(`/chat/${data.offerId}`);
+      // Title შეიძლება იყოს data-ში სხვადასხვა key-ებით
+      const title = data.title || data.notificationTitle || data.payload?.title || (data as any).notification?.title;
+      
+      console.log('📱 [PUSH NOTIFICATION] Screen:', screen);
+      console.log('📱 [PUSH NOTIFICATION] Type:', type);
+      console.log('📱 [PUSH NOTIFICATION] Title:', title);
+      console.log('📱 [PUSH NOTIFICATION] RequestId:', data.requestId);
+      console.log('📱 [PUSH NOTIFICATION] OfferId:', data.offerId);
+      console.log('📱 [PUSH NOTIFICATION] ChatId:', data.chatId);
+      console.log('📱 [PUSH NOTIFICATION] CarwashId:', data.carwashId);
+      
+      // Type-based navigation (პირველ რიგში type-ის მიხედვით)
+      console.log('📱 [PUSH NOTIFICATION] 🔍 Checking type-based navigation...');
+      
+      // 0. Carfax notifications (title-ის ან type-ის მიხედვით)
+      if (type === 'carfax' || type === 'Carfax' || title?.toLowerCase().includes('carfax') || screen === 'Carfax') {
+        console.log('📱 [PUSH NOTIFICATION] ✅ Navigating to /carfax (carfax notification)');
+        router.push('/carfax' as any);
         return;
       }
-      if (type === 'carwash_booking') {
-        const cwId = (data as any).carwashId;
-        if (cwId) {
-          router.push(`/bookings/${cwId}`);
-        } else {
-          router.push('/bookings');
-        }
-        return;
-      }
-      if (type === 'new_request') {
-        if (data.requestId) {
-          router.push(`/offers/${data.requestId}`);
-        } else {
-          router.push('/offers');
-        }
-        return;
-      }
-      if (type === 'new_offer') {
-        const reqId = data.requestId as string | undefined;
-        if (reqId) {
-          router.push(`/offers/${reqId}`);
-        } else {
-          router.push('/offers');
-        }
-        return;
-      }
-      if (type?.startsWith('ai_')) {
-        router.push('/offers');
-        return;
-      }
-      if (type === 'subscription_activated' || screen === 'Premium') {
-        // Navigate to home and trigger premium modal
+      
+      // 1. Subscription/Premium notifications
+      if (type === 'subscription_activated' || type === 'subscription' || screen === 'Premium' || screen === 'Subscription') {
+        console.log('📱 [PUSH NOTIFICATION] ✅ Navigating to / (subscription_activated)');
         router.push('/');
-        // Set flag to open premium modal
         setShouldOpenPremiumModal(true);
         return;
       }
-      if (type === 'garage_reminder' || screen === 'Garage') {
-        router.push('/(tabs)/garage');
+      
+      // 1.5. Review notifications
+      if (type === 'review' || type === 'review_us' || screen === 'Review' || screen === 'ReviewUs' || title?.toLowerCase().includes('review') || title?.toLowerCase().includes('შეფასება')) {
+        console.log('📱 [PUSH NOTIFICATION] ✅ Navigating to /review (review notification)');
+        router.push('/review' as any);
         return;
       }
-      router.push('/notifications');
+      
+      // 2. Garage reminders
+      if (type === 'garage_reminder' || screen === 'Garage' || data.type === 'garage_reminder') {
+        console.log('📱 [PUSH NOTIFICATION] ✅ Navigating to /(tabs)/garage (garage_reminder)');
+        router.push('/(tabs)/garage' as any);
+        return;
+      }
+      
+      // 3. Chat messages
+      if (type === 'chat_message' || type === 'message') {
+        const chatId = data.chatId || data.offerId;
+        if (chatId) {
+          console.log(`📱 [PUSH NOTIFICATION] ✅ Navigating to /chat/${chatId} (chat_message)`);
+          router.push(`/chat/${chatId}` as any);
+        } else {
+          console.log('📱 [PUSH NOTIFICATION] ⚠️ Chat message but no chatId/offerId, navigating to /chats');
+          router.push('/chats' as any);
+        }
+        return;
+      }
+      
+      // 4. Carwash bookings
+      if (type === 'carwash_booking' || type === 'carwash_booking_confirmed' || type === 'carwash_booking_reminder') {
+        const cwId = data.carwashId;
+        if (cwId) {
+          console.log(`📱 [PUSH NOTIFICATION] ✅ Navigating to /bookings/${cwId} (carwash_booking)`);
+          router.push(`/bookings/${cwId}` as any);
+        } else {
+          console.log('📱 [PUSH NOTIFICATION] ✅ Navigating to /bookings (carwash_booking, no ID)');
+          router.push('/bookings' as any);
+        }
+        return;
+      }
+      
+      // 5. New requests
+      if (type === 'new_request' || type === 'request') {
+        if (data.requestId) {
+          console.log(`📱 [PUSH NOTIFICATION] ✅ Navigating to /offers/${data.requestId} (new_request)`);
+          router.push(`/offers/${data.requestId}` as any);
+        } else {
+          console.log('📱 [PUSH NOTIFICATION] ✅ Navigating to /all-requests (new_request, no ID)');
+          router.push('/all-requests' as any);
+        }
+        return;
+      }
+      
+      // 6. New offers / Offer status
+      if (type === 'new_offer' || type === 'offer' || type === 'offer_status') {
+        if (data.requestId) {
+          console.log(`📱 [PUSH NOTIFICATION] ✅ Navigating to /offers/${data.requestId} (new_offer)`);
+          router.push(`/offers/${data.requestId}` as any);
+        } else {
+          console.log('📱 [PUSH NOTIFICATION] ✅ Navigating to /all-requests (new_offer, no ID)');
+          router.push('/all-requests' as any);
+        }
+        return;
+      }
+      
+      // 7. AI recommendations
+      if (type?.startsWith('ai_') || screen === 'AIRecommendations') {
+        if (data.requestId) {
+          console.log(`📱 [PUSH NOTIFICATION] ✅ Navigating to /offers/${data.requestId} (ai_recommendation)`);
+          router.push(`/offers/${data.requestId}` as any);
+        } else {
+          console.log('📱 [PUSH NOTIFICATION] ✅ Navigating to /all-requests (ai_*)');
+          router.push('/all-requests' as any);
+        }
+        return;
+      }
+      
+      // 8. Screen-based navigation (fallback)
+      if (screen) {
+        console.log('📱 [PUSH NOTIFICATION] 🔍 Checking screen-based navigation...');
+        if (screen === 'RequestDetails' && data.requestId) {
+          console.log(`📱 [PUSH NOTIFICATION] ✅ Navigating to /offers/${data.requestId} (RequestDetails)`);
+          router.push(`/offers/${data.requestId}` as any);
+          return;
+        }
+        if (screen === 'OfferDetails' && data.requestId) {
+          console.log(`📱 [PUSH NOTIFICATION] ✅ Navigating to /offers/${data.requestId} (OfferDetails)`);
+          router.push(`/offers/${data.requestId}` as any);
+          return;
+        }
+        if (screen === 'PartDetails' || screen === 'AIRecommendations') {
+          console.log('📱 [PUSH NOTIFICATION] ✅ Navigating to /all-requests (PartDetails/AIRecommendations)');
+          router.push('/all-requests' as any);
+          return;
+        }
+        if (screen === 'Bookings' && data.carwashId) {
+          console.log(`📱 [PUSH NOTIFICATION] ✅ Navigating to /bookings/${data.carwashId} (Bookings)`);
+          router.push(`/bookings/${data.carwashId}` as any);
+          return;
+        }
+        if (screen === 'Chat' && (data.chatId || data.offerId)) {
+          console.log(`📱 [PUSH NOTIFICATION] ✅ Navigating to /chat/${data.chatId || data.offerId} (Chat)`);
+          router.push(`/chat/${data.chatId || data.offerId}` as any);
+          return;
+        }
+      }
+      
+      // 9. System/General notifications - check title for specific types
+      if (type === 'system' || type === 'general' || !type) {
+        // Check if title contains specific keywords
+        const titleLower = title?.toLowerCase() || '';
+        if (titleLower.includes('carfax')) {
+          console.log('📱 [PUSH NOTIFICATION] ✅ Navigating to /carfax (system notification with Carfax title)');
+          router.push('/carfax' as any);
+          return;
+        }
+        console.log('📱 [PUSH NOTIFICATION] ⚠️ System/General notification, navigating to /notifications');
+        router.push('/notifications' as any);
+        return;
+      }
+      
+      // 10. Fallback - default to notifications page
+      console.log('📱 [PUSH NOTIFICATION] ⚠️ No specific route matched, navigating to /notifications');
+      router.push('/notifications' as any);
+      console.log('📱 [PUSH NOTIFICATION] ============================================');
     };
     (async () => {
       try {
@@ -241,9 +341,18 @@ export function UserProvider({ children }: { children: ReactNode }) {
         // Foreground messages → show local notification via Notifee
         unsubscribeOnMessage = messaging().onMessage(async remoteMessage => {
           try {
+            console.log('📱 [PUSH NOTIFICATION] ============================================');
+            console.log('📱 [PUSH NOTIFICATION] 🔔 FOREGROUND MESSAGE RECEIVED');
+            console.log('📱 [PUSH NOTIFICATION] MessageId:', remoteMessage.messageId);
+            console.log('📱 [PUSH NOTIFICATION] Title:', remoteMessage.notification?.title);
+            console.log('📱 [PUSH NOTIFICATION] Body:', remoteMessage.notification?.body);
+            console.log('📱 [PUSH NOTIFICATION] Data:', JSON.stringify(remoteMessage.data, null, 2));
+            console.log('📱 [PUSH NOTIFICATION] Full message:', JSON.stringify(remoteMessage, null, 2));
+            
             // Deduplication: შევამოწმოთ messageId
             const messageId = remoteMessage.messageId;
             if (messageId && processedMessageIds.has(messageId)) {
+              console.log('📱 [PUSH NOTIFICATION] ⚠️ Duplicate message, skipping:', messageId);
               return;
             }
             
@@ -260,10 +369,15 @@ export function UserProvider({ children }: { children: ReactNode }) {
             
             const title = remoteMessage.notification?.title || 'შეტყობინება';
             const body = remoteMessage.notification?.body || '';
+            console.log('📱 [PUSH NOTIFICATION] 📲 Displaying notification:', { title, body });
+            const notificationData = {
+              ...(remoteMessage.data || {}),
+              title: title,
+            };
             await notifee.displayNotification({
               title,
               body,
-              data: remoteMessage.data || {},
+              data: notificationData,
               android: {
                 channelId: channelId || 'default',
                 smallIcon: 'ic_notification',
@@ -278,7 +392,10 @@ export function UserProvider({ children }: { children: ReactNode }) {
                 },
               },
             });
+            console.log('📱 [PUSH NOTIFICATION] ✅ Notification displayed');
+            console.log('📱 [PUSH NOTIFICATION] ============================================');
           } catch (e) {
+            console.error('📱 [PUSH NOTIFICATION] ❌ Error handling foreground message:', e);
           }
         });
 
@@ -286,21 +403,56 @@ export function UserProvider({ children }: { children: ReactNode }) {
         unsubscribeOnNotificationOpened = messaging().onNotificationOpenedApp(
           remoteMessage => {
             try {
-              handleNavigateFromData(remoteMessage?.data as any);
-            } catch {}
+              console.log('📱 [PUSH NOTIFICATION] ============================================');
+              console.log('📱 [PUSH NOTIFICATION] 🔔 BACKGROUND NOTIFICATION TAPPED');
+              console.log('📱 [PUSH NOTIFICATION] MessageId:', remoteMessage?.messageId);
+              console.log('📱 [PUSH NOTIFICATION] Title:', remoteMessage?.notification?.title);
+              console.log('📱 [PUSH NOTIFICATION] Body:', remoteMessage?.notification?.body);
+              console.log('📱 [PUSH NOTIFICATION] Data:', JSON.stringify(remoteMessage?.data, null, 2));
+              // Pass title along with data
+              const notificationData = {
+                ...(remoteMessage?.data || {}),
+                title: remoteMessage?.notification?.title || remoteMessage?.data?.title,
+              };
+              handleNavigateFromData(notificationData as any);
+            } catch (e) {
+              console.error('📱 [PUSH NOTIFICATION] ❌ Error handling background notification:', e);
+            }
           },
         );
 
         // Handle cold start (user tapped notification to open the app)
         const initial = await messaging().getInitialNotification();
         if (initial?.data) {
-          handleNavigateFromData(initial.data as any);
+          console.log('📱 [PUSH NOTIFICATION] ============================================');
+          console.log('📱 [PUSH NOTIFICATION] 🔔 COLD START - Notification opened app');
+          console.log('📱 [PUSH NOTIFICATION] MessageId:', initial?.messageId);
+          console.log('📱 [PUSH NOTIFICATION] Title:', initial?.notification?.title);
+          console.log('📱 [PUSH NOTIFICATION] Body:', initial?.notification?.body);
+          console.log('📱 [PUSH NOTIFICATION] Data:', JSON.stringify(initial?.data, null, 2));
+          // Pass title along with data
+          const notificationData = {
+            ...(initial.data || {}),
+            title: initial?.notification?.title || initial?.data?.title,
+          };
+          handleNavigateFromData(notificationData as any);
         }
 
         // Handle Notifee foreground press events
         notifee.onForegroundEvent(({ type, detail }) => {
           if (type === 1 /* EventType.PRESS */) {
-            handleNavigateFromData(detail.notification?.data as any);
+            console.log('📱 [PUSH NOTIFICATION] ============================================');
+            console.log('📱 [PUSH NOTIFICATION] 🔔 FOREGROUND NOTIFICATION TAPPED (Notifee)');
+            console.log('📱 [PUSH NOTIFICATION] Notification ID:', detail.notification?.id);
+            console.log('📱 [PUSH NOTIFICATION] Title:', detail.notification?.title);
+            console.log('📱 [PUSH NOTIFICATION] Body:', detail.notification?.body);
+            console.log('📱 [PUSH NOTIFICATION] Data:', JSON.stringify(detail.notification?.data, null, 2));
+            // Pass title along with data
+            const notificationData = {
+              ...(detail.notification?.data || {}),
+              title: detail.notification?.title || detail.notification?.data?.title,
+            };
+            handleNavigateFromData(notificationData as any);
           }
         });
       } catch (e) {
@@ -330,8 +482,16 @@ export function UserProvider({ children }: { children: ReactNode }) {
       // Verify user exists in backend
       const verifyUser = async () => {
         try {
-          const verifyResponse = await fetch(`${API_BASE_URL}/auth/verify-user/${user.id}`);
+          const verifyUrl = `${API_BASE_URL}/auth/verify-user/${user.id}`;
+          console.log('🔄 [USERCONTEXT] Verifying user (on user change)...');
+          console.log('🌐 [USERCONTEXT] API Base URL:', API_BASE_URL);
+          console.log('🔗 [USERCONTEXT] Full URL:', verifyUrl);
+          console.log('👤 [USERCONTEXT] User ID:', user.id);
+          
+          const verifyResponse = await fetch(verifyUrl);
+          console.log('✅ [USERCONTEXT] Response received, status:', verifyResponse.status);
           const verifyData = await verifyResponse.json();
+          console.log('📦 [USERCONTEXT] Response data:', JSON.stringify(verifyData, null, 2));
           
           if (!verifyData.exists || !verifyData.valid) {
             console.warn('⚠️ [USERCONTEXT] User not found in backend or invalid, logging out...');
@@ -365,6 +525,7 @@ export function UserProvider({ children }: { children: ReactNode }) {
 
   const loadUserFromStorage = async () => {
     try {
+      console.log('🔄 [USERCONTEXT] Loading user from storage...');
       const userData = await AsyncStorage.getItem('user');
       if (userData) {
         const parsedUser = JSON.parse(userData);
@@ -374,32 +535,100 @@ export function UserProvider({ children }: { children: ReactNode }) {
         }
        
         try {
-          const verifyResponse = await fetch(`${API_BASE_URL}/auth/verify-user/${parsedUser.id}`);
+          const verifyUrl = `${API_BASE_URL}/auth/verify-user/${parsedUser.id}`;
+          console.log('🔄 [USERCONTEXT] Verifying user with backend...');
+          console.log('🌐 [USERCONTEXT] API Base URL:', API_BASE_URL);
+          console.log('🔗 [USERCONTEXT] Full URL:', verifyUrl);
+          console.log('👤 [USERCONTEXT] User ID:', parsedUser.id);
+          
+          // Timeout implementation with Promise.race
+          const timeoutPromise = new Promise<never>((_, reject) => {
+            setTimeout(() => reject(new Error('Request timeout')), 5000); // 5 წამი
+          });
+          
+          const fetchPromise = fetch(verifyUrl, {
+            method: 'GET',
+            headers: { 'Content-Type': 'application/json' },
+          });
+          
+          console.log('📡 [USERCONTEXT] Sending GET request to:', verifyUrl);
+          const verifyResponse = await Promise.race([fetchPromise, timeoutPromise]);
+          console.log('✅ [USERCONTEXT] Response received, status:', verifyResponse.status);
           const verifyData = await verifyResponse.json();
+          console.log('📦 [USERCONTEXT] Response data:', JSON.stringify(verifyData, null, 2));
           
           if (!verifyData.exists || !verifyData.valid) {
             console.warn('⚠️ [USERCONTEXT] User not found in backend or invalid role, logging out...');
             console.warn('⚠️ [USERCONTEXT] Reason:', verifyData.reason || 'user_not_found');
             await logout();
             setUser(null);
+            setLoading(false);
             return;
           }
           
           // User is valid, set it
+          console.log('✅ [USERCONTEXT] User verified, setting user');
           setUser(parsedUser);
-        } catch (verifyError) {
+        } catch (verifyError: any) {
           console.error('❌ [USERCONTEXT] Error verifying user:', verifyError);
           // If verification fails, still set user but log warning
-          console.warn('⚠️ [USERCONTEXT] Could not verify user, but keeping logged in');
-          setUser(parsedUser);
+          // Timeout ან network error-ის შემთხვევაში, მაინც დავუშვათ მომხმარებელმა შევიდეს
+          const errorMessage = verifyError?.message || String(verifyError);
+          if (errorMessage.includes('timeout') || errorMessage.includes('Timeout')) {
+            console.warn('⚠️ [USERCONTEXT] Verification timeout, showing alert to user');
+            
+            // iOS-ზე გამოვაჩინოთ Alert timeout-ის შემთხვევაში
+            if (Platform.OS === 'ios') {
+              // პირველ რიგში დავუყენოთ user, რომ app არ დარჩეს loading-ში
+              setUser(parsedUser);
+              
+              // შემდეგ გამოვაჩინოთ Alert
+              setTimeout(() => {
+                Alert.alert(
+                  'დაკავშირების პრობლემა',
+                  'სერვერთან დაკავშირება ვერ მოხერხდა. გსურთ გააგრძელოთ ან გამოხვიდეთ?',
+                  [
+                    {
+                      text: 'გამოსვლა',
+                      style: 'destructive',
+                      onPress: async () => {
+                        console.log('🚪 [USERCONTEXT] User chose to logout after timeout');
+                        await logout();
+                        setUser(null);
+                      },
+                    },
+                    {
+                      text: 'გაგრძელება',
+                      style: 'default',
+                      onPress: () => {
+                        console.log('✅ [USERCONTEXT] User chose to continue after timeout');
+                        // User უკვე დაყენებულია, არაფერი გავაკეთოთ
+                      },
+                    },
+                  ],
+                  { cancelable: false }
+                );
+              }, 500); // მცირე დაყოვნება რომ UI განახლდეს
+            } else {
+              // Android-ზე უბრალოდ გავაგრძელოთ
+              setUser(parsedUser);
+            }
+          } else {
+            console.warn('⚠️ [USERCONTEXT] Could not verify user, but keeping logged in');
+            setUser(parsedUser);
+          }
         }
       } else {
         // No user found, wait for login
+        console.log('ℹ️ [USERCONTEXT] No user found in storage');
         setUser(null);
       }
     } catch (error) {
       console.error('❌ [USERCONTEXT] Error loading user from storage:', error);
+      // Even on error, set loading to false so app can continue
+      setUser(null);
     } finally {
+      console.log('✅ [USERCONTEXT] Loading complete, setting loading to false');
       setLoading(false);
     }
   };
