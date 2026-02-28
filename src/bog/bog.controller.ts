@@ -11,6 +11,7 @@ import {
   HttpCode,
   HttpStatus,
   Headers,
+  HttpException,
 } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
@@ -208,6 +209,7 @@ export class BOGController {
       const status =
         (innerBody?.order_status?.key as string) ||
         (callbackData.body?.order_status?.key as string) ||
+        (callbackData.order_status?.key as string) ||
         (callbackData.status as string) ||
         '';
       const amount = innerBody?.purchase_units?.request_amount
@@ -317,10 +319,14 @@ export class BOGController {
           '═══════════════════════════════════════════════════════',
         );
 
-        return {
-          success: false,
-          message: 'გადახდა უარყოფილია (rejected)',
-        };
+        // Rejected payment-ის შემთხვევაში ვაბრუნებთ 400 status code-ს
+        throw new HttpException(
+          {
+            success: false,
+            message: 'გადახდა უარყოფილია (rejected)',
+          },
+          HttpStatus.BAD_REQUEST,
+        );
       }
 
       if (status === 'completed' || status === 'success') {
