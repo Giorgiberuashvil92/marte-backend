@@ -6,6 +6,10 @@ import { BOGPaymentService } from './bog-payment.service';
 import { BOGOAuthService } from './bog-oauth.service';
 import { PaymentsService } from '../payments/payments.service';
 import { Payment, PaymentSchema } from '../schemas/payment.schema';
+import {
+  Subscription,
+  SubscriptionSchema,
+} from '../schemas/subscription.schema';
 import { SubscriptionsModule } from '../subscriptions/subscriptions.module';
 import { CarFAXModule } from '../carfax/carfax.module';
 import { StoresModule } from '../stores/stores.module';
@@ -13,7 +17,10 @@ import { StoresModule } from '../stores/stores.module';
 @Module({
   imports: [
     ConfigModule,
-    MongooseModule.forFeature([{ name: Payment.name, schema: PaymentSchema }]),
+    MongooseModule.forFeature([
+      { name: Payment.name, schema: PaymentSchema },
+      { name: Subscription.name, schema: SubscriptionSchema },
+    ]),
     SubscriptionsModule,
     CarFAXModule,
     StoresModule,

@@ -77,6 +77,8 @@ export class DismantlersService {
     status?: string;
     ownerId?: string;
     vip?: boolean;
+    page?: number;
+    limit?: number;
   }): Promise<Dismantler[]> {
     const query: Record<string, any> = {};
 
@@ -105,7 +107,16 @@ export class DismantlersService {
       query.isVip = filters.vip === true;
     }
 
-    return this.dismantlerModel.find(query).sort({ createdAt: -1 }).exec();
+    const page = filters?.page || 1;
+    const limit = filters?.limit || 20;
+    const skip = (page - 1) * limit;
+
+    return this.dismantlerModel
+      .find(query)
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(limit)
+      .exec();
   }
 
   async getFeatured(): Promise<Dismantler[]> {

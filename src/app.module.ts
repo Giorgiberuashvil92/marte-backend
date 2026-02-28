@@ -40,6 +40,7 @@ import { CarBrandsModule } from './car-brands/car-brands.module';
 import { ReferralsModule } from './referrals/referrals.module';
 import { AnalyticsModule } from './analytics/analytics.module';
 import { RadarsModule } from './radars/radars.module';
+import { EcommerceProductsModule } from './ecommerce-products/ecommerce-products.module';
 import databaseConfig from './config/database.config';
 
 // Schemas
@@ -92,6 +93,10 @@ import {
 } from './schemas/login-history.schema';
 import { CarBrand, CarBrandSchema } from './schemas/car-brand.schema';
 import { Radar, RadarSchema } from './schemas/radar.schema';
+import {
+  EcommerceProduct,
+  EcommerceProductSchema,
+} from './schemas/ecommerce-product.schema';
 
 @Module({
   imports: [
@@ -132,6 +137,7 @@ import { Radar, RadarSchema } from './schemas/radar.schema';
       { name: LoginHistory.name, schema: LoginHistorySchema },
       { name: CarBrand.name, schema: CarBrandSchema },
       { name: Radar.name, schema: RadarSchema },
+      { name: EcommerceProduct.name, schema: EcommerceProductSchema },
     ]),
     GarageModule,
     AuthModule,
@@ -169,6 +175,7 @@ import { Radar, RadarSchema } from './schemas/radar.schema';
     ReferralsModule,
     AnalyticsModule,
     RadarsModule,
+    EcommerceProductsModule,
   ],
   controllers: [AppController],
   providers: [AppService],

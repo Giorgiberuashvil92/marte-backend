@@ -37,6 +37,8 @@ export class PartsService {
     location?: string;
     status?: string;
     priceRange?: { min: number; max: number };
+    page?: number;
+    limit?: number;
   }): Promise<Part[]> {
     const query: Record<string, any> = {};
 
@@ -71,7 +73,16 @@ export class PartsService {
       };
     }
 
-    return this.partModel.find(query).sort({ createdAt: -1 }).exec();
+    const page = filters?.page || 1;
+    const limit = filters?.limit || 20;
+    const skip = (page - 1) * limit;
+
+    return this.partModel
+      .find(query)
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(limit)
+      .exec();
   }
 
   async findOne(id: string): Promise<Part> {

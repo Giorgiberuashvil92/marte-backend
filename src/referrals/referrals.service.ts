@@ -737,26 +737,8 @@ export class ReferralsService {
     total: number;
     hasMore: boolean;
   }> {
-    console.log('🏆 [LEADERBOARD] ლიდერბორდის მოთხოვნა:', {
-      userId,
-      limit,
-      offset,
-    });
-
-    // Get all referral analysis with accurate stats
     const analysisData = await this.getAllReferralsAnalysis();
-    console.log('📊 [LEADERBOARD] Analysis Data:', {
-      totalReferrals: analysisData.summary.totalReferrals,
-      totalInviters: analysisData.summary.totalInviters,
-      topInvitersCount: analysisData.topInviters.length,
-      topInviters: analysisData.topInviters.slice(0, 5).map((inv) => ({
-        inviterId: inv.inviterId,
-        inviterName: inv.inviterName,
-        referralCount: inv.referralCount,
-      })),
-    });
 
-    // Create a map from topInviters for quick lookup
     const inviterStatsMap = new Map<
       string,
       {

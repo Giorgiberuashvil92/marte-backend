@@ -161,19 +161,76 @@ export class NotificationsController {
       title?: string;
       body?: string;
       data?: Record<string, any>;
+      userIds?: string[];
+      role?: string;
+      active?: boolean;
     },
   ) {
     try {
-      const result = await this.notificationsService.broadcastToAllUsers({
+      const payload = {
         title: body.title || 'მადლობა',
         body: body.body || 'მადლობა რომ შემოგვიერთდით! 🎉',
         data: body.data || {},
-      });
-      return {
-        ...result,
-        success: true,
-        message: 'Broadcast notification sent successfully',
       };
+
+      if (
+        body.userIds &&
+        Array.isArray(body.userIds) &&
+        body.userIds.length > 0
+      ) {
+        const userIds = body.userIds.filter(
+          (id): id is string => typeof id === 'string' && id.length > 0,
+        );
+        if (userIds.length > 0) {
+          await this.notificationsService.sendPushToUsers(
+            userIds,
+            payload,
+            'system',
+          );
+          return {
+            success: true,
+            sent: userIds.length,
+            total: userIds.length,
+            message: `Notification sent to ${userIds.length} users`,
+          };
+        }
+      }
+
+      // თუ role ან active მოწოდებულია, მოვძებნოთ users-ები
+      if (body.role || typeof body.active === 'boolean') {
+        const userIds: string[] =
+          await this.notificationsService.getUserIdsByFilter({
+            role: body.role,
+            active: body.active,
+          });
+
+        if (userIds.length === 0) {
+          return {
+            success: false,
+            sent: 0,
+            total: 0,
+            message: 'No users found matching the criteria',
+          };
+        }
+
+        await this.notificationsService.sendPushToUsers(
+          userIds,
+          payload,
+          'system',
+        );
+        return {
+          success: true,
+          sent: userIds.length,
+          total: userIds.length,
+          message: `Notification sent to ${userIds.length} users`,
+        };
+      }
+
+      // თუ არაფერი არ არის მოწოდებული, ვერ გავაგზავნოთ - უსაფრთხოების მიზნით
+      throw new BadRequestException({
+        success: false,
+        message: 'გთხოვთ მიუთითოთ userIds, role ან active პარამეტრი. Broadcast to all არ არის დაშვებული.',
+      });
     } catch (error) {
       throw new BadRequestException({
         success: false,
@@ -577,6 +634,66 @@ export class NotificationsController {
       return {
         success: true,
         message: 'Business request test notification sent',
+      };
+    } catch (error) {
+      throw new BadRequestException({
+        success: false,
+        message: 'Test notification-ის გაგზავნა ვერ მოხერხდა',
+        error: error instanceof Error ? error.message : 'Unknown error',
+      });
+    }
+  }
+
+  @Post('test/review')
+  async testReview(@Body() body: { userId: string }) {
+    try {
+      await this.notificationsService.sendPushToTargets(
+        [{ userId: body.userId }],
+        {
+          title: '⭐ შეფასება',
+          body: 'როგორ მოგწონს Marte? დატოვე შეფასება აპლიკაციაში!',
+          data: {
+            type: 'review',
+            screen: 'Review',
+          },
+          sound: 'default',
+          badge: 1,
+        },
+        'system',
+      );
+      return {
+        success: true,
+        message: 'Review test notification sent',
+      };
+    } catch (error) {
+      throw new BadRequestException({
+        success: false,
+        message: 'Test notification-ის გაგზავნა ვერ მოხერხდა',
+        error: error instanceof Error ? error.message : 'Unknown error',
+      });
+    }
+  }
+
+  @Post('test/carfax')
+  async testCarfax(@Body() body: { userId: string }) {
+    try {
+      await this.notificationsService.sendPushToTargets(
+        [{ userId: body.userId }],
+        {
+          title: '🚗 CarFax',
+          body: 'CarFax მოძებნა უკვე შესაძლებელია შეიძინე პრემიუმი და მიიღე 5 უფასო CarFax რეპორტი',
+          data: {
+            type: 'carfax',
+            screen: 'Carfax',
+          },
+          sound: 'default',
+          badge: 1,
+        },
+        'system',
+      );
+      return {
+        success: true,
+        message: 'Carfax test notification sent',
       };
     } catch (error) {
       throw new BadRequestException({

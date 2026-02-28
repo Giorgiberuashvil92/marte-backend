@@ -3,10 +3,10 @@ import {
   Get,
   Post,
   Put,
+  Delete,
   Body,
   Param,
   Query,
-  UseGuards,
 } from '@nestjs/common';
 import { RadarsService } from './radars.service';
 import { Radar } from '../schemas/radar.schema';
@@ -61,6 +61,17 @@ export class RadarsController {
   }
 
   /**
+   * რადარის მიღება ID-ით
+   */
+  @Get(':id')
+  async getRadarById(
+    @Param('id') id: string,
+  ): Promise<{ success: boolean; data: Radar }> {
+    const radar = await this.radarsService.getRadarById(id);
+    return { success: true, data: radar };
+  }
+
+  /**
    * რადარის შექმნა
    */
   @Post()
@@ -81,6 +92,17 @@ export class RadarsController {
   ): Promise<{ success: boolean; data: Radar }> {
     const radar = await this.radarsService.updateRadar(id, radarData);
     return { success: true, data: radar };
+  }
+
+  /**
+   * რადარის წაშლა
+   */
+  @Delete(':id')
+  async deleteRadar(
+    @Param('id') id: string,
+  ): Promise<{ success: boolean; message: string }> {
+    await this.radarsService.deleteRadar(id);
+    return { success: true, message: 'რადარი წარმატებით წაიშალა' };
   }
 
   /**

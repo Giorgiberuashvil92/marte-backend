@@ -369,6 +369,25 @@ export class NotificationsService {
   }
 
   /**
+   * Get user IDs by filter (role, active)
+   */
+  async getUserIdsByFilter(filter: {
+    role?: string;
+    active?: boolean;
+  }): Promise<string[]> {
+    const query: any = {};
+    if (filter.role) {
+      query.role = filter.role;
+    }
+    if (typeof filter.active === 'boolean') {
+      query.isActive = filter.active;
+    }
+
+    const users = await this.userModel.find(query).select('id').lean();
+    return users.map((u: any) => String(u.id || '')).filter(Boolean);
+  }
+
+  /**
    * Broadcast notification to all users
    * Saves notification with role: 'user' so all users can see it
    */

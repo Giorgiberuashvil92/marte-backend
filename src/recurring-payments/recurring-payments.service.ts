@@ -285,8 +285,10 @@ export class RecurringPaymentsService {
     }
 
     // გადახდის შენახვა database-ში (payments collection-ში)
+    // Payment-ი შევქმნათ 'pending' status-ით, რომ BOG callback-ში განახლდეს
+    // Subscription-ის განახლება გადავიტანოთ BOG callback-ში, მხოლოდ მაშინ, როცა payment-ი წარმატებულია
     this.logger.log(
-      '💾 Recurring payment-ის შენახვა payments collection-ში...',
+      '💾 Recurring payment-ის შენახვა payments collection-ში (pending status-ით)...',
     );
     const payment = await this.paymentsService.createPayment({
       userId: subscription.userId,
@@ -294,7 +296,7 @@ export class RecurringPaymentsService {
       amount: subscription.planPrice,
       currency: subscription.currency || 'GEL',
       paymentMethod: 'BOG',
-      status: 'completed',
+      status: 'pending', // შევქმნათ pending status-ით, რომ BOG callback-ში განახლდეს
       context: 'subscription',
       description: `${subscription.planName} - ${subscription.period} subscription (Billing Cycle ${subscription.billingCycles + 1})`,
       paymentDate: new Date().toISOString(),
@@ -314,27 +316,13 @@ export class RecurringPaymentsService {
       },
     });
     this.logger.log(
-      `✅ Recurring payment შეინახა payments collection-ში: ${String(payment._id)}`,
+      `✅ Recurring payment შეინახა payments collection-ში (pending status-ით): ${String(payment._id)}`,
     );
-
-    // subscription-ის განახლება
-    const nextBillingDate = this.calculateNextBillingDate(
-      subscription.period,
-      new Date(),
-    );
-
-    await this.subscriptionModel.findByIdAndUpdate(subscriptionId, {
-      nextBillingDate,
-      billingCycles: subscription.billingCycles + 1,
-      totalPaid: subscription.totalPaid + subscription.planPrice,
-      orderId: paymentResult.order_id || paymentResult.id || newOrderId,
-      transactionId: paymentResult.order_id || paymentResult.id || newOrderId,
-      carfaxRequestsUsed: 0, // Reset CarFAX counter for new billing period
-      updatedAt: new Date(),
-    });
-
     this.logger.log(
-      `✅ Subscription ${subscriptionId} გადახდა წარმატებით განხორციელდა. შემდეგი გადახდა: ${nextBillingDate.toISOString()}`,
+      `   • Payment status განახლდება BOG callback-ში (completed/rejected)`,
+    );
+    this.logger.log(
+      `   • Subscription-ის nextBillingDate განახლდება BOG callback-ში, მხოლოდ მაშინ, როცა payment-ი წარმატებულია`,
     );
   }
 

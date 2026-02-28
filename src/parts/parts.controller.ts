@@ -50,6 +50,8 @@ export class PartsController {
     @Query('minPrice') minPrice?: string,
     @Query('maxPrice') maxPrice?: string,
     @Query('status') status?: string,
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
   ) {
     const filters: {
       category?: string;
@@ -59,6 +61,8 @@ export class PartsController {
       location?: string;
       status?: string;
       priceRange?: { min: number; max: number };
+      page?: number;
+      limit?: number;
     } = {
       category,
       condition,
@@ -66,6 +70,8 @@ export class PartsController {
       model,
       location,
       status,
+      page: page ? parseInt(page) : 1,
+      limit: limit ? parseInt(limit) : 20,
     };
 
     if (minPrice || maxPrice) {

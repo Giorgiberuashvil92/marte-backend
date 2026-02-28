@@ -62,6 +62,17 @@ export class RadarsService {
   }
 
   /**
+   * რადარის მიღება ID-ით
+   */
+  async getRadarById(id: string): Promise<Radar> {
+    const radar = await this.radarModel.findById(id).exec();
+    if (!radar) {
+      throw new Error('რადარი ვერ მოიძებნა');
+    }
+    return radar;
+  }
+
+  /**
    * რადარის შექმნა
    */
   async createRadar(radarData: Partial<Radar>): Promise<Radar> {
@@ -80,6 +91,16 @@ export class RadarsService {
       throw new Error('რადარი ვერ მოიძებნა');
     }
     return radar;
+  }
+
+  /**
+   * რადარის წაშლა
+   */
+  async deleteRadar(id: string): Promise<void> {
+    const result = await this.radarModel.findByIdAndDelete(id).exec();
+    if (!result) {
+      throw new Error('რადარი ვერ მოიძებნა');
+    }
   }
 
   /**

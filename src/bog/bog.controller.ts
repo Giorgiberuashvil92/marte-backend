@@ -25,6 +25,10 @@ import {
   BOGRecurringPaymentResponseDto,
 } from './dto/bog-payment.dto';
 import { Payment, PaymentDocument } from '../schemas/payment.schema';
+import {
+  Subscription,
+  SubscriptionDocument,
+} from '../schemas/subscription.schema';
 import { SubscriptionsService } from '../subscriptions/subscriptions.service';
 import { CarFAXService } from '../carfax/carfax.service';
 import { StoresService } from '../stores/stores.service';
@@ -41,6 +45,8 @@ export class BOGController {
     private readonly carfaxService: CarFAXService,
     private readonly storesService: StoresService,
     @InjectModel(Payment.name) private paymentModel: Model<PaymentDocument>,
+    @InjectModel(Subscription.name)
+    private subscriptionModel: Model<SubscriptionDocument>,
   ) {}
 
   /**
@@ -242,6 +248,81 @@ export class BOGController {
       }
 
       // გადახდის სტატუსის დამუშავება
+      // შევამოწმოთ rejected status-იც, რადგან BOG-მ შეიძლება გაგვიგზავნოს rejected status-ი
+      if (status === 'rejected') {
+        this.logger.log(
+          '═══════════════════════════════════════════════════════',
+        );
+        this.logger.log(`❌ BOG გადახდა უარყოფილია (rejected): ${order_id}`);
+        this.logger.log(
+          '═══════════════════════════════════════════════════════',
+        );
+        this.logger.log(`   • Order ID: ${order_id}`);
+        this.logger.log(`   • Status: ${status}`);
+        this.logger.log(`   • Amount: ${amount} ${currency}`);
+
+        // ვპოულობთ payment-ს და განვაახლებთ status-ს rejected-ად
+        const rejectedPayment = await this.paymentModel
+          .findOne({ orderId: order_id })
+          .exec();
+
+        if (rejectedPayment) {
+          const innerBodyForRejected =
+            callbackData.body?.body || callbackData.body || callbackData;
+          const rejectReason =
+            innerBodyForRejected?.reject_reason ||
+            callbackData.reject_reason ||
+            innerBodyForRejected?.payment_detail?.code_description ||
+            'Payment rejected';
+
+          await this.paymentModel.findByIdAndUpdate(rejectedPayment._id, {
+            status: 'rejected',
+            updatedAt: new Date(),
+            code: innerBodyForRejected?.payment_detail?.code,
+            codeDescription: rejectReason,
+            metadata: {
+              ...(rejectedPayment.metadata || {}),
+              bogCallbackData: {
+                ...(rejectedPayment.metadata?.bogCallbackData || {}),
+                order_status:
+                  innerBodyForRejected?.order_status ||
+                  callbackData.body?.order_status,
+                reject_reason: rejectReason,
+              },
+            },
+          });
+
+          this.logger.log(`✅ Payment status განახლებულია rejected-ად`);
+          this.logger.log(`   • Reject Reason: ${rejectReason}`);
+
+          // თუ ეს არის recurring payment-ი, subscription-ის nextBillingDate არ განახლდება
+          // რომ კვლავ ჩამოსაჭრელი იყოს
+          if (
+            rejectedPayment.isRecurring &&
+            rejectedPayment.recurringPaymentId
+          ) {
+            this.logger.log(
+              `   ⚠️ Recurring payment-ი rejected იყო, subscription-ის nextBillingDate არ განახლდა`,
+            );
+            this.logger.log(
+              `   • Subscription ID: ${rejectedPayment.recurringPaymentId}`,
+            );
+            this.logger.log(
+              `   • Subscription-ის nextBillingDate დარჩა იგივე, რომ კვლავ ჩამოსაჭრელი იყოს`,
+            );
+          }
+        }
+
+        this.logger.log(
+          '═══════════════════════════════════════════════════════',
+        );
+
+        return {
+          success: false,
+          message: 'გადახდა უარყოფილია (rejected)',
+        };
+      }
+
       if (status === 'completed' || status === 'success') {
         this.logger.log(
           '═══════════════════════════════════════════════════════',
@@ -347,6 +428,8 @@ export class BOGController {
               callbackData.body?.buyer ||
               callbackData.buyer;
 
+            // Status-ის განსაზღვრა callback-ის status-ის მიხედვით
+            // ამ block-ში status არის 'completed' ან 'success', ასე რომ paymentStatus იქნება 'completed'
             const updateData: any = {
               status: 'completed',
               updatedAt: new Date(),
@@ -402,6 +485,96 @@ export class BOGController {
             this.logger.log(
               '✅ Payment განახლებულია BOG callback-ის მონაცემებით',
             );
+
+            // თუ ეს არის recurring payment-ი და წარმატებულია, განვაახლოთ subscription-ის nextBillingDate
+            if (payment.isRecurring && payment.recurringPaymentId) {
+              try {
+                this.logger.log(
+                  '═══════════════════════════════════════════════════════',
+                );
+                this.logger.log(
+                  '🔄 Recurring payment-ისთვის subscription-ის განახლება',
+                );
+                this.logger.log(
+                  '═══════════════════════════════════════════════════════',
+                );
+                this.logger.log(
+                  `   • Recurring Payment ID: ${payment.recurringPaymentId}`,
+                );
+                this.logger.log(`   • Payment Status: completed`);
+
+                const subscription = await this.subscriptionModel
+                  .findById(payment.recurringPaymentId)
+                  .exec();
+
+                if (subscription) {
+                  // გამოვთვალოთ შემდეგი billing date
+                  const nextBillingDate = new Date();
+                  switch (subscription.period) {
+                    case 'monthly':
+                      nextBillingDate.setMonth(nextBillingDate.getMonth() + 1);
+                      break;
+                    case 'yearly':
+                      nextBillingDate.setFullYear(
+                        nextBillingDate.getFullYear() + 1,
+                      );
+                      break;
+                    case 'weekly':
+                      nextBillingDate.setDate(nextBillingDate.getDate() + 7);
+                      break;
+                    case 'daily':
+                      nextBillingDate.setDate(nextBillingDate.getDate() + 1);
+                      break;
+                    default:
+                      nextBillingDate.setMonth(nextBillingDate.getMonth() + 1);
+                  }
+
+                  await this.subscriptionModel.findByIdAndUpdate(
+                    payment.recurringPaymentId,
+                    {
+                      nextBillingDate,
+                      billingCycles: subscription.billingCycles + 1,
+                      totalPaid:
+                        subscription.totalPaid + subscription.planPrice,
+                      orderId: order_id,
+                      transactionId: order_id,
+                      updatedAt: new Date(),
+                    },
+                  );
+
+                  this.logger.log(
+                    '═══════════════════════════════════════════════════════',
+                  );
+                  this.logger.log(
+                    `✅ Subscription განახლებულია recurring payment-ისთვის!`,
+                  );
+                  this.logger.log(
+                    '═══════════════════════════════════════════════════════',
+                  );
+                  this.logger.log(
+                    `   • Next Billing Date: ${nextBillingDate.toISOString()}`,
+                  );
+                  this.logger.log(
+                    `   • Billing Cycles: ${subscription.billingCycles + 1}`,
+                  );
+                  this.logger.log(
+                    `   • Total Paid: ${subscription.totalPaid + subscription.planPrice}`,
+                  );
+                  this.logger.log(
+                    '═══════════════════════════════════════════════════════',
+                  );
+                } else {
+                  this.logger.warn(
+                    `⚠️ Subscription ვერ მოიძებნა ID-ით: ${payment.recurringPaymentId}`,
+                  );
+                }
+              } catch (error) {
+                this.logger.error(
+                  '❌ Subscription-ის განახლების შეცდომა recurring payment-ისთვის:',
+                  error,
+                );
+              }
+            }
           } else {
             this.logger.log(
               `⚠️ Payment არ მოიძებნა database-ში orderId-ით: ${order_id}`,
