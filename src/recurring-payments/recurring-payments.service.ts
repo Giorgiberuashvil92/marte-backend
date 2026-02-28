@@ -1,7 +1,7 @@
 import { Injectable, Logger, HttpException } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
-import { Cron, CronExpression } from '@nestjs/schedule';
+import { Cron } from '@nestjs/schedule';
 import {
   Subscription,
   SubscriptionDocument,
@@ -28,7 +28,7 @@ export class RecurringPaymentsService {
     private subscriptionsService: SubscriptionsService,
   ) {}
 
-  @Cron(CronExpression.EVERY_HOUR, {
+  @Cron('0 0,12 * * *', {
     name: 'process-recurring-payments',
     timeZone: 'Asia/Tbilisi',
   })

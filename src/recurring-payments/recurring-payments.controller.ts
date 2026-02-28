@@ -67,7 +67,7 @@ export class RecurringPaymentsController {
       message: 'რეკურინგ გადახდების სერვისი მუშაობს',
       cronJob: {
         enabled: true,
-        schedule: 'ყოველ საათში ერთხელ',
+        schedule: 'ყოველ 12 საათში ერთხელ (00:00 და 12:00)',
         timeZone: 'Asia/Tbilisi',
       },
     };
