@@ -64,8 +64,8 @@ export default function TabLayout() {
       <Tabs.Screen
         name="ecommerce"
         options={{
-          title: 'Shop',
-          tabBarIcon: ({ color }) => <TabBarIcon name="shopping-cart" color={color} />,
+          title: 'მართვა',
+          tabBarIcon: ({ color }) => <TabBarIcon name="cog" color={color} />,
         }}
       />
       <Tabs.Screen

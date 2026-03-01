@@ -14,6 +14,7 @@ export interface DismantlerData {
   longitude?: number;
   address?: string;
   isFeatured?: boolean;
+  bogCardToken?: string; // BOG order_id recurring payments-ისთვის
 }
 
 export interface PartData {

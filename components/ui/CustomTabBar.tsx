@@ -8,7 +8,6 @@ import Colors from '@/constants/Colors';
 import { useColorScheme } from '@/components/useColorScheme';
 import { useUser } from '@/contexts/UserContext';
 import { aiApi } from '@/services/aiApi';
-import ActionModal from './ActionModal';
 
 export default function CustomTabBar({ state, descriptors, navigation }: BottomTabBarProps) {
   const colorScheme = useColorScheme() ?? 'light';
@@ -16,7 +15,6 @@ export default function CustomTabBar({ state, descriptors, navigation }: BottomT
   const styles = createStyles(theme);
   const router = useRouter();
   const { user } = useUser();
-  const [showAIModal, setShowAIModal] = useState(false);
   const [sellerStatus, setSellerStatus] = useState<any>(null);
 
   // Load seller status when component mounts
@@ -50,8 +48,8 @@ export default function CustomTabBar({ state, descriptors, navigation }: BottomT
     hasDismantlers ||
     !!(sellerStatus?.ownedParts && sellerStatus.ownedParts.length > 0);
 
-  const handleAIButtonPress = () => {
-    setShowAIModal(true);
+  const handleNewsFeedPress = () => {
+    router.push('/news-feed' as any);
   };
 
   // Hide tab bar on profile screen (two) and map screen
@@ -104,17 +102,9 @@ export default function CustomTabBar({ state, descriptors, navigation }: BottomT
         <View style={styles.fabHole} />
         <View style={styles.side}>{tabItems.slice(2)}</View>
       </View>
-      <TouchableOpacity activeOpacity={0.9} style={styles.fab} onPress={handleAIButtonPress}>
-        <Ionicons name="add" size={24} color="#FFFFFF" />
+      <TouchableOpacity activeOpacity={0.9} style={styles.fab} onPress={handleNewsFeedPress}>
+        <Ionicons name="newspaper" size={24} color="#FFFFFF" />
       </TouchableOpacity>
-
-      {/* AI Selection Modal */}
-      <ActionModal
-        visible={showAIModal}
-        onClose={() => setShowAIModal(false)}
-        hasStore={hasStore}
-        hasDismantlers={hasDismantlers}
-      />
     </View>
   );
 }

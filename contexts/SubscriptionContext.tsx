@@ -1,4 +1,5 @@
-import React, { createContext, useContext, useState, useEffect, useCallback, ReactNode } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback, useRef, ReactNode } from 'react';
+import { AppState, AppStateStatus } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import API_BASE_URL from '../config/api';
 import { useUser } from './UserContext';
@@ -40,6 +41,7 @@ interface SubscriptionProviderProps {
 export function SubscriptionProvider({ children }: SubscriptionProviderProps) {
   const [subscription, setSubscription] = useState<Subscription | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(true);
+  const appState = useRef(AppState.currentState);
 
   // Default basic subscription (ყველა იუზერი თავიდან basic-ით იწყებს)
   const defaultSubscription: Subscription = {
@@ -143,6 +145,41 @@ export function SubscriptionProvider({ children }: SubscriptionProviderProps) {
     console.log('🔄 Subscription useEffect triggered, user:', user?.id || 'no user');
     loadSubscription();
   }, [loadSubscription]); // Reload subscription when user changes
+
+  // AppState listener - refresh subscription when app comes to foreground
+  useEffect(() => {
+    if (!user?.id) return;
+    
+    const handleAppStateChange = (nextAppState: AppStateStatus) => {
+      // When app comes to foreground, refresh subscription
+      if (appState.current.match(/inactive|background/) && nextAppState === 'active') {
+        console.log('🔄 App came to foreground, refreshing subscription...');
+        loadSubscription();
+      }
+      
+      appState.current = nextAppState;
+    };
+
+    const subscription = AppState.addEventListener('change', handleAppStateChange);
+
+    return () => {
+      subscription?.remove();
+    };
+  }, [user?.id, loadSubscription]);
+
+  // Periodic refresh - every 5 minutes
+  useEffect(() => {
+    if (!user?.id) return;
+
+    const interval = setInterval(() => {
+      console.log('🔄 Periodic subscription refresh (5 minutes)...');
+      loadSubscription();
+    }, 5 * 60 * 1000); // 5 minutes
+
+    return () => {
+      clearInterval(interval);
+    };
+  }, [user?.id, loadSubscription]);
 
   const updateSubscription = async (newSubscription: Subscription) => {
     try {

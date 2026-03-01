@@ -327,6 +327,7 @@ function RootLayoutNav() {
               <Stack.Screen name="chat/[chatId]" options={{headerShown: false}} />
               <Stack.Screen name="partner-chats" options={{headerShown: false}} />
               <Stack.Screen name="partner-chat/[requestId]" options={{headerShown: false}} />
+              <Stack.Screen name="news-feed" options={{headerShown: false}} />
               <Stack.Screen name="offers/[requestId]" options={{headerShown: false}} />
               <Stack.Screen name="mechanic/[id]" options={{headerShown: false}} />
               <Stack.Screen name="mechanic-detail" options={{headerShown: false}} />

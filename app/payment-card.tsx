@@ -98,6 +98,7 @@ export default function PaymentCardScreen() {
   const [loadingPayment, setLoadingPayment] = useState(true);
   const [showBOGPaymentModal, setShowBOGPaymentModal] = useState(false);
   const [bogPaymentUrl, setBogPaymentUrl] = useState('');
+  const [bogOrderId, setBogOrderId] = useState<string | null>(null); // BOG order_id recurring payments-ისთვის
   const [showSuccessModal, setShowSuccessModal] = useState(false);
   const [bogOAuthStatus, setBogOAuthStatus] = useState<any>(null);
   const [isCheckingBOG, setIsCheckingBOG] = useState<boolean>(false);
@@ -422,7 +423,7 @@ export default function PaymentCardScreen() {
         description: paymentData.description,
         success_url: successUrl,
         fail_url: failUrl,
-        save_card: paymentData.isSubscription, // Subscription-ისთვის ბარათის დამახსოვრება
+        save_card: paymentData.isSubscription || paymentData.context === 'dismantler', // Subscription-ისა და დაშლილებისთვის ბარათის დამახსოვრება
       };
 
       console.log('💳 BOG Order Data:', {
@@ -432,6 +433,7 @@ export default function PaymentCardScreen() {
 
       const result = await bogApi.createOrder(orderData);
       setBogPaymentUrl(result.redirect_url);
+      setBogOrderId(result.id); // BOG order_id recurring payments-ისთვის
       setShowBOGPaymentModal(true);
     } catch (error) {
       console.error('❌ BOG გადახდის შეცდომა:', error);
@@ -759,6 +761,7 @@ export default function PaymentCardScreen() {
                   longitude: formData.longitude,
                   address: formData.address,
                   isFeatured: metadata.tier === 'vip',
+                  bogCardToken: bogOrderId || undefined, // BOG order_id recurring payments-ისთვის
                 };
                 
                 await addItemApi.createDismantler(dismantlerData, metadata.userId || user?.id);
