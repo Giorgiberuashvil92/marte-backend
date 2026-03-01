@@ -10,6 +10,7 @@ import {
   Subscription,
   SubscriptionSchema,
 } from '../schemas/subscription.schema';
+import { Dismantler, DismantlerSchema } from '../schemas/dismantler.schema';
 import { SubscriptionsModule } from '../subscriptions/subscriptions.module';
 import { CarFAXModule } from '../carfax/carfax.module';
 import { StoresModule } from '../stores/stores.module';
@@ -20,6 +21,7 @@ import { StoresModule } from '../stores/stores.module';
     MongooseModule.forFeature([
       { name: Payment.name, schema: PaymentSchema },
       { name: Subscription.name, schema: SubscriptionSchema },
+      { name: Dismantler.name, schema: DismantlerSchema },
     ]),
     SubscriptionsModule,
     CarFAXModule,

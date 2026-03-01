@@ -30,6 +30,7 @@ import {
   Subscription,
   SubscriptionDocument,
 } from '../schemas/subscription.schema';
+import { Dismantler, DismantlerDocument } from '../schemas/dismantler.schema';
 import { SubscriptionsService } from '../subscriptions/subscriptions.service';
 import { CarFAXService } from '../carfax/carfax.service';
 import { StoresService } from '../stores/stores.service';
@@ -48,6 +49,8 @@ export class BOGController {
     @InjectModel(Payment.name) private paymentModel: Model<PaymentDocument>,
     @InjectModel(Subscription.name)
     private subscriptionModel: Model<SubscriptionDocument>,
+    @InjectModel(Dismantler.name)
+    private dismantlerModel: Model<DismantlerDocument>,
   ) {}
 
   /**
@@ -581,6 +584,76 @@ export class BOGController {
                 );
               }
             }
+
+            // თუ ეს არის recurring payment-ი დაშლილებისთვის და წარმატებულია, განვაახლოთ dismantler-ის expiryDate
+            if (
+              payment.isRecurring &&
+              payment.recurringPaymentId &&
+              payment.context === 'dismantler'
+            ) {
+              try {
+                this.logger.log(
+                  '═══════════════════════════════════════════════════════',
+                );
+                this.logger.log(
+                  '🔄 Recurring payment-ისთვის დაშლილის განახლება',
+                );
+                this.logger.log(
+                  '═══════════════════════════════════════════════════════',
+                );
+                this.logger.log(
+                  `   • Recurring Payment ID: ${payment.recurringPaymentId}`,
+                );
+                this.logger.log(`   • Payment Status: completed`);
+
+                const dismantler = await this.dismantlerModel
+                  .findById(payment.recurringPaymentId)
+                  .exec();
+
+                if (dismantler) {
+                  // გამოვთვალოთ შემდეგი expiry date (1 თვე ახლიდან)
+                  const newExpiryDate = new Date();
+                  newExpiryDate.setMonth(newExpiryDate.getMonth() + 1);
+
+                  await this.dismantlerModel.findByIdAndUpdate(
+                    payment.recurringPaymentId,
+                    {
+                      expiryDate: newExpiryDate,
+                      status: 'active', // განვაახლოთ status active-ად
+                      updatedAt: new Date(),
+                    },
+                  );
+
+                  this.logger.log(
+                    '═══════════════════════════════════════════════════════',
+                  );
+                  this.logger.log(
+                    `✅ დაშლილი განახლებულია recurring payment-ისთვის!`,
+                  );
+                  this.logger.log(
+                    '═══════════════════════════════════════════════════════',
+                  );
+                  this.logger.log(
+                    `   • Dismantler ID: ${payment.recurringPaymentId}`,
+                  );
+                  this.logger.log(
+                    `   • New Expiry Date: ${newExpiryDate.toISOString()}`,
+                  );
+                  this.logger.log(
+                    '═══════════════════════════════════════════════════════',
+                  );
+                } else {
+                  this.logger.warn(
+                    `⚠️ Dismantler ვერ მოიძებნა ID-ით: ${payment.recurringPaymentId}`,
+                  );
+                }
+              } catch (error) {
+                this.logger.error(
+                  '❌ Dismantler-ის განახლების შეცდომა recurring payment-ისთვის:',
+                  error,
+                );
+              }
+            }
           } else {
             this.logger.log(
               `⚠️ Payment არ მოიძებნა database-ში orderId-ით: ${order_id}`,
@@ -1048,6 +1121,45 @@ export class BOGController {
                 }
               } catch (error) {
                 this.logger.error('❌ Store-ის განახლების შეცდომა:', error);
+              }
+            }
+
+            // Dismantler-ისთვის ბარათის დამახსოვრება (თუ context არის 'dismantler')
+            if (paymentContext === 'dismantler') {
+              try {
+                this.logger.log(
+                  '═══════════════════════════════════════════════════════',
+                );
+                this.logger.log(
+                  '💾 დაშლილებისთვის ბარათის დამახსოვრება recurring payments-ისთვის',
+                );
+                this.logger.log(
+                  '═══════════════════════════════════════════════════════',
+                );
+                this.logger.log(`   • Order ID: ${order_id}`);
+                this.logger.log(
+                  `   • BOG Card Token (bogCardToken): ${order_id}`,
+                );
+                await this.bogPaymentService.saveCardForRecurringPayments(
+                  order_id,
+                );
+                this.logger.log(
+                  `✅ ბარათი დამახსოვრებულია დაშლილებისთვის recurring payments-ისთვის order_id: ${order_id}-ისთვის`,
+                );
+                this.logger.log(
+                  '═══════════════════════════════════════════════════════',
+                );
+              } catch (saveCardError) {
+                // ბარათის დამახსოვრების შეცდომა არ უნდა შეაჩეროს payment-ის დამუშავება
+                const errorMessage =
+                  saveCardError instanceof Error
+                    ? saveCardError.message
+                    : 'Unknown error';
+
+                this.logger.warn(
+                  `⚠️ ბარათის დამახსოვრება ვერ მოხერხდა დაშლილებისთვის: ${errorMessage}`,
+                );
+                this.logger.warn(`   • Order ID: ${order_id}`);
               }
             }
 

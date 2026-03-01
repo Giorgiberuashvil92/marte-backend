@@ -8,6 +8,7 @@ import {
 } from '../schemas/subscription.schema';
 import { Payment, PaymentDocument } from '../schemas/payment.schema';
 import { User, UserDocument } from '../schemas/user.schema';
+import { Dismantler, DismantlerDocument } from '../schemas/dismantler.schema';
 import { BOGPaymentService } from '../bog/bog-payment.service';
 import { PaymentsService } from '../payments/payments.service';
 import { SubscriptionsService } from '../subscriptions/subscriptions.service';
@@ -23,6 +24,8 @@ export class RecurringPaymentsService {
     private paymentModel: Model<PaymentDocument>,
     @InjectModel(User.name)
     private userModel: Model<UserDocument>,
+    @InjectModel(Dismantler.name)
+    private dismantlerModel: Model<DismantlerDocument>,
     private bogPaymentService: BOGPaymentService,
     private paymentsService: PaymentsService,
     private subscriptionsService: SubscriptionsService,
@@ -133,10 +136,44 @@ export class RecurringPaymentsService {
         );
       }
 
-      // 4. გადახდების დამუშავება
+      // 4. დაშლილებისთვის recurring payment-ების დამუშავება
+      this.logger.log(`🔍 ვეძებ დაშლილებს რეკურინგ გადახდისთვის...`);
+      const dismantlersToCharge = await this.dismantlerModel
+        .find({
+          status: { $in: ['active', 'approved'] },
+          expiryDate: { $lte: now },
+          bogCardToken: { $exists: true, $ne: null },
+        })
+        .exec();
+
+      this.logger.log(
+        `📊 ნაპოვნია ${dismantlersToCharge.length} დაშლილი რეკურინგ გადახდისთვის (expiryDate დადგა)`,
+      );
+
+      if (dismantlersToCharge.length > 0) {
+        this.logger.log(`📋 ნაპოვნი დაშლილები რეკურინგ გადახდისთვის:`);
+        for (const dismantler of dismantlersToCharge) {
+          this.logger.log(`   • Dismantler ID: ${String(dismantler._id)}`);
+          this.logger.log(`   • Owner ID: ${dismantler.ownerId}`);
+          this.logger.log(
+            `   • Expiry Date: ${dismantler.expiryDate?.toISOString()}`,
+          );
+          this.logger.log(
+            `   • BOG Token: ${dismantler.bogCardToken || 'N/A'}`,
+          );
+          this.logger.log(
+            `   • VIP: ${dismantler.isVip ? 'Yes (20₾)' : 'No (5₾)'}`,
+          );
+        }
+      }
+
+      // 5. გადახდების დამუშავება
       let successCount = 0;
       let failureCount = 0;
+      let dismantlerSuccessCount = 0;
+      let dismantlerFailureCount = 0;
 
+      // Subscription-ების გადახდა
       for (const subscription of subscriptionsToCharge) {
         try {
           await this.processSubscriptionPayment(subscription);
@@ -157,11 +194,30 @@ export class RecurringPaymentsService {
         }
       }
 
+      // დაშლილების გადახდა
+      for (const dismantler of dismantlersToCharge) {
+        try {
+          await this.processDismantlerPayment(dismantler);
+          dismantlerSuccessCount++;
+        } catch (error: unknown) {
+          const dismantlerId = String(dismantler._id);
+          this.logger.error(
+            `❌ Dismantler ${dismantlerId} გადახდის შეცდომა:`,
+            error instanceof Error ? error.message : 'Unknown error',
+          );
+          dismantlerFailureCount++;
+        }
+      }
+
+      this.logger.log(`✅ რეკურინგ გადახდების დამუშავება დასრულდა:`);
       this.logger.log(
-        `✅ რეკურინგ გადახდების დამუშავება დასრულდა: ${successCount} წარმატებული, ${failureCount} წარუმატებელი`,
+        `   • Subscriptions: ${successCount} წარმატებული, ${failureCount} წარუმატებელი`,
       );
       this.logger.log(
-        `📊 სტატისტიკა: ${subscriptionsToCharge.length} დამუშავებული, ${upcomingSubscriptions.length} მომდევნო საათში, ${next24HoursSubscriptions.length} მომდევნო 24 საათში`,
+        `   • Dismantlers: ${dismantlerSuccessCount} წარმატებული, ${dismantlerFailureCount} წარუმატებელი`,
+      );
+      this.logger.log(
+        `📊 სტატისტიკა: ${subscriptionsToCharge.length} subscription დამუშავებული, ${dismantlersToCharge.length} დაშლილი დამუშავებული, ${upcomingSubscriptions.length} subscription მომდევნო საათში, ${next24HoursSubscriptions.length} subscription მომდევნო 24 საათში`,
       );
     } catch (error) {
       this.logger.error(
@@ -433,6 +489,99 @@ export class RecurringPaymentsService {
   }
 
   /**
+   * ერთი დაშლილის გადახდის დამუშავება
+   */
+  private async processDismantlerPayment(
+    dismantler: DismantlerDocument,
+  ): Promise<void> {
+    const dismantlerId = String(dismantler._id);
+    this.logger.log(`💳 Dismantler ${dismantlerId} გადახდის დამუშავება...`);
+
+    if (!dismantler.bogCardToken) {
+      throw new Error('BOG payment token არ არის მოწოდებული');
+    }
+
+    // თანხის განსაზღვრა VIP-ის მიხედვით
+    const paymentAmount = dismantler.isVip ? 20 : 5;
+    const paymentCurrency = 'GEL';
+
+    // შევქმნათ ახალი order ID
+    const shopOrderId = `recurring_dismantler_${dismantlerId}_${Date.now()}_${dismantler.ownerId}`;
+
+    // BOG recurring payment-ის განხორციელება
+    let recurringPaymentResult;
+    try {
+      recurringPaymentResult =
+        await this.bogPaymentService.processRecurringPayment({
+          parent_order_id: dismantler.bogCardToken,
+          external_order_id: shopOrderId,
+          order_id: dismantler.bogCardToken,
+          amount: paymentAmount,
+          currency: paymentCurrency,
+          shop_order_id: shopOrderId,
+          purchase_description: `დაშლილების განცხადება - ${dismantler.brand} ${dismantler.model}${dismantler.isVip ? ' (VIP)' : ''}`,
+        });
+    } catch (error: unknown) {
+      const errorMessage =
+        error instanceof Error ? error.message : String(error);
+      this.logger.error(
+        `❌ BOG recurring payment ვერ მოხერხდა დაშლილისთვის ${dismantlerId}: ${errorMessage}`,
+      );
+      throw error;
+    }
+
+    // BOG API response-ის დამუშავება
+    const paymentResult = recurringPaymentResult as {
+      id?: string;
+      order_id?: string;
+      message?: string;
+    };
+
+    const newOrderId = paymentResult.id || paymentResult.order_id;
+
+    if (!newOrderId) {
+      throw new Error(
+        `BOG recurring payment ვერ მოხერხდა: ${paymentResult.message || 'Unknown error'}`,
+      );
+    }
+
+    this.logger.log(
+      `✅ BOG recurring payment წარმატებით განხორციელდა დაშლილისთვის: ${newOrderId}`,
+    );
+
+    // გადახდის შენახვა database-ში (pending status-ით, BOG callback განაახლებს)
+    const payment = await this.paymentsService.createPayment({
+      userId: dismantler.ownerId,
+      orderId: newOrderId,
+      amount: paymentAmount,
+      currency: paymentCurrency,
+      paymentMethod: 'BOG',
+      status: 'pending', // BOG callback განაახლებს
+      context: 'dismantler',
+      description: `დაშლილების განცხადება - ${dismantler.brand} ${dismantler.model}${dismantler.isVip ? ' (VIP)' : ''}`,
+      paymentDate: new Date().toISOString(),
+      isRecurring: true,
+      recurringPaymentId: dismantlerId,
+      externalOrderId: shopOrderId,
+      metadata: {
+        serviceName: `დაშლილების განცხადება - ${dismantler.brand} ${dismantler.model}`,
+        serviceId: dismantlerId,
+      },
+    });
+
+    this.logger.log(
+      `✅ Recurring payment შეინახა payments collection-ში (pending status-ით): ${String(payment._id)}`,
+    );
+    this.logger.log(`   • Dismantler ID: ${dismantlerId}`);
+    this.logger.log(`   • Amount: ${paymentAmount} ${paymentCurrency}`);
+    this.logger.log(`   • New Order ID: ${newOrderId}`);
+
+    // დაშლილის expiryDate-ის განახლება (1 თვე ახლიდან)
+    // მაგრამ მხოლოდ BOG callback-ში, როცა payment-ი completed იქნება
+    // აქ ვტოვებთ pending-ად, რომ BOG callback განაახლოს
+  }
+
+  /**
    * Manual trigger რეკურინგ გადახდების დამუშავებისთვის (ტესტირებისთვის)
    */
   async processRecurringPaymentsManually(): Promise<{
@@ -599,6 +748,145 @@ export class RecurringPaymentsService {
     } catch (error: unknown) {
       this.logger.error(
         `❌ Recurring payment შეცდომა parent_order_id: ${parentOrderId}-ით:`,
+        error instanceof Error ? error.message : 'Unknown error',
+      );
+
+      throw error;
+    }
+  }
+
+  /**
+   * Payment ID-ით recurring payment-ის გაშვება
+   * @param paymentId - Payment ID (MongoDB _id)
+   * @param amount - გადასახდელი თანხა (optional, თუ არ გადმოცემულია, გამოიყენება payment-ის თანხა)
+   * @param externalOrderId - external order ID (optional)
+   */
+  async processRecurringPaymentByPaymentId(
+    paymentId: string,
+    amount?: number,
+    externalOrderId?: string,
+  ): Promise<{
+    success: boolean;
+    message: string;
+    newOrderId: string;
+    paymentId?: string;
+    bogOrderId?: string;
+  }> {
+    this.logger.log(
+      `🔄 Recurring payment გაშვება payment ID: ${paymentId}-ით...`,
+    );
+
+    // ვპოულობთ payment-ს ID-ით
+    const originalPayment = await this.paymentModel.findById(paymentId).exec();
+
+    if (!originalPayment) {
+      this.logger.warn(`⚠️ Payment ვერ მოიძებნა ID: ${paymentId}-ით`);
+      throw new Error(`Payment ვერ მოიძებნა ID: ${paymentId}-ით`);
+    }
+
+    this.logger.log(`✅ Payment ნაპოვნია: ${String(originalPayment._id)}`);
+    this.logger.log(`   • User ID: ${originalPayment.userId}`);
+    this.logger.log(
+      `   • Amount: ${originalPayment.amount} ${originalPayment.currency}`,
+    );
+    this.logger.log(`   • Order ID: ${originalPayment.orderId}`);
+    this.logger.log(
+      `   • Payment Token: ${originalPayment.paymentToken || 'N/A'}`,
+    );
+    this.logger.log(
+      `   • Parent Order ID: ${originalPayment.parentOrderId || 'N/A'}`,
+    );
+
+    // BOG order_id-ის მიღება paymentToken-იდან ან parentOrderId-დან
+    const bogOrderId =
+      originalPayment.paymentToken ||
+      originalPayment.parentOrderId ||
+      originalPayment.orderId;
+
+    if (!bogOrderId) {
+      throw new Error(
+        `Payment-ს არ აქვს paymentToken ან parentOrderId. BOG order_id ვერ მოიძებნა.`,
+      );
+    }
+
+    this.logger.log(`   • BOG Order ID (გამოყენებული): ${bogOrderId}`);
+
+    // გამოვიყენოთ payment-ის თანხა თუ amount არ გადმოცემულია
+    const paymentAmount = amount || originalPayment.amount;
+    const paymentCurrency = originalPayment.currency || 'GEL';
+
+    // შევქმნათ external order ID თუ არ გადმოცემულია
+    const shopOrderId =
+      externalOrderId ||
+      `recurring_${originalPayment.orderId}_${Date.now()}_${originalPayment.userId}`;
+
+    try {
+      // BOG recurring payment-ის განხორციელება
+      const recurringPaymentResult =
+        await this.bogPaymentService.processRecurringPayment({
+          parent_order_id: bogOrderId,
+          external_order_id: shopOrderId,
+          // Legacy fields for backward compatibility
+          order_id: bogOrderId,
+          amount: paymentAmount,
+          currency: paymentCurrency,
+          shop_order_id: shopOrderId,
+          purchase_description: `Recurring payment for ${originalPayment.context || 'service'}`,
+        });
+
+      // BOG API დოკუმენტაციის მიხედვით, response არის: { id: string, _links: { details: { href: string } } }
+      const newOrderId =
+        recurringPaymentResult.id || recurringPaymentResult.order_id;
+
+      if (!newOrderId) {
+        throw new Error(
+          `BOG recurring payment ვერ მოხერხდა: ${recurringPaymentResult.message || 'Unknown error'}`,
+        );
+      }
+
+      this.logger.log(
+        `✅ BOG recurring payment წარმატებით განხორციელდა: ${newOrderId}`,
+      );
+
+      // გადახდის შენახვა database-ში (pending status-ით, BOG callback განაახლებს)
+      const payment = await this.paymentsService.createPayment({
+        userId: originalPayment.userId,
+        orderId: newOrderId,
+        amount: paymentAmount,
+        currency: paymentCurrency,
+        paymentMethod: 'BOG',
+        status: 'pending', // BOG callback განაახლებს
+        context: originalPayment.context || 'recurring',
+        description: `Recurring payment for ${originalPayment.description || originalPayment.context || 'service'}`,
+        paymentDate: new Date().toISOString(),
+        isRecurring: true,
+        parentOrderId: bogOrderId,
+        externalOrderId: shopOrderId,
+        metadata: {
+          ...(originalPayment.metadata || {}),
+          serviceName:
+            originalPayment.metadata?.serviceName || 'Recurring payment',
+          serviceId: originalPayment.orderId, // Original order ID
+        },
+      });
+
+      this.logger.log(
+        `✅ Recurring payment წარმატებით დასრულდა payment ID: ${paymentId}-ით`,
+      );
+      this.logger.log(`   • New Order ID: ${newOrderId}`);
+      this.logger.log(`   • Payment ID: ${String(payment._id)}`);
+      this.logger.log(`   • BOG Order ID: ${bogOrderId}`);
+
+      return {
+        success: true,
+        message: 'Recurring payment წარმატებით დასრულდა',
+        newOrderId: newOrderId,
+        paymentId: String(payment._id),
+        bogOrderId: bogOrderId,
+      };
+    } catch (error: unknown) {
+      this.logger.error(
+        `❌ Recurring payment შეცდომა payment ID: ${paymentId}-ით:`,
         error instanceof Error ? error.message : 'Unknown error',
       );
 

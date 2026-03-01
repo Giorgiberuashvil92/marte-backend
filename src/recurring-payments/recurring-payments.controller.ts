@@ -61,13 +61,13 @@ export class RecurringPaymentsController {
    * GET /api/recurring-payments/status
    */
   @Get('status')
-  async getStatus() {
+  getStatus() {
     return {
       success: true,
       message: 'რეკურინგ გადახდების სერვისი მუშაობს',
       cronJob: {
         enabled: true,
-        schedule: 'ყოველ 12 საათში ერთხელ (00:00 და 12:00)',
+        schedule: 'ყოველ საათში ერთხელ',
         timeZone: 'Asia/Tbilisi',
       },
     };
@@ -137,6 +137,51 @@ export class RecurringPaymentsController {
     } catch (error) {
       this.logger.error(
         `❌ Recurring payment გაშვების შეცდომა order_id: ${orderId}-ით:`,
+        error instanceof Error ? error.message : 'Unknown error',
+      );
+
+      return {
+        success: false,
+        message: 'Recurring payment გაშვება ვერ მოხერხდა',
+        error: error instanceof Error ? error.message : 'Unknown error',
+      };
+    }
+  }
+
+  /**
+   * Payment ID-ით recurring payment-ის გაშვება
+   * POST /api/recurring-payments/process-by-payment/:paymentId
+   */
+  @Post('process-by-payment/:paymentId')
+  @HttpCode(HttpStatus.OK)
+  async processRecurringPaymentByPaymentId(
+    @Param('paymentId') paymentId: string,
+    @Body() body?: { amount?: number; externalOrderId?: string },
+  ) {
+    try {
+      this.logger.log(
+        `🔄 Recurring payment გაშვება payment ID: ${paymentId}-ით...`,
+      );
+
+      const result =
+        await this.recurringPaymentsService.processRecurringPaymentByPaymentId(
+          paymentId,
+          body?.amount,
+          body?.externalOrderId,
+        );
+
+      this.logger.log(
+        `✅ Recurring payment გაშვება დასრულდა payment ID: ${paymentId}-ით`,
+      );
+
+      return {
+        success: true,
+        message: 'Recurring payment წარმატებით განხორციელდა',
+        data: result,
+      };
+    } catch (error) {
+      this.logger.error(
+        `❌ Recurring payment გაშვების შეცდომა payment ID: ${paymentId}-ით:`,
         error instanceof Error ? error.message : 'Unknown error',
       );
 

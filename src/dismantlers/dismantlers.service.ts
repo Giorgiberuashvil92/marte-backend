@@ -50,6 +50,9 @@ export class DismantlersService {
       isVip: createDismantlerDto.isVip || false,
       ownerId: createDismantlerDto.ownerId,
       expiryDate: expiryDate,
+      ...(createDismantlerDto.bogCardToken && {
+        bogCardToken: createDismantlerDto.bogCardToken,
+      }), // BOG order_id recurring payments-ისთვის
     });
 
     try {

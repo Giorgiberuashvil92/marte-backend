@@ -67,4 +67,8 @@ export class CreateDismantlerDto {
   @IsString()
   @IsNotEmpty()
   ownerId: string;
+
+  @IsOptional()
+  @IsString()
+  bogCardToken?: string; // BOG order_id recurring payments-ისთვის
 }

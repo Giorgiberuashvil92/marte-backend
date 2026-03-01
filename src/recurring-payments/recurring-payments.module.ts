@@ -9,6 +9,7 @@ import {
 } from '../schemas/subscription.schema';
 import { Payment, PaymentSchema } from '../schemas/payment.schema';
 import { User, UserSchema } from '../schemas/user.schema';
+import { Dismantler, DismantlerSchema } from '../schemas/dismantler.schema';
 import { BOGModule } from '../bog/bog.module';
 import { PaymentsModule } from '../payments/payments.module';
 import { SubscriptionsModule } from '../subscriptions/subscriptions.module';
@@ -20,6 +21,7 @@ import { SubscriptionsModule } from '../subscriptions/subscriptions.module';
       { name: Subscription.name, schema: SubscriptionSchema },
       { name: Payment.name, schema: PaymentSchema },
       { name: User.name, schema: UserSchema },
+      { name: Dismantler.name, schema: DismantlerSchema },
     ]),
     BOGModule,
     PaymentsModule,

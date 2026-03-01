@@ -55,6 +55,9 @@ export class Dismantler {
 
   @Prop({ type: Date })
   expiryDate?: Date; // განცხადების ვადის გასვლის თარიღი (1 თვე შექმნის თარიღიდან)
+
+  @Prop({ type: String })
+  bogCardToken?: string; // BOG order_id recurring payments-ისთვის
 }
 
 export const DismantlerSchema = SchemaFactory.createForClass(Dismantler);
