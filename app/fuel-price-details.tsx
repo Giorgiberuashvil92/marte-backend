@@ -41,7 +41,7 @@ export default function FuelPriceDetailsScreen() {
       ]);
       setPriceHistory(history);
       setCurrentPrices(prices);
-      if (!selectedFuel && prices?.fuel.length > 0) {
+      if (!selectedFuel && prices && prices.fuel && prices.fuel.length > 0) {
         setSelectedFuel(prices.fuel[0].type_alt);
       }
     } catch (error) {
@@ -54,7 +54,7 @@ export default function FuelPriceDetailsScreen() {
 
   const getFuelData = () => {
     if (!priceHistory || !selectedFuel) return null;
-    return priceHistory.fuel.find((f) => f.type_alt === selectedFuel);
+    return priceHistory.fuel.find((f: any) => f.type_alt === selectedFuel);
   };
 
   const getCurrentPrice = () => {
@@ -64,7 +64,7 @@ export default function FuelPriceDetailsScreen() {
 
   const renderPriceChart = () => {
     const fuelData = getFuelData();
-    if (!fuelData || !fuelData.data.length) return null;
+    if (!fuelData || !fuelData.data.length || !priceHistory) return null;
 
     const prices = fuelData.data.map((p) => parseFloat(p));
     const minPrice = Math.min(...prices);
@@ -216,34 +216,47 @@ export default function FuelPriceDetailsScreen() {
         {/* All Prices List */}
         <View style={styles.allPricesSection}>
           <Text style={styles.sectionTitle}>ყველა ფასი</Text>
-          {currentPrices.fuel.map((fuel) => (
-            <View key={fuel.type_alt} style={styles.priceItem}>
-              <View style={styles.priceItemLeft}>
-                <Text style={styles.priceItemName}>{fuel.name}</Text>
-                <Text style={styles.priceItemType}>{fuel.type_alt}</Text>
+          {currentPrices.fuel
+            .sort((a, b) => {
+              // Sort by type order: regular, super, premium, diesel
+              const order: Record<string, number> = {
+                'regular': 1,
+                'regular_pm': 2,
+                'super': 3,
+                'premium_pm': 4,
+                'diesel': 5,
+                'diesel_pm': 6,
+              };
+              return (order[a.type_alt] || 99) - (order[b.type_alt] || 99);
+            })
+            .map((fuel) => (
+              <View key={fuel.type_alt} style={styles.priceItem}>
+                <View style={styles.priceItemLeft}>
+                  <Text style={styles.priceItemName}>{fuel.name}</Text>
+                  <Text style={styles.priceItemType}>{fuel.type_alt}</Text>
+                </View>
+                <View style={styles.priceItemRight}>
+                  <Text style={styles.priceItemValue}>{fuel.price.toFixed(2)}₾</Text>
+                  {fuel.change_rate !== 0 && (
+                    <View
+                      style={[
+                        styles.changeBadge,
+                        fuel.change_rate > 0 ? styles.changeBadgeUp : styles.changeBadgeDown,
+                      ]}
+                    >
+                      <Ionicons
+                        name={fuel.change_rate > 0 ? 'arrow-up' : 'arrow-down'}
+                        size={12}
+                        color="#FFFFFF"
+                      />
+                      <Text style={styles.changeBadgeText}>
+                        {Math.abs(fuel.change_rate).toFixed(2)}%
+                      </Text>
+                    </View>
+                  )}
+                </View>
               </View>
-              <View style={styles.priceItemRight}>
-                <Text style={styles.priceItemValue}>{fuel.price.toFixed(2)}₾</Text>
-                {fuel.change_rate !== 0 && (
-                  <View
-                    style={[
-                      styles.changeBadge,
-                      fuel.change_rate > 0 ? styles.changeBadgeUp : styles.changeBadgeDown,
-                    ]}
-                  >
-                    <Ionicons
-                      name={fuel.change_rate > 0 ? 'arrow-up' : 'arrow-down'}
-                      size={12}
-                      color="#FFFFFF"
-                    />
-                    <Text style={styles.changeBadgeText}>
-                      {Math.abs(fuel.change_rate).toFixed(2)}%
-                    </Text>
-                  </View>
-                )}
-              </View>
-            </View>
-          ))}
+            ))}
         </View>
 
         <View style={{ height: 40 }} />
@@ -278,7 +291,8 @@ const styles = StyleSheet.create({
   headerTitle: {
     flex: 1,
     fontSize: 20,
-    fontFamily: 'Poppins_700Bold',
+    fontFamily: 'HelveticaMedium',
+    textTransform: 'uppercase',
     color: Colors.light.text,
     textAlign: 'center',
   },
@@ -296,7 +310,8 @@ const styles = StyleSheet.create({
   loadingText: {
     marginTop: 12,
     fontSize: 14,
-    fontFamily: 'Poppins_500Medium',
+    fontFamily: 'HelveticaMedium',
+    textTransform: 'uppercase',
     color: Colors.light.secondary,
   },
   emptyContainer: {
@@ -308,7 +323,8 @@ const styles = StyleSheet.create({
   emptyText: {
     marginTop: 12,
     fontSize: 14,
-    fontFamily: 'Poppins_500Medium',
+    fontFamily: 'HelveticaMedium',
+    textTransform: 'uppercase',
     color: Colors.light.secondary,
     marginBottom: 24,
   },
@@ -320,7 +336,8 @@ const styles = StyleSheet.create({
   },
   backButtonText: {
     color: '#FFFFFF',
-    fontFamily: 'Poppins_600SemiBold',
+    fontFamily: 'HelveticaMedium',
+    textTransform: 'uppercase',
     fontSize: 14,
   },
   currentPriceCard: {
@@ -339,25 +356,29 @@ const styles = StyleSheet.create({
   },
   currentPriceLabel: {
     fontSize: 14,
-    fontFamily: 'Poppins_500Medium',
+    fontFamily: 'HelveticaMedium',
+    textTransform: 'uppercase',
     color: 'rgba(255, 255, 255, 0.9)',
     marginBottom: 8,
   },
   currentPriceValue: {
     fontSize: 48,
-    fontFamily: 'Poppins_700Bold',
+    fontFamily: 'HelveticaMedium',
+    textTransform: 'uppercase',
     color: '#FFFFFF',
     marginBottom: 4,
   },
   currentPriceName: {
     fontSize: 16,
-    fontFamily: 'Poppins_600SemiBold',
+    fontFamily: 'HelveticaMedium',
+    textTransform: 'uppercase',
     color: '#FFFFFF',
     marginBottom: 8,
   },
   currentPriceDate: {
     fontSize: 12,
-    fontFamily: 'Poppins_400Regular',
+    fontFamily: 'HelveticaMedium',
+    textTransform: 'uppercase',
     color: 'rgba(255, 255, 255, 0.8)',
   },
   fuelSelectorSection: {
@@ -366,7 +387,8 @@ const styles = StyleSheet.create({
   },
   sectionTitle: {
     fontSize: 18,
-    fontFamily: 'Poppins_700Bold',
+    fontFamily: 'HelveticaMedium',
+    textTransform: 'uppercase',
     color: Colors.light.text,
     marginBottom: 12,
   },
@@ -388,7 +410,8 @@ const styles = StyleSheet.create({
   },
   fuelSelectorText: {
     fontSize: 14,
-    fontFamily: 'Poppins_600SemiBold',
+    fontFamily: 'HelveticaMedium',
+    textTransform: 'uppercase',
     color: Colors.light.text,
     marginBottom: 4,
   },
@@ -397,7 +420,8 @@ const styles = StyleSheet.create({
   },
   fuelSelectorPrice: {
     fontSize: 16,
-    fontFamily: 'Poppins_700Bold',
+    fontFamily: 'HelveticaMedium',
+    textTransform: 'uppercase',
     color: Colors.light.text,
   },
   fuelSelectorPriceActive: {
@@ -420,13 +444,15 @@ const styles = StyleSheet.create({
   },
   chartTitle: {
     fontSize: 18,
-    fontFamily: 'Poppins_700Bold',
+    fontFamily: 'HelveticaMedium',
+    textTransform: 'uppercase',
     color: Colors.light.text,
     marginBottom: 4,
   },
   chartSubtitle: {
     fontSize: 12,
-    fontFamily: 'Poppins_400Regular',
+    fontFamily: 'HelveticaMedium',
+    textTransform: 'uppercase',
     color: Colors.light.secondary,
   },
   chart: {
@@ -449,7 +475,8 @@ const styles = StyleSheet.create({
   },
   barLabel: {
     fontSize: 10,
-    fontFamily: 'Poppins_400Regular',
+    fontFamily: 'HelveticaMedium',
+    textTransform: 'uppercase',   
     color: Colors.light.secondary,
     marginTop: 4,
   },
@@ -465,13 +492,15 @@ const styles = StyleSheet.create({
   },
   statLabel: {
     fontSize: 12,
-    fontFamily: 'Poppins_400Regular',
+    fontFamily: 'HelveticaMedium',
+    textTransform: 'uppercase',
     color: Colors.light.secondary,
     marginBottom: 4,
   },
   statValue: {
     fontSize: 16,
-    fontFamily: 'Poppins_700Bold',
+    fontFamily: 'HelveticaMedium',
+    textTransform: 'uppercase',
     color: Colors.light.text,
   },
   allPricesSection: {
@@ -497,13 +526,15 @@ const styles = StyleSheet.create({
   },
   priceItemName: {
     fontSize: 16,
-    fontFamily: 'Poppins_600SemiBold',
+    fontFamily: 'HelveticaMedium',
+    textTransform: 'uppercase',
     color: Colors.light.text,
     marginBottom: 4,
   },
   priceItemType: {
     fontSize: 12,
-    fontFamily: 'Poppins_400Regular',
+    fontFamily: 'HelveticaMedium',
+    textTransform: 'uppercase',
     color: Colors.light.secondary,
   },
   priceItemRight: {
@@ -511,7 +542,8 @@ const styles = StyleSheet.create({
   },
   priceItemValue: {
     fontSize: 20,
-    fontFamily: 'Poppins_700Bold',
+    fontFamily: 'HelveticaMedium',
+    textTransform: 'uppercase',
     color: Colors.light.text,
     marginBottom: 4,
   },
@@ -531,7 +563,8 @@ const styles = StyleSheet.create({
   },
   changeBadgeText: {
     fontSize: 10,
-    fontFamily: 'Poppins_600SemiBold',
+    fontFamily: 'HelveticaMedium',
+    textTransform: 'uppercase',
     color: '#FFFFFF',
   },
 });

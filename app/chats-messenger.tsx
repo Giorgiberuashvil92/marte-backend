@@ -144,7 +144,7 @@ export default function ChatsMessengerScreen() {
   };
 
   const handleConversationPress = (conversation: ConversationItem) => {
-    router.push(`/chat/chat-${conversation.requestId}`);
+    router.push(`/chat/${conversation.requestId}/${conversation.partnerId}`);
   };
 
   const getUnreadCount = (conversation: ConversationItem) => {

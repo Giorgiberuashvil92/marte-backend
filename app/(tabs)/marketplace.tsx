@@ -30,7 +30,7 @@ const MAIN_CATEGORIES = [
     subtitle: 'ავტონაწილების მოძიება და შეძენა',
     icon: 'construct-outline',
     color: '#3B82F6',
-    route: '/parts',
+    route: '/parts-new',
   },
   {
     id: 'stores',
@@ -38,7 +38,7 @@ const MAIN_CATEGORIES = [
     subtitle: 'მაღაზიები და სერვისები',
     icon: 'storefront-outline',
     color: '#EC4899',
-    route: '/stores',
+    route: '/stores-new',
   },
   {
     id: 'oils',
@@ -46,7 +46,7 @@ const MAIN_CATEGORIES = [
     subtitle: 'ძრავის ზეთები და საპოხი მასალები',
     icon: 'water-outline',
     color: '#0EA5E9',
-    route: '/oils',
+    route: '/oils-new',
   },
   {
     id: 'services',
@@ -54,7 +54,7 @@ const MAIN_CATEGORIES = [
     subtitle: 'სერვისები და მოვლა',
     icon: 'settings-outline',
     color: '#F59E0B',
-    route: '/services',
+    route: '/services-new',
   },
   {
     id: 'mechanics',
@@ -62,7 +62,7 @@ const MAIN_CATEGORIES = [
     subtitle: 'მექანიკოსები და სპეციალისტები',
     icon: 'build-outline',
     color: '#10B981',
-    route: '/mechanics',
+    route: '/mechanics-new',
   },
   // {
   //   id: 'accessories',
@@ -433,6 +433,8 @@ const styles = StyleSheet.create({
   },
   compactTitle: {
     fontSize: 22,
+    fontFamily: 'HelveticaMedium',
+    textTransform: 'uppercase',
     fontWeight: '700',
     color: '#111827',
     letterSpacing: -0.5,
@@ -452,6 +454,8 @@ const styles = StyleSheet.create({
   compactSearchInput: {
     flex: 1,
     fontSize: 14,
+    fontFamily: 'HelveticaMedium',
+    textTransform: 'uppercase',
     color: '#111827',
   },
   
@@ -475,12 +479,16 @@ const styles = StyleSheet.create({
   },
   headerTitle: {
     fontSize: 28,
+    fontFamily: 'HelveticaMedium',
+    textTransform: 'uppercase',
     fontWeight: '700',
     color: '#111827',
     letterSpacing: -0.5,
   },
   headerSubtitle: {
     fontSize: 14,
+    fontFamily: 'HelveticaMedium',
+    textTransform: 'uppercase',
     color: '#6B7280',
     marginTop: 4,
   },
@@ -498,6 +506,8 @@ const styles = StyleSheet.create({
   searchInput: {
     flex: 1,
     fontSize: 16,
+    fontFamily: 'HelveticaMedium',
+    textTransform: 'uppercase',
     color: '#111827',
   },
 
@@ -512,6 +522,8 @@ const styles = StyleSheet.create({
   },
   sectionTitle: {
     fontSize: 18,
+    fontFamily: 'HelveticaMedium',
+    textTransform: 'uppercase',
     fontWeight: '700',
     color: '#111827',
     marginBottom: 14,
@@ -547,6 +559,8 @@ const styles = StyleSheet.create({
   },
   categoryTitle: {
     fontSize: 14,
+    fontFamily: 'HelveticaMedium',
+    textTransform: 'uppercase',
     fontWeight: '600',
     color: '#111827',
     marginBottom: 2,
@@ -554,6 +568,8 @@ const styles = StyleSheet.create({
   },
   categorySubtitle: {
     fontSize: 12,
+    fontFamily: 'HelveticaMedium',
+    textTransform: 'uppercase',
     color: '#6B7280',
     lineHeight: 16,
   },
@@ -586,6 +602,8 @@ const styles = StyleSheet.create({
   },
   seeAllText: {
     fontSize: 14,
+    fontFamily: 'HelveticaMedium',
+    textTransform: 'uppercase',
     fontWeight: '600',
     color: '#3B82F6',
   },
@@ -616,6 +634,8 @@ const styles = StyleSheet.create({
   },
   miniTitle: {
     fontSize: 13,
+    fontFamily: 'HelveticaMedium',
+    textTransform: 'uppercase',
     fontWeight: '600',
     color: '#111827',
     marginBottom: 6,
@@ -632,11 +652,15 @@ const styles = StyleSheet.create({
   },
   miniRatingText: {
     fontSize: 11,
+    fontFamily: 'HelveticaMedium',
+    textTransform: 'uppercase',
     fontWeight: '500',
     color: '#6B7280',
   },
   miniPrice: {
     fontSize: 12,
+    fontFamily: 'HelveticaMedium',
+    textTransform: 'uppercase',
     fontWeight: '700',
     color: '#111827',
   },
@@ -687,30 +711,30 @@ const styles = StyleSheet.create({
   heroPromoOverlay: { position: 'absolute', left: 0, right: 0, top: 0, bottom: 0 },
   heroPromoTopRow: { position: 'absolute', left: 12, right: 12, top: 12, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   heroPromoPillLight: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: 'rgba(255,255,255,0.9)', paddingHorizontal: 10, paddingVertical: 6, borderRadius: 12 },
-  heroPromoPillLightText: { color: '#111827', fontSize: 12, fontWeight: '700' },
+  heroPromoPillLightText: { color: '#111827', fontSize: 12, fontFamily: 'HelveticaMedium', textTransform: 'uppercase', fontWeight: '700' },
   heroPromoDiscount: { backgroundColor: '#EF4444', paddingHorizontal: 10, paddingVertical: 6, borderRadius: 12 },
-  heroPromoDiscountText: { color: '#FFFFFF', fontWeight: '800' },
+  heroPromoDiscountText: { color: '#FFFFFF', fontFamily: 'HelveticaMedium', textTransform: 'uppercase', fontWeight: '800' },
   heroPromoContent: { position: 'absolute', left: 12, right: 12, bottom: 12, gap: 12 },
-  heroPromoTitle: { color: '#FFFFFF', fontSize: 18, fontWeight: '800', letterSpacing: -0.3, textShadowColor: 'rgba(0,0,0,0.35)', textShadowOffset: { width: 0, height: 2 }, textShadowRadius: 4 },
-  heroPromoSubtitle: { color: 'rgba(255,255,255,0.9)', fontSize: 12 },
+  heroPromoTitle: { color: '#FFFFFF', fontSize: 18, fontFamily: 'HelveticaMedium', textTransform: 'uppercase', fontWeight: '800', letterSpacing: -0.3, textShadowColor: 'rgba(0,0,0,0.35)', textShadowOffset: { width: 0, height: 2 }, textShadowRadius: 4 },
+  heroPromoSubtitle: { color: 'rgba(255,255,255,0.9)', fontSize: 12, fontFamily: 'HelveticaMedium', textTransform: 'uppercase' },
   heroPromoFooter: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   heroPromoFeatures: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   heroPromoFeature: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: 'rgba(0,0,0,0.35)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.12)', paddingHorizontal: 10, paddingVertical: 6, borderRadius: 12 },
-  heroPromoFeatureText: { color: '#E5E7EB', fontWeight: '700', fontSize: 11 },
+  heroPromoFeatureText: { color: '#E5E7EB', fontFamily: 'HelveticaMedium', textTransform: 'uppercase', fontWeight: '700', fontSize: 11 },
   heroPromoButton: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: '#111827', paddingHorizontal: 14, paddingVertical: 10, borderRadius: 14, borderWidth: 1, borderColor: 'rgba(255,255,255,0.12)' },
-  heroPromoButtonText: { color: '#FFFFFF', fontWeight: '700', fontSize: 13 },
+  heroPromoButtonText: { color: '#FFFFFF', fontFamily: 'HelveticaMedium', textTransform: 'uppercase', fontWeight: '700', fontSize: 13 },
   featureImage: { width: '100%', height: '100%' },
   featureOverlay: { position: 'absolute', left: 0, right: 0, bottom: 0, height: '60%' },
   featureBadgesRow: { position: 'absolute', left: 12, right: 12, top: 12, flexDirection: 'row', gap: 8 },
   badgePillPrimary: { backgroundColor: 'rgba(59,130,246,0.95)', paddingHorizontal: 10, paddingVertical: 6, borderRadius: 12 },
-  badgePillPrimaryText: { color: '#FFFFFF', fontSize: 11, fontWeight: '700' },
+  badgePillPrimaryText: { color: '#FFFFFF', fontSize: 11, fontFamily: 'HelveticaMedium', textTransform: 'uppercase', fontWeight: '700' },
   badgePillLight: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: 'rgba(255,255,255,0.9)', paddingHorizontal: 8, paddingVertical: 5, borderRadius: 12 },
-  badgePillLightText: { color: '#111827', fontSize: 11, fontWeight: '700' },
+  badgePillLightText: { color: '#111827', fontSize: 11, fontFamily: 'HelveticaMedium', textTransform: 'uppercase', fontWeight: '700' },
   featureContent: { position: 'absolute', left: 12, right: 12, bottom: 12 },
-  featureTitle: { color: '#FFFFFF', fontSize: 16, fontWeight: '800', letterSpacing: -0.3, marginBottom: 8 },
+  featureTitle: { color: '#FFFFFF', fontSize: 16, fontFamily: 'HelveticaMedium', textTransform: 'uppercase', fontWeight: '800', letterSpacing: -0.3, marginBottom: 8 },
   featureMetaRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   featureRating: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  featureRatingText: { color: '#FDE68A', fontWeight: '700' },
+  featureRatingText: { color: '#FDE68A', fontFamily: 'HelveticaMedium', textTransform: 'uppercase', fontWeight: '700' },
   discountBadge: {
     backgroundColor: '#EF4444',
     paddingHorizontal: 10,
@@ -723,6 +747,8 @@ const styles = StyleSheet.create({
   discountBadgeText: {
     color: '#FFFFFF',
     fontSize: 12,
+    fontFamily: 'HelveticaMedium',
+    textTransform: 'uppercase',
     fontWeight: '800',
   },
   offerBadge: {
@@ -737,6 +763,8 @@ const styles = StyleSheet.create({
   offerBadgeText: {
     color: '#FFFFFF',
     fontSize: 11,
+    fontFamily: 'HelveticaMedium',
+    textTransform: 'uppercase',
     fontWeight: '700',
   },
   priceContainer: {
@@ -747,12 +775,16 @@ const styles = StyleSheet.create({
   originalPrice: {
     color: 'rgba(255,255,255,0.6)',
     fontSize: 12,
+    fontFamily: 'HelveticaMedium',
+    textTransform: 'uppercase',
     textDecorationLine: 'line-through',
     fontWeight: '500',
   },
   currentPrice: {
     color: '#FFFFFF',
     fontSize: 14,
+    fontFamily: 'HelveticaMedium',
+    textTransform: 'uppercase',
     fontWeight: '700',
   },
 
@@ -787,10 +819,14 @@ const styles = StyleSheet.create({
   },
   quickText: {
     fontSize: 11,
+    fontFamily: 'HelveticaMedium',
+    textTransform: 'uppercase',
     fontWeight: '600',
   },
   featureSubtitle: {
     fontSize: 12,
+    fontFamily: 'HelveticaMedium',
+    textTransform: 'uppercase',
     color: '#9CA3AF',
     marginBottom: 8,
   },

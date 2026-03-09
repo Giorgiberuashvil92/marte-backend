@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import {
   View,
   Text,
@@ -8,27 +8,48 @@ import {
   Image,
   StatusBar,
   Dimensions,
-  Animated,
   TextInput,
-  ImageBackground,
-  Linking,
   RefreshControl,
   ActivityIndicator,
   FlatList,
+  Platform,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
 import { useUser } from '../contexts/UserContext';
-import { useToast } from '../contexts/ToastContext';
 import { addItemApi } from '../services/addItemApi';
-import API_BASE_URL from '../config/api';
 import { specialOffersApi, SpecialOffer } from '../services/specialOffersApi';
 import SpecialOfferModal, { SpecialOfferModalData } from '../components/ui/SpecialOfferModal';
 import DetailModal, { DetailItem } from '../components/ui/DetailModal';
+import SpecialOfferCard from '../components/ui/SpecialOfferCard';
+import AddModal, { AddModalType } from '../components/ui/AddModal';
 
-const { width, height } = Dimensions.get('window');
+const { width } = Dimensions.get('window');
+
+const SkeletonCard = () => (
+  <View style={styles.skeletonCard}>
+    <View style={styles.skeletonImage} />
+    <View style={styles.skeletonContent}>
+      <View style={styles.skeletonLine} />
+      <View style={[styles.skeletonLine, { width: '60%' }]} />
+    </View>
+  </View>
+);
+
+const SkeletonListItem = () => (
+  <View style={styles.skeletonListItem}>
+    <View style={styles.skeletonThumbnail} />
+    <View style={styles.skeletonTextContainer}>
+      <View style={styles.skeletonTextLine} />
+      <View style={[styles.skeletonTextLine, { width: '80%' }]} />
+      <View style={[styles.skeletonTextLine, { width: '70%' }]} />
+      <View style={[styles.skeletonTextLine, { width: '50%' }]} />
+    </View>
+    <View style={styles.skeletonIndicator} />
+  </View>
+);
 
 interface DetailingService {
   id: string;
@@ -66,25 +87,15 @@ export default function DetailingScreen() {
   const [selectedDetailItem, setSelectedDetailItem] = useState<DetailItem | null>(null);
   const [showSpecialOfferModal, setShowSpecialOfferModal] = useState(false);
   const [selectedOffer, setSelectedOffer] = useState<SpecialOfferModalData | null>(null);
-
-  // Animations
-  const fadeAnim = useRef(new Animated.Value(0)).current;
-  const slideAnim = useRef(new Animated.Value(30)).current;
+  const [debouncedSearch, setDebouncedSearch] = useState('');
+  const [showAddModal, setShowAddModal] = useState(false);
 
   useEffect(() => {
-    Animated.parallel([
-      Animated.timing(fadeAnim, {
-        toValue: 1,
-        duration: 600,
-        useNativeDriver: true,
-      }),
-      Animated.timing(slideAnim, {
-        toValue: 0,
-        duration: 600,
-        useNativeDriver: true,
-      }),
-    ]).start();
+    const t = setTimeout(() => setDebouncedSearch(searchQuery), 350);
+    return () => clearTimeout(t);
+  }, [searchQuery]);
 
+  useEffect(() => {
     loadServices();
   }, []);
 
@@ -205,16 +216,14 @@ export default function DetailingScreen() {
   const filteredServices = useMemo(() => {
     let filtered = services;
 
-    // Search filter
-    if (searchQuery.trim()) {
-      filtered = filtered.filter(s => 
-        s.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        s.description?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        s.address?.toLowerCase().includes(searchQuery.toLowerCase())
+    if (debouncedSearch.trim()) {
+      filtered = filtered.filter(s =>
+        s.name.toLowerCase().includes(debouncedSearch.toLowerCase()) ||
+        s.description?.toLowerCase().includes(debouncedSearch.toLowerCase()) ||
+        s.address?.toLowerCase().includes(debouncedSearch.toLowerCase())
       );
     }
 
-    // Status filter
     if (activeFilter === 'open') {
       filtered = filtered.filter(s => s.isOpen);
     } else if (activeFilter === 'verified') {
@@ -222,7 +231,7 @@ export default function DetailingScreen() {
     }
 
     return filtered;
-  }, [services, searchQuery, activeFilter]);
+  }, [services, debouncedSearch, activeFilter]);
 
   const convertStoreToDetailItem = (store: any): DetailItem => {
     const mainImage = store.images?.[0] || store.image || 'https://images.unsplash.com/photo-1506905925346-21bda4d32df4?q=80&w=800&auto=format&fit=crop';
@@ -280,326 +289,197 @@ export default function DetailingScreen() {
 
   return (
     <View style={styles.container}>
-      <StatusBar barStyle="dark-content" backgroundColor="#FFFFFF" />
+      <StatusBar barStyle="dark-content" backgroundColor="#FFFFFF" translucent />
       
-      {/* White Header */}
-      <SafeAreaView edges={['top']} style={styles.header}>
-        <View style={styles.headerContent}>
-          <TouchableOpacity 
-            style={styles.backButton}
-            onPress={() => router.back()}
-          >
-            <Ionicons name="arrow-back" size={24} color="#111827" />
-          </TouchableOpacity>
-          
-          <View style={styles.headerCenter}>
-            <Text style={styles.heroTitle}>დითეილინგი</Text>
-            <Text style={styles.heroSubtitle}>მანქანის სრულყოფილი მოვლა</Text>
-          </View>
-
-        
-        </View>
-
-        {/* Search Bar */}
-        
-
-        {/* Filter Chips */}
-        <View style={styles.filterContainer}>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filterScroll}>
-            {[
-              { id: 'all', label: 'ყველა', icon: 'grid-outline' },
-              { id: 'open', label: 'ღიაა', icon: 'time-outline' },
-              { id: 'verified', label: 'ვერიფიცირებული', icon: 'checkmark-circle-outline' },
-            ].map((filter) => (
-              <TouchableOpacity
-                key={filter.id}
-                style={[
-                  styles.filterChip,
-                  activeFilter === filter.id && styles.filterChipActive
-                ]}
-                onPress={() => setActiveFilter(filter.id as any)}
-              >
-                <Ionicons 
-                  name={filter.icon as any} 
-                  size={16} 
-                  color={activeFilter === filter.id ? '#111827' : '#6B7280'} 
-                />
-                <Text style={[
-                  styles.filterChipText,
-                  activeFilter === filter.id && styles.filterChipTextActive
-                ]}>
-                  {filter.label}
-                </Text>
+      <View style={styles.topBar}>
+        <SafeAreaView edges={['top']}>
+          <View style={styles.topBarContent}>
+            <TouchableOpacity style={styles.topBarButton} onPress={() => router.back()}>
+              <Ionicons name="arrow-back" size={24} color="#111827" />
+            </TouchableOpacity>
+            <Text style={styles.topBarTitle}>დითეილინგი</Text>
+            <View style={styles.topBarRight}>
+              <TouchableOpacity style={styles.topBarButton} onPress={() => setShowAddModal(true)}>
+                <Ionicons name="add" size={24} color="#111827" />
               </TouchableOpacity>
-            ))}
-          </ScrollView>
-        </View>
-      </SafeAreaView>
+            </View>
+          </View>
+        </SafeAreaView>
+      </View>
 
-      {/* Services List */}
+      <View style={styles.searchSection}>
+        <View style={styles.searchWrap}>
+          <Ionicons name="search" size={18} color="#9CA3AF" />
+          <TextInput
+            style={styles.searchInput}
+            placeholder="ძიება სახელით, აღწერით ან მისამართით"
+            placeholderTextColor="#6B7280"
+            value={searchQuery}
+            onChangeText={setSearchQuery}
+          />
+          {searchQuery ? (
+            <TouchableOpacity onPress={() => setSearchQuery('')}>
+              <Ionicons name="close-circle" size={18} color="#9CA3AF" />
+            </TouchableOpacity>
+          ) : null}
+        </View>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filterScroll}>
+          {[
+            { id: 'all', label: 'ყველა', icon: 'grid-outline' },
+            { id: 'open', label: 'ღიაა', icon: 'time-outline' },
+            { id: 'verified', label: 'ვერიფიცირებული', icon: 'checkmark-circle-outline' },
+          ].map((filter) => (
+            <TouchableOpacity
+              key={filter.id}
+              style={[styles.filterChip, activeFilter === filter.id && styles.filterChipActive]}
+              onPress={() => setActiveFilter(filter.id as 'all' | 'open' | 'verified')}
+            >
+              <Ionicons name={filter.icon as any} size={16} color={activeFilter === filter.id ? '#FFFFFF' : '#6B7280'} />
+              <Text style={[styles.filterChipText, activeFilter === filter.id && styles.filterChipTextActive]}>
+                {filter.label}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </ScrollView>
+      </View>
+
       <ScrollView
         style={styles.content}
         showsVerticalScrollIndicator={false}
-        refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#6366F1" />
-        }
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#111827" />}
       >
         {loading && services.length === 0 && vipStores.length === 0 && specialOffers.length === 0 ? (
-          <View style={styles.loadingContainer}>
-            <ActivityIndicator size="large" color="#6366F1" />
-            <Text style={styles.loadingText}>იტვირთება...</Text>
-          </View>
+          <>
+            <View style={styles.sectionTitleSkeleton} />
+            <View style={styles.horizontalScroll}>
+              <SkeletonCard /><SkeletonCard /><SkeletonCard />
+            </View>
+            <View style={styles.sectionTitleSkeleton} />
+            <View style={styles.verticalList}>
+              <SkeletonListItem /><SkeletonListItem /><SkeletonListItem /><SkeletonListItem />
+            </View>
+          </>
         ) : (
           <>
-            {/* VIP Section */}
-            {vipStores.length > 0 && (
-              <View style={styles.section}>
-                <View style={styles.sectionHeader}>
-                  <Ionicons name="star" size={20} color="#F59E0B" />
-                  <Text style={styles.sectionTitle}>VIP მაღაზიები</Text>
+            <View style={styles.sectionTitleContainer}>
+              <Text style={styles.sectionTitle}>VIP მაღაზიები</Text>
+            </View>
+            {vipStores.length > 0 ? (
+              <FlatList
+                horizontal
+                data={vipStores}
+                renderItem={({ item }) => (
+                  <TouchableOpacity style={styles.vipCard} onPress={() => handleStorePress(item)} activeOpacity={0.8}>
+                    <Image
+                      source={{ uri: item.images?.[0] || item.image || 'https://images.unsplash.com/photo-1506905925346-21bda4d32df4?q=80&w=800&auto=format&fit=crop' }}
+                      style={styles.vipCardImage}
+                      resizeMode="cover"
+                    />
+                    <LinearGradient colors={['transparent', 'rgba(0,0,0,0.8)']} style={styles.vipCardGradient}>
+                      <View style={styles.vipBadge}>
+                        <Ionicons name="star" size={12} color="#F59E0B" />
+                        <Text style={styles.vipBadgeText}>VIP</Text>
+                      </View>
+                      <View style={styles.vipCardContent}>
+                        <Text style={styles.vipCardTitle} numberOfLines={2}>{item.name}</Text>
+                        {(item.location || item.address) && (
+                          <View style={styles.vipCardMeta}>
+                            <Ionicons name="location" size={14} color="#FFFFFF" />
+                            <Text style={styles.vipCardLocation}>{item.location || item.address}</Text>
+                          </View>
+                        )}
+                      </View>
+                    </LinearGradient>
+                  </TouchableOpacity>
+                )}
+                keyExtractor={(item, index) => item.id || item._id || `vip-${index}`}
+                showsHorizontalScrollIndicator={false}
+                contentContainerStyle={styles.horizontalScroll}
+                removeClippedSubviews={Platform.OS === 'ios'}
+              />
+            ) : null}
+
+            {specialOffers.length > 0 && (
+              <>
+                <View style={styles.sectionTitleContainer}>
+                  <Text style={styles.sectionTitle}>სპეციალური შეთავაზებები</Text>
                 </View>
                 <FlatList
                   horizontal
-                  data={vipStores}
-                  renderItem={({ item }) => (
+                  data={specialOffers}
+                  renderItem={({ item }) => {
+                    const storeId = item.storeId || item.id || item._id;
+                    const offersCount = specialOffers.filter((o: any) => (o.storeId || o.id || o._id) === storeId).length;
+                    const offerData: SpecialOfferModalData = {
+                      id: item.id || item._id,
+                      name: item.name,
+                      title: item.title || item.name,
+                      description: item.description,
+                      location: item.location || item.address,
+                      phone: item.phone,
+                      discount: item.discount,
+                      oldPrice: item.oldPrice,
+                      newPrice: item.newPrice,
+                      image: item.image || item.images?.[0] || item.photos?.[0],
+                      address: item.address || item.location,
+                    };
+                    return (
+                      <SpecialOfferCard
+                        offer={item}
+                        onPress={() => { setSelectedOffer(offerData); setShowSpecialOfferModal(true); }}
+                        offersCount={offersCount > 1 ? offersCount : undefined}
+                      />
+                    );
+                  }}
+                  keyExtractor={(item, index) => item.id || item._id || `offer-${index}`}
+                  showsHorizontalScrollIndicator={false}
+                  contentContainerStyle={styles.horizontalScroll}
+                  removeClippedSubviews={Platform.OS === 'ios'}
+                />
+              </>
+            )}
+
+            <View style={styles.sectionTitleContainer}>
+              <Text style={styles.sectionTitle}>დითეილინგ სერვისები</Text>
+            </View>
+            {filteredServices.length > 0 ? (
+              <View style={styles.verticalList}>
+                {filteredServices.map((service, index) => {
+                  const image = service.images?.[0] || service.avatar || 'https://images.unsplash.com/photo-1506905925346-21bda4d32df4?q=80&w=800&auto=format&fit=crop';
+                  return (
                     <TouchableOpacity
-                      style={styles.vipCard}
-                      onPress={() => handleStorePress(item)}
+                      key={service.id || index}
+                      style={styles.listItem}
+                      onPress={() => handleServicePress(service)}
                       activeOpacity={0.7}
                     >
-                      <ImageBackground
-                        source={{ uri: item.images?.[0] || item.image || 'https://images.unsplash.com/photo-1506905925346-21bda4d32df4?q=80&w=800&auto=format&fit=crop' }}
-                        style={styles.vipCardImage}
-                        imageStyle={styles.vipCardImageStyle}
-                      >
-                        <LinearGradient
-                          colors={['transparent', 'rgba(0,0,0,0.8)']}
-                          style={styles.vipCardGradient}
-                        >
-                          <View style={styles.vipBadge}>
-                            <Ionicons name="star" size={12} color="#F59E0B" />
-                            <Text style={styles.vipBadgeText}>VIP</Text>
+                      <Image source={{ uri: image }} style={styles.listItemThumbnail} resizeMode="cover" />
+                      <View style={styles.listItemContent}>
+                        <Text style={styles.listItemTitle} numberOfLines={2}>{service.name}</Text>
+                        {service.category ? <Text style={styles.listItemSubtitle} numberOfLines={1}>{service.category}</Text> : null}
+                        {(service.location || service.address) && (
+                          <View style={styles.listItemMeta}>
+                            <Ionicons name="location-outline" size={12} color="#6B7280" />
+                            <Text style={styles.listItemLocation} numberOfLines={1}>{service.location || service.address}</Text>
                           </View>
-                          <View style={styles.vipCardContent}>
-                            <Text style={styles.vipCardTitle} numberOfLines={2}>{item.name}</Text>
-                            <View style={styles.vipCardMeta}>
-                              <Ionicons name="location" size={14} color="#FFFFFF" />
-                              <Text style={styles.vipCardLocation}>{item.location}</Text>
-                            </View>
-                          </View>
-                        </LinearGradient>
-                      </ImageBackground>
-                    </TouchableOpacity>
-                  )}
-                  keyExtractor={(item, index) => item.id || item._id || index.toString()}
-                  showsHorizontalScrollIndicator={false}
-                  contentContainerStyle={styles.vipList}
-                />
-              </View>
-            )}
-
-            {/* Special Offers */}
-            {specialOffers.length > 0 && (
-              <View style={styles.section}>
-                <View style={styles.sectionHeader}>
-                  <Ionicons name="pricetag" size={20} color="#EF4444" />
-                  <Text style={styles.sectionTitle}>სპეციალური შეთავაზებები</Text>
-                </View>
-                <ScrollView
-                  horizontal
-                  showsHorizontalScrollIndicator={false}
-                  contentContainerStyle={styles.offersList}
-                >
-                  {specialOffers.map((offer, index) => {
-                    const storeId = offer.storeId || offer.id || offer._id;
-                    const offersCount = specialOffers.filter(
-                      (o: any) => (o.storeId || o.id || o._id) === storeId
-                    ).length;
-                    
-                    return (
-                      <TouchableOpacity
-                        key={index}
-                        style={styles.offerCard}
-                        onPress={() => handleStorePress(offer)}
-                        activeOpacity={0.7}
-                      >
-                        <ImageBackground
-                          source={{ 
-                            uri: offer.photos?.[0] || offer.images?.[0] || offer.image || 'https://images.unsplash.com/photo-1517672651691-24622a91b550?q=80&w=800&auto=format&fit=crop' 
-                          }}
-                          style={styles.offerCardImage}
-                          imageStyle={styles.offerCardImageStyle}
-                        >
-                          <LinearGradient
-                            colors={['transparent', 'rgba(0,0,0,0.8)']}
-                            style={styles.offerCardGradient}
-                          >
-                            <View style={styles.offerDiscountBadge}>
-                              <Text style={styles.offerDiscountBadgeText}>-{offer.discount}%</Text>
-                            </View>
-                            <View style={styles.offerLabelBadge}>
-                              <Ionicons name="pricetag" size={14} color="#FFFFFF" />
-                              <Text style={styles.offerLabelBadgeText}>შეთავაზება</Text>
-                            </View>
-                            {offersCount > 1 && (
-                              <View style={styles.offerCountBadge}>
-                                <Text style={styles.offerCountBadgeText}>+{offersCount - 1}</Text>
-                              </View>
-                            )}
-                            <View style={styles.offerCardContent}>
-                              <Text style={styles.offerCardTitle} numberOfLines={2}>{offer.name}</Text>
-                              <View style={styles.offerCardPriceRow}>
-                                <Text style={styles.offerCardOldPrice}>{offer.oldPrice}</Text>
-                                <Text style={styles.offerCardNewPrice}>{offer.newPrice}</Text>
-                              </View>
-                            </View>
-                          </LinearGradient>
-                        </ImageBackground>
-                      </TouchableOpacity>
-                    );
-                  })}
-                </ScrollView>
-              </View>
-            )}
-
-            {/* All Services */}
-            {filteredServices.length > 0 && (
-          <View style={styles.modernSection}>
-            <View style={styles.sectionHeader}>
-              <Text style={styles.modernSectionTitle}>დითეილინგ სერვისები</Text>
-            </View>
-            <View style={styles.modernStoresContainer}>
-              {filteredServices.map((service, index) => (
-                <View key={service.id || index} style={styles.modernStoreCard}>
-                  {/* Background Image */}
-                  <ImageBackground 
-                    source={{
-                      uri: service.images && service.images.length > 0 
-                        ? service.images[0] 
-                        : 'https://images.unsplash.com/photo-1506905925346-21bda4d32df4?q=80&w=800&auto=format&fit=crop'
-                    }}
-                    style={styles.modernStoreBackgroundImage}
-                    resizeMode="cover"
-                  >
-                    {/* Gradient Overlay */}
-                    <LinearGradient
-                      colors={['rgba(0,0,0,0.4)', 'rgba(0,0,0,0.2)', 'rgba(0,0,0,0.5)']}
-                      style={styles.modernStoreGradientOverlay}
-                    >
-                      {/* Header */}
-                      <View style={styles.modernStoreHeader}>
-                        <View style={styles.modernStoreProfileSection}>
-                          <View style={styles.modernStoreAvatarPlaceholder}>
-                            <Image 
-                              source={{
-                                uri: service.images && service.images.length > 0 
-                                  ? service.images[0] 
-                                  : service.avatar || 'https://images.unsplash.com/photo-1506905925346-21bda4d32df4?q=80&w=800&auto=format&fit=crop'
-                              }} 
-                              style={styles.modernStoreAvatar} 
-                            />
-                          </View>
-                          <Text style={styles.modernStoreUsername}>{service.name}</Text>
-                        </View>
-                        <TouchableOpacity 
-                          style={styles.modernStoreLikeButton}
-                          onPress={(e) => {
-                            e.stopPropagation();
-                            toggleFavorite(service.id);
-                          }}
-                          activeOpacity={0.7}
-                        >
-                          <Ionicons 
-                            name={isFavorite(service.id) ? "heart" : "heart-outline"} 
-                            size={16} 
-                            color="#FFFFFF" 
-                          />
-                          <Text style={styles.modernStoreActionText}>
-                            {isFavorite(service.id) ? '1' : '0'}
-                          </Text>
-                        </TouchableOpacity>
+                        )}
                       </View>
-                      
-                      {/* Main Card */}
-                      <TouchableOpacity 
-                        style={styles.modernStoreMainCard}
-                        onPress={() => handleServicePress(service)}
-                        activeOpacity={0.95}
+                      <TouchableOpacity
+                        style={styles.listItemIndicator}
+                        onPress={(e) => { e.stopPropagation(); handleServicePress(service); }}
                       >
-                        {/* Service Info */}
-                        <View style={styles.modernStoreInfoSection}>
-                          {service.category && (
-                            <Text style={styles.modernStoreTypeText}>{service.category}</Text>
-                          )}
-                        </View>
-                        
-                        {/* Separator Line */}
-                        <View style={styles.modernStoreSeparator} />
-                        
-                        {/* Service Type Section */}
-                        <View style={styles.modernStoreTypeSection}>
-                          <View style={styles.modernStoreTypeLeft}>
-                            {/* Service type info */}
-                          </View>
-                          
-                          {/* Call Button */}
-                          <TouchableOpacity 
-                            style={styles.modernStoreCallButton}
-                            onPress={(e) => {
-                              e.stopPropagation();
-                              const phoneNumber = service.phone || '';
-                              if (phoneNumber) {
-                                Linking.openURL(`tel:${phoneNumber}`).catch(() => {});
-                              }
-                            }}
-                            activeOpacity={0.7}
-                          >
-                            <Ionicons name="call-outline" size={14} color="#FFFFFF" />
-                          </TouchableOpacity>
-                        </View>
-                        
-                        {/* Actions Footer */}
-                        <View style={styles.modernStoreActionsFooter}>
-                          <View style={styles.modernStoreActionsLeft}>
-                            <TouchableOpacity 
-                              style={styles.modernStoreActionButton}
-                              onPress={(e) => {
-                                e.stopPropagation();
-                                console.log('Service comments:', service.name);
-                              }}
-                              activeOpacity={0.7}
-                            >
-                              <Ionicons name="chatbubble-outline" size={16} color="#FFFFFF" />
-                            </TouchableOpacity>
-                            
-                            <View style={styles.modernStoreLocationButton}>
-                              <Ionicons name="location-outline" size={16} color="#FFFFFF" />
-                              <Text style={styles.modernStoreLocationButtonText}>
-                                {service.location || service.address || 'მდებარეობა'}
-                              </Text>
-                            </View>
-                          </View>
-                          
-                          <TouchableOpacity 
-                            style={styles.modernStoreContactButton}
-                            onPress={(e) => {
-                              e.stopPropagation();
-                              handleServicePress(service);
-                            }}
-                            activeOpacity={0.8}
-                          >
-                            <Ionicons name="information-outline" size={14} color="#FFFFFF" />
-                            <Text style={styles.modernStoreContactButtonText}>ინფო</Text>
-                          </TouchableOpacity>
-                        </View>
+                        <Ionicons name="chevron-forward" size={20} color="#9CA3AF" />
                       </TouchableOpacity>
-                    </LinearGradient>
-                  </ImageBackground>
-                </View>
-              ))}
-            </View>
-          </View>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+            ) : (
+              <View style={styles.emptyState}>
+                <Text style={styles.emptyText}>დითეილინგ სერვისები ვერ მოიძებნა</Text>
+              </View>
             )}
+            <View style={{ height: 100 }} />
           </>
         )}
       </ScrollView>
@@ -621,91 +501,81 @@ export default function DetailingScreen() {
           setSelectedOffer(null);
         }}
       />
+
+      <AddModal
+        visible={showAddModal}
+        onClose={() => setShowAddModal(false)}
+        onSave={(_type: AddModalType) => {
+          setShowAddModal(false);
+          loadServices();
+        }}
+        defaultType="store"
+        defaultFormData={{ type: 'დეტეილინგი' }}
+      />
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
+  container: { flex: 1, backgroundColor: '#FFFFFF' },
+  topBar: {
     backgroundColor: '#FFFFFF',
-  },
-  header: {
-    backgroundColor: '#FFFFFF',
+    paddingBottom: 12,
     borderBottomWidth: 1,
     borderBottomColor: '#E5E7EB',
-    paddingBottom: 16,
   },
-  headerContent: {
+  topBarContent: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: 20,
-    paddingTop: 12,
-    marginBottom: 16,
+    paddingTop: 8,
   },
-  backButton: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: '#F9FAFB',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  headerCenter: {
-    flex: 1,
-    alignItems: 'center',
-  },
-  heroTitle: {
-    fontSize: 28,
-    fontWeight: '800',
+  topBarTitle: {
+    fontSize: 18,
+    fontFamily: 'HelveticaMedium',
+    textTransform: 'uppercase',
+    fontWeight: '700',
     color: '#111827',
-    letterSpacing: -0.5,
-    marginBottom: 4,
+    flex: 1,
+    textAlign: 'center',
   },
-  heroSubtitle: {
-    fontSize: 14,
-    color: '#6B7280',
-    fontWeight: '500',
-  },
-  searchButton: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: '#F9FAFB',
+  topBarButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: '#F3F4F6',
     alignItems: 'center',
     justifyContent: 'center',
   },
-  searchContainer: {
+  topBarRight: { width: 40 },
+  searchSection: {
     paddingHorizontal: 20,
-    marginBottom: 16,
+    paddingVertical: 16,
+    backgroundColor: '#FFFFFF',
+    borderBottomWidth: 1,
+    borderBottomColor: '#E5E7EB',
+    gap: 12,
   },
-  searchInputContainer: {
+  searchWrap: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#FFFFFF',
+    gap: 10,
     borderRadius: 16,
-    paddingHorizontal: 16,
-    height: 52,
-    gap: 12,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
-    elevation: 4,
-  },
-  searchIcon: {
-    marginRight: 4,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    backgroundColor: '#F3F4F6',
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
   },
   searchInput: {
     flex: 1,
-    fontSize: 16,
     color: '#111827',
-  },
-  filterContainer: {
-    paddingHorizontal: 20,
+    fontSize: 14,
+    fontWeight: '500',
   },
   filterScroll: {
+    flexDirection: 'row',
     gap: 12,
     paddingRight: 20,
   },
@@ -716,7 +586,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 8,
     borderRadius: 20,
-    backgroundColor: '#F9FAFB',
+    backgroundColor: '#F3F4F6',
     borderWidth: 1,
     borderColor: '#E5E7EB',
   },
@@ -726,450 +596,203 @@ const styles = StyleSheet.create({
   },
   filterChipText: {
     fontSize: 14,
+    fontFamily: 'HelveticaMedium',
     fontWeight: '600',
     color: '#6B7280',
+    textTransform: 'uppercase',
   },
-  filterChipTextActive: {
-    color: '#FFFFFF',
-  },
-  content: {
-    flex: 1,
-    backgroundColor: '#F8FAFC',
-  },
-  section: {
-    marginTop: 24,
-  },
-  sectionHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    paddingHorizontal: 16,
-    marginBottom: 16,
+  filterChipTextActive: { color: '#FFFFFF' },
+  content: { flex: 1, backgroundColor: '#FFFFFF' },
+  sectionTitleContainer: {
+    paddingHorizontal: 20,
+    paddingTop: 24,
+    paddingBottom: 12,
   },
   sectionTitle: {
-    fontSize: 16,
+    fontSize: 18,
+    fontFamily: 'HelveticaMedium',
+    textTransform: 'uppercase',
     fontWeight: '700',
     color: '#111827',
-    fontFamily: 'Outfit',
   },
-  
-  // VIP Stores
-  vipList: {
-    paddingHorizontal: 16,
-    gap: 16,
+  sectionTitleSkeleton: {
+    height: 18,
+    width: 200,
+    backgroundColor: '#E5E7EB',
+    borderRadius: 4,
+    marginHorizontal: 20,
+    marginTop: 24,
+    marginBottom: 12,
+  },
+  horizontalScroll: {
+    paddingLeft: 20,
+    paddingRight: 4,
+    gap: 12,
   },
   vipCard: {
-    width: width * 0.75,
-    height: 220,
-    borderRadius: 20,
+    width: width * 0.65,
+    height: 160,
+    borderRadius: 16,
     overflow: 'hidden',
-    shadowColor: '#6366F1',
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.25,
-    shadowRadius: 16,
-    elevation: 8,
+    marginRight: 12,
+    backgroundColor: '#111827',
   },
-  vipCardImage: {
-    width: '100%',
-    height: '100%',
-  },
-  vipCardImageStyle: {
-    borderRadius: 20,
-  },
+  vipCardImage: { width: '100%', height: '100%' },
   vipCardGradient: {
-    flex: 1,
-    justifyContent: 'space-between',
-    padding: 20,
-  },
-  vipBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    alignSelf: 'flex-start',
-    backgroundColor: 'rgba(245, 158, 11, 0.95)',
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    borderRadius: 20,
-    shadowColor: '#F59E0B',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.4,
-    shadowRadius: 8,
-    elevation: 6,
-  },
-  vipBadgeText: {
-    color: '#FFFFFF',
-    fontSize: 11,
-    fontWeight: '700',
-    fontFamily: 'Outfit',
-    letterSpacing: 0.5,
-  },
-  vipCardContent: {
-    gap: 10,
-  },
-  vipCardTitle: {
-    fontSize: 17,
-    fontWeight: '700',
-    color: '#FFFFFF',
-    fontFamily: 'Outfit',
-    textShadowColor: 'rgba(0,0,0,0.3)',
-    textShadowOffset: { width: 0, height: 2 },
-    textShadowRadius: 4,
-  },
-  vipCardMeta: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-  },
-  vipCardLocation: {
-    fontSize: 12,
-    color: '#FFFFFF',
-    fontFamily: 'Outfit',
-  },
-  
-  // Special Offers
-  offersList: {
-    paddingHorizontal: 16,
-    gap: 16,
-  },
-  offerCard: {
-    width: width * 0.75,
-    height: 220,
-    borderRadius: 20,
-    overflow: 'hidden',
-    shadowColor: '#8B5CF6',
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.25,
-    shadowRadius: 16,
-    elevation: 8,
-  },
-  offerCardImage: {
-    width: '100%',
-    height: '100%',
-  },
-  offerCardImageStyle: {
-    borderRadius: 20,
-  },
-  offerCardGradient: {
-    flex: 1,
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    height: '60%',
     justifyContent: 'flex-end',
     padding: 16,
   },
-  offerDiscountBadge: {
+  vipBadge: {
     position: 'absolute',
     top: 12,
-    left: 12,
+    right: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
     backgroundColor: 'rgba(0,0,0,0.6)',
     paddingHorizontal: 10,
     paddingVertical: 6,
     borderRadius: 12,
-    zIndex: 10,
   },
-  offerDiscountBadgeText: {
-    fontSize: 13,
-    fontWeight: '800',
-    color: '#FFFFFF',
-    fontFamily: 'Inter',
-  },
-  offerLabelBadge: {
-    position: 'absolute',
-    top: 12,
-    right: 12,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 5,
-    backgroundColor: 'rgba(139, 92, 246, 0.95)',
-    paddingHorizontal: 12,
-    paddingVertical: 7,
-    borderRadius: 12,
-    zIndex: 10,
-  },
-  offerLabelBadgeText: {
-    fontSize: 13,
-    fontWeight: '700',
-    color: '#FFFFFF',
-    fontFamily: 'Inter',
-  },
-  offerCountBadge: {
-    position: 'absolute',
-    top: 12,
-    right: 12,
-    backgroundColor: 'rgba(59, 130, 246, 0.95)',
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 10,
-    zIndex: 11,
-    marginTop: 38,
-  },
-  offerCountBadgeText: {
+  vipBadgeText: {
     fontSize: 11,
-    fontWeight: '800',
-    color: '#FFFFFF',
-    fontFamily: 'Inter',
+    fontFamily: 'HelveticaMedium',
+    textTransform: 'uppercase',
+    fontWeight: '700',
+    color: '#F59E0B',
   },
-  offerCardContent: {
-    gap: 8,
-  },
-  offerCardTitle: {
+  vipCardContent: { gap: 8 },
+  vipCardTitle: {
     fontSize: 18,
+    fontFamily: 'HelveticaMedium',
+    textTransform: 'uppercase',
     fontWeight: '700',
     color: '#FFFFFF',
-    fontFamily: 'Inter',
   },
-  offerCardPriceRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  offerCardOldPrice: {
+  vipCardMeta: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  vipCardLocation: {
     fontSize: 13,
-    color: 'rgba(255,255,255,0.7)',
-    textDecorationLine: 'line-through',
-    fontFamily: 'Inter',
-  },
-  offerCardNewPrice: {
-    fontSize: 16,
-    fontWeight: '700',
+    fontFamily: 'HelveticaMedium',
+    textTransform: 'uppercase',
     color: '#FFFFFF',
-    fontFamily: 'Inter',
+    fontWeight: '500',
   },
-
-  // Modern Section Styles
-  modernSection: {
+  verticalList: {
     paddingHorizontal: 20,
-    paddingTop: 24,
-  },
-  modernSectionTitle: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#111827',
-    letterSpacing: -0.2,
-  },
-
-  // Modern Store Card Styles
-  modernStoresContainer: {
     gap: 12,
+    paddingBottom: 20,
   },
-  
-  modernStoreCard: {
-    height: 220,
-    marginBottom: 10,
-    borderRadius: 10,
-    overflow: 'hidden',
+  listItem: {
+    flexDirection: 'row',
+    backgroundColor: '#FFFFFF',
+    borderRadius: 12,
+    padding: 12,
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    alignItems: 'center',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
+    shadowOpacity: 0.05,
+    shadowRadius: 8,
     elevation: 2,
   },
-  
-  modernStoreBackgroundImage: {
-    width: '100%',
-    height: '100%',
-    justifyContent: 'space-between',
-    borderRadius: 10,
+  listItemThumbnail: {
+    width: 80,
+    height: 80,
+    borderRadius: 12,
+    backgroundColor: '#F3F4F6',
+    marginRight: 12,
   },
-  
-  modernStoreGradientOverlay: {
-    flex: 1,
-    justifyContent: 'space-between',
-    padding: 12,
+  listItemContent: { flex: 1, gap: 4 },
+  listItemTitle: {
+    fontSize: 15,
+    fontFamily: 'HelveticaMedium',
+    textTransform: 'uppercase',
+    fontWeight: '600',
+    color: '#111827',
+    marginBottom: 4,
   },
-  
-  modernStoreHeader: {
-    flexDirection: 'row',
+  listItemSubtitle: {
+    fontSize: 13,
+    fontFamily: 'HelveticaMedium',
+    textTransform: 'uppercase',
+    color: '#6B7280',
+    fontWeight: '500',
+    marginBottom: 4,
+  },
+  listItemMeta: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 4 },
+  listItemLocation: {
+    fontSize: 12,
+    fontFamily: 'HelveticaMedium',
+    textTransform: 'uppercase',
+    color: '#6B7280',
+    fontWeight: '500',
+  },
+  listItemIndicator: {
+    width: 32,
+    height: 32,
     alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 6,
+    justifyContent: 'center',
+    marginLeft: 8,
   },
-  
-  modernStoreProfileSection: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
+  emptyState: { padding: 40, alignItems: 'center', justifyContent: 'center' },
+  emptyText: {
+    fontSize: 16,
+    fontFamily: 'HelveticaMedium',
+    textTransform: 'uppercase',
+    color: '#9CA3AF',
+    fontWeight: '500',
   },
-  
-  modernStoreAvatarPlaceholder: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    borderWidth: 2,
-    borderColor: '#E5E5E5',
+  skeletonCard: {
+    width: width * 0.65,
+    height: 160,
+    borderRadius: 16,
+    backgroundColor: '#E5E7EB',
+    marginRight: 12,
     overflow: 'hidden',
   },
-  
-  modernStoreAvatar: {
+  skeletonImage: { width: '100%', height: '70%', backgroundColor: '#D1D5DB' },
+  skeletonContent: { padding: 12, gap: 8 },
+  skeletonLine: {
+    height: 12,
+    backgroundColor: '#D1D5DB',
+    borderRadius: 6,
     width: '100%',
-    height: '100%',
-    resizeMode: 'cover',
   },
-  
-  modernStoreUsername: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: '#FFFFFF',
-    fontFamily: 'Outfit',
-  },
-  
-  modernStoreLikeButton: {
+  skeletonListItem: {
     flexDirection: 'row',
-    alignItems: 'center',
-    gap: 3,
-    paddingVertical: 4,
-    paddingHorizontal: 6,
+    backgroundColor: '#FFFFFF',
     borderRadius: 12,
-    backgroundColor: 'rgba(255, 255, 255, 0.15)',
+    padding: 12,
     borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.2)',
-    backdropFilter: 'blur(10px)',
-  },
-  
-  modernStoreActionText: {
-    fontSize: 10,
-    color: '#FFFFFF',
-    fontFamily: 'Outfit',
-    fontWeight: '500',
-  },
-  
-  modernStoreMainCard: {
-    borderRadius: 8,
-    padding: 8,
-  },
-  
-  modernStoreInfoSection: {
-    marginBottom: 12,
-  },
-  
-  modernStoreTypeText: {
-    fontSize: 12,
-    color: 'rgba(255, 255, 255, 0.8)',
-    fontFamily: 'Outfit',
-    fontWeight: '500',
-  },
-  
-  modernStoreSeparator: {
-    height: 1,
-    marginVertical: 8,
-  },
-  
-  modernStoreTypeSection: {
-    marginBottom: 12,
-    flexDirection: 'row',
-    justifyContent: 'space-between',
+    borderColor: '#E5E7EB',
     alignItems: 'center',
   },
-  
-  modernStoreTypeLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  
-  modernStoreCallButton: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    backgroundColor: 'rgba(17, 24, 39, 0.9)',
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.3)',
-    alignItems: 'center',
-    justifyContent: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.2,
-    shadowRadius: 4,
-    elevation: 3,
-  },
-  
-  modernStoreActionsFooter: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginTop: 8,
-  },
-  
-  modernStoreActionsLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-  },
-  
-  modernStoreActionButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 3,
-    paddingVertical: 4,
-    paddingHorizontal: 6,
+  skeletonThumbnail: {
+    width: 80,
+    height: 80,
     borderRadius: 12,
-    backgroundColor: 'rgba(255, 255, 255, 0.15)',
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.2)',
-    backdropFilter: 'blur(10px)',
+    backgroundColor: '#E5E7EB',
+    marginRight: 12,
   },
-  
-  modernStoreLocationButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 3,
-    paddingVertical: 4,
-    paddingHorizontal: 6,
-    borderRadius: 12,
-    backgroundColor: 'rgba(255, 255, 255, 0.15)',
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.2)',
-    backdropFilter: 'blur(10px)',
+  skeletonTextContainer: { flex: 1, gap: 6 },
+  skeletonTextLine: {
+    height: 10,
+    backgroundColor: '#E5E7EB',
+    borderRadius: 5,
+    width: '100%',
   },
-  
-  modernStoreLocationButtonText: {
-    fontSize: 10,
-    color: '#FFFFFF',
-    fontFamily: 'Outfit',
-    fontWeight: '500',
-    maxWidth: 80,
-  },
-  
-  modernStoreContactButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    paddingVertical: 6,
-    paddingHorizontal: 10,
-    borderRadius: 12,
-    backgroundColor: 'rgba(17, 24, 39, 0.9)',
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.3)',
-  },
-  
-  modernStoreContactButtonText: {
-    fontSize: 11,
-    color: '#FFFFFF',
-    fontFamily: 'Outfit',
-    fontWeight: '600',
-  },
-  loadingContainer: {
-    padding: 40,
-    alignItems: 'center',
-  },
-  loadingText: {
-    fontSize: 16,
-    color: '#6B7280',
-  },
-  emptyContainer: {
-    padding: 60,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  emptyTitle: {
-    fontSize: 20,
-    fontWeight: '700',
-    color: '#111827',
-    marginTop: 24,
-    marginBottom: 8,
-  },
-  emptySubtitle: {
-    fontSize: 14,
-    color: '#6B7280',
-    textAlign: 'center',
-    lineHeight: 20,
+  skeletonIndicator: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: '#E5E7EB',
+    marginLeft: 8,
   },
 });
 

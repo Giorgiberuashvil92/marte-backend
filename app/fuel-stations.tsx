@@ -56,6 +56,13 @@ const FUEL_TYPES = [
     icon: 'flash', 
   },
   { 
+    id: 'super', 
+    name: 'სუპერი', 
+    typeAlt: 'super', 
+    color: '#8B5CF6', 
+    icon: 'star', 
+  },
+  { 
     id: 'premium_pm', 
     name: 'პრემიუმი', 
     typeAlt: 'premium_pm', 
@@ -89,7 +96,8 @@ export default function FuelStationsScreen() {
   const router = useRouter();
   const [refreshing, setRefreshing] = useState(false);
   const [loading, setLoading] = useState(true);
-  const [selectedFuelType, setSelectedFuelType] = useState('regular_pm');
+  const [selectedProvider, setSelectedProvider] = useState<string | null>(null);
+  const [selectedFuelType, setSelectedFuelType] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [currentPrices, setCurrentPrices] = useState<ProviderPrices[]>([]);
   const [lowestPrices, setLowestPrices] = useState<LowestPrice[]>([]);
@@ -98,9 +106,34 @@ export default function FuelStationsScreen() {
   
   const fadeAnim = useRef(new Animated.Value(0)).current;
 
+  // Get unique providers
+  const providers = currentPrices.map(p => p.provider);
+
+  // Get available fuel types for selected provider
+  const getAvailableFuelTypes = () => {
+    if (!selectedProvider) {
+      // If no provider selected, show all fuel types
+      return FUEL_TYPES;
+    }
+    
+    // Get fuel types available for selected provider
+    const providerData = currentPrices.find(p => p.provider === selectedProvider);
+    if (!providerData) return FUEL_TYPES;
+    
+    const availableTypeAlts = providerData.fuel.map(f => f.type_alt);
+    return FUEL_TYPES.filter(ft => availableTypeAlts.includes(ft.typeAlt));
+  };
+
+  const availableFuelTypes = getAvailableFuelTypes();
+  
+  // When provider is selected, don't show fuel type filter (show all types)
+  // When no provider selected, show fuel type filter
+
   const loadData = useCallback(async () => {
     try {
-      setLoading(true);
+      if (!refreshing) {
+        setLoading(true);
+      }
       const [prices, lowest, types] = await Promise.all([
         fuelPricesApi.getCurrentPrices(),
         fuelPricesApi.getLowestPrices(),
@@ -109,6 +142,20 @@ export default function FuelStationsScreen() {
       setCurrentPrices(prices);
       setLowestPrices(lowest);
       setFuelTypes(types);
+      
+      // Set default provider immediately after data loads
+      setSelectedProvider(prev => {
+        if (prev === null && prices.length > 0) {
+          const gulfProvider = prices.find(p => p.provider === 'Gulf');
+          if (gulfProvider) {
+            return 'Gulf';
+          } else if (prices.length > 0) {
+            // If Gulf not found, select first provider
+            return prices[0].provider;
+          }
+        }
+        return prev;
+      });
     } catch (error) {
       console.error('Error loading fuel prices:', error);
       Alert.alert('შეცდომა', 'ფასების ჩატვირთვა ვერ მოხერხდა');
@@ -116,11 +163,11 @@ export default function FuelStationsScreen() {
       setLoading(false);
       setRefreshing(false);
     }
-  }, []);
+  }, [refreshing]);
 
   useEffect(() => {
     loadData();
-  }, [loadData]);
+  }, []);
 
   useEffect(() => {
     if (!loading && currentPrices.length > 0) {
@@ -143,12 +190,36 @@ export default function FuelStationsScreen() {
     setSelectedFuelType(typeAlt);
   }, []);
 
+  const handleProviderSelect = useCallback((provider: string) => {
+    const wasSelected = selectedProvider === provider;
+    setSelectedProvider(wasSelected ? null : provider);
+    
+    // When provider is selected, show all fuel types (clear fuel type filter)
+    if (!wasSelected) {
+      setSelectedFuelType(null);
+    }
+  }, [selectedProvider]);
+
   const getSortedStations = (): StationData[] => {
     const stations: StationData[] = [];
     
     currentPrices.forEach((provider) => {
+      // Filter by selected provider if any
+      if (selectedProvider && provider.provider !== selectedProvider) {
+        return;
+      }
+      
+      // If provider is selected, show all its fuel types
+      // If no provider selected, filter by selectedFuelType
       provider.fuel
-        .filter((f) => f.type_alt === selectedFuelType)
+        .filter((f) => {
+          if (selectedProvider) {
+            // Show all fuel types for selected provider
+            return true;
+          }
+          // If no provider selected, filter by fuel type
+          return !selectedFuelType || f.type_alt === selectedFuelType;
+        })
         .forEach((fuel) => {
           stations.push({
             provider: provider.provider,
@@ -167,12 +238,20 @@ export default function FuelStationsScreen() {
       );
     }
     
-    return filtered.sort((a, b) => a.price - b.price);
+    // Sort by provider first, then by price
+    return filtered.sort((a, b) => {
+      if (selectedProvider) {
+        // If provider selected, sort by fuel type name, then price
+        return a.fuelName.localeCompare(b.fuelName) || a.price - b.price;
+      }
+      // If no provider selected, sort by price
+      return a.price - b.price;
+    });
   };
 
-  const getCheapestPrice = (): number | null => {
+  const getCheapestPrice = (typeAlt: string): number | null => {
     const lowest = lowestPrices.find((lp) => {
-      const fuelType = fuelTypes.find((ft) => ft.type_alt === selectedFuelType);
+      const fuelType = fuelTypes.find((ft) => ft.type_alt === typeAlt);
       return lp.fuel_type === fuelType?.name;
     });
     return lowest?.price || null;
@@ -183,8 +262,8 @@ export default function FuelStationsScreen() {
   };
 
   const renderFuelStation = (station: StationData, index: number) => {
-    const isCheapest = index === 0;
-    const cheapestPrice = getCheapestPrice();
+    const cheapestPrice = getCheapestPrice(station.typeAlt);
+    const isCheapest = cheapestPrice ? station.price === cheapestPrice : false;
     const logoUrl = PROVIDER_LOGOS[station.provider] || 'https://logo.clearbit.com/example.com';
     const emojiFallback = PROVIDER_EMOJIS[station.provider] || '⛽';
     const hasLogoError = logoErrors[station.provider];
@@ -269,7 +348,7 @@ export default function FuelStationsScreen() {
           <Ionicons name="search" size={20} color="#9CA3AF" />
           <TextInput
             style={styles.searchInput}
-            placeholder="ძებნა სადგურებში..."
+            placeholder="ძებნა..."
             placeholderTextColor="#9CA3AF"
             value={searchQuery}
             onChangeText={setSearchQuery}
@@ -280,36 +359,90 @@ export default function FuelStationsScreen() {
             </TouchableOpacity>
           )}
         </View>
-
-        {/* Fuel Type Chips */}
-        <ScrollView 
-          horizontal 
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.chipsContainer}
-        >
-          {FUEL_TYPES.map((fuelType) => {
-            const isActive = selectedFuelType === fuelType.typeAlt;
-            return (
-              <TouchableOpacity
-                key={fuelType.id}
-                style={[styles.chip, isActive && styles.chipActive]}
-                onPress={() => handleFuelTypeChange(fuelType.typeAlt)}
-                activeOpacity={0.8}
-              >
-                <Ionicons 
-                  name={fuelType.icon as any} 
-                  size={16} 
-                  color={isActive ? '#FFFFFF' : fuelType.color} 
-                />
-                <Text style={[styles.chipText, isActive && styles.chipTextActive]}>
-                  {fuelType.name}
-                </Text>
-              </TouchableOpacity>
-            );
-          })}
-        </ScrollView>
       </View>
 
+      {/* Providers Carousel */}
+      {!loading && providers.length > 0 && (
+        <View style={styles.providersSection}>
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.providersContent}
+          >
+            {providers.map((provider) => {
+              const isSelected = selectedProvider === provider;
+              const logoUrl = PROVIDER_LOGOS[provider];
+              const emojiFallback = PROVIDER_EMOJIS[provider] || '⛽';
+              const hasLogoError = logoErrors[provider];
+              
+              return (
+                <TouchableOpacity
+                  key={provider}
+                  style={[
+                    styles.providerCard,
+                    isSelected && styles.providerCardActive,
+                  ]}
+                  onPress={() => handleProviderSelect(provider)}
+                  activeOpacity={0.7}
+                >
+                  <View style={[
+                    styles.providerIconContainer,
+                    isSelected && { backgroundColor: `${'#3B82F6'}15` }
+                  ]}>
+                    {hasLogoError ? (
+                      <Text style={styles.providerEmoji}>{emojiFallback}</Text>
+                    ) : (
+                      <Image
+                        source={{ uri: logoUrl }}
+                        style={styles.providerLogo}
+                        resizeMode="contain"
+                        onError={() => handleLogoError(provider)}
+                      />
+                    )}
+                  </View>
+                  {isSelected && (
+                    <View style={styles.providerIndicator} />
+                  )}
+                </TouchableOpacity>
+              );
+            })}
+          </ScrollView>
+        </View>
+      )}
+
+      {/* Fuel Type Filter Buttons - Only show when no provider is selected */}
+      {!selectedProvider && (
+        <View style={styles.fuelTypesSection}>
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.fuelTypesContent}
+          >
+            {FUEL_TYPES.map((fuelType) => {
+              const isActive = selectedFuelType === fuelType.typeAlt;
+              return (
+                <TouchableOpacity
+                  key={fuelType.id}
+                  style={[
+                    styles.fuelTypeButton,
+                    isActive && styles.fuelTypeButtonActive,
+                    isActive && { borderColor: fuelType.color },
+                  ]}
+                  onPress={() => handleFuelTypeChange(fuelType.typeAlt)}
+                  activeOpacity={0.7}
+                >
+                  <Text style={[
+                    styles.fuelTypeText,
+                    isActive && { color: fuelType.color },
+                  ]}>
+                    {fuelType.name}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </ScrollView>
+        </View>
+      )}
       {/* Content */}
       <ScrollView 
         style={styles.content}
@@ -353,9 +486,9 @@ const styles = StyleSheet.create({
     backgroundColor: '#FFFFFF',
   },
   header: {
-    paddingHorizontal: 20,
+    paddingHorizontal: 16,
     paddingTop: 8,
-    paddingBottom: 16,
+    paddingBottom: 12,
     backgroundColor: '#FFFFFF',
     borderBottomWidth: 1,
     borderBottomColor: '#E5E7EB',
@@ -397,45 +530,85 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: '#F9FAFB',
-    borderRadius: 16,
-    paddingHorizontal: 16,
-    height: 52,
-    gap: 12,
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    height: 44,
+    gap: 8,
     borderWidth: 1,
     borderColor: '#E5E7EB',
-    marginBottom: 16,
   },
   searchInput: {
     flex: 1,
-    fontSize: 16,
+    fontSize: 14,
     color: '#111827',
   },
-  chipsContainer: {
-    gap: 10,
+  providersSection: {
+    paddingVertical: 16,
+    backgroundColor: '#FFFFFF',
+    borderBottomWidth: 1,
+    borderBottomColor: '#E5E7EB',
   },
-  chip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
+  providersContent: {
     paddingHorizontal: 16,
-    paddingVertical: 10,
-    borderRadius: 24,
+    gap: 12,
+  },
+  providerCard: {
+    alignItems: 'center',
+    width: 80,
+  },
+  providerCardActive: {
+    opacity: 1,
+  },
+  providerIconContainer: {
+    width: 64,
+    height: 64,
+    borderRadius: 16,
+    backgroundColor: '#F9FAFB',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    marginBottom: 8,
+  },
+  providerLogo: {
+    width: 48,
+    height: 48,
+  },
+  providerEmoji: {
+    fontSize: 32,
+  },
+  providerIndicator: {
+    width: 4,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: '#3B82F6',
+  },
+  fuelTypesSection: {
+    paddingVertical: 12,
+    backgroundColor: '#FFFFFF',
+    borderBottomWidth: 1,
+    borderBottomColor: '#E5E7EB',
+  },
+  fuelTypesContent: {
+    paddingHorizontal: 16,
+    gap: 8,
+  },
+  fuelTypeButton: {
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 20,
     backgroundColor: '#F9FAFB',
     borderWidth: 1,
     borderColor: '#E5E7EB',
-    marginRight: 10,
+    marginRight: 8,
   },
-  chipActive: {
-    backgroundColor: '#3B82F6',
-    borderColor: '#3B82F6',
+  fuelTypeButtonActive: {
+    backgroundColor: '#FFFFFF',
   },
-  chipText: {
+  fuelTypeText: {
     fontSize: 13,
     fontWeight: '600',
     color: '#6B7280',
-  },
-  chipTextActive: {
-    color: '#FFFFFF',
   },
   content: {
     flex: 1,

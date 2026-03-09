@@ -3,15 +3,19 @@ import {
   View,
   Text,
   StyleSheet,
-  SafeAreaView,
   ScrollView,
+  TouchableOpacity,
   Pressable,
   Animated,
   Dimensions,
   StatusBar,
   RefreshControl,
+  TextInput,
+  KeyboardAvoidingView,
+  Platform,
+  ActivityIndicator,
 } from 'react-native';
-import { LinearGradient } from 'expo-linear-gradient';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { router, useLocalSearchParams, Stack } from 'expo-router';
 import { requestsApi, type Request, type Offer } from '@/services/requestsApi';
@@ -19,48 +23,24 @@ import { useUser } from '@/contexts/UserContext';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { messagesApi, type ChatMessage } from '@/services/messagesApi';
 import { socketService } from '@/services/socketService';
-import { TextInput, KeyboardAvoidingView, Platform } from 'react-native';
 
 const { width } = Dimensions.get('window');
-
-// Types are now imported from requestsApi
 
 export default function OffersScreen() {
   const { requestId } = useLocalSearchParams<{ requestId: string }>();
   
   const { user } = useUser();
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [offers, setOffers] = useState<Offer[]>([]);
   const [request, setRequest] = useState<Request | null>(null);
   const [fadeAnim] = useState(new Animated.Value(0));
-  const [slideAnim] = useState(new Animated.Value(50));
-  const [scaleAnim] = useState(new Animated.Value(0.9));
-  const [lastViewedTimestamp, setLastViewedTimestamp] = useState<number | null>(null);
+  const [slideAnim] = useState(new Animated.Value(30));
   const [expandedChatOfferId, setExpandedChatOfferId] = useState<string | null>(null);
   const [chatMessages, setChatMessages] = useState<Record<string, ChatMessage[]>>({});
   const [newChatMessage, setNewChatMessage] = useState<Record<string, string>>({});
 
-
   useEffect(() => {
-    // Load last viewed timestamp
-    const loadLastViewed = async () => {
-      try {
-        const stored = await AsyncStorage.getItem(`offers_lastViewed_${requestId}`);
-        if (stored) {
-          setLastViewedTimestamp(parseInt(stored, 10));
-        } else {
-          // First time viewing - set current time
-          const now = Date.now();
-          setLastViewedTimestamp(now);
-          await AsyncStorage.setItem(`offers_lastViewed_${requestId}`, String(now));
-        }
-      } catch (error) {
-        console.error('Failed to load last viewed timestamp:', error);
-      }
-    };
-    
-    loadLastViewed();
     fetchData();
     
     // Setup socket for chat
@@ -101,18 +81,12 @@ export default function OffersScreen() {
     Animated.parallel([
       Animated.timing(fadeAnim, {
         toValue: 1,
-        duration: 800,
+        duration: 600,
         useNativeDriver: true,
       }),
       Animated.timing(slideAnim, {
         toValue: 0,
-        duration: 600,
-        useNativeDriver: true,
-      }),
-      Animated.spring(scaleAnim, {
-        toValue: 1,
-        tension: 50,
-        friction: 7,
+        duration: 500,
         useNativeDriver: true,
       }),
     ]).start();
@@ -121,14 +95,6 @@ export default function OffersScreen() {
       socketService.disconnect();
     };
   }, [requestId, user?.id]);
-
-  // Update last viewed timestamp when component unmounts
-  useEffect(() => {
-    return () => {
-      // Save current time as last viewed when leaving the page
-      AsyncStorage.setItem(`offers_lastViewed_${requestId}`, String(Date.now())).catch(() => {});
-    };
-  }, [requestId]);
 
   const fetchData = async () => {
     setLoading(true);
@@ -139,7 +105,6 @@ export default function OffersScreen() {
       ]);
       setRequest(requestData);
       
-      // მხოლოდ request owner-მა ხედავს შეთავაზებებს
       const isRequestOwner = user?.id && requestData.userId === user.id;
       if (isRequestOwner) {
         setOffers(offersData);
@@ -155,77 +120,26 @@ export default function OffersScreen() {
     }
   };
 
-  const onRefresh = () => {
+  const onRefresh = async () => {
     setRefreshing(true);
-    fetchData();
-    setTimeout(() => setRefreshing(false), 1000);
-  };
-
-  const getServiceIcon = (service: string) => {
-    switch (service) {
-      case 'parts':
-        return 'construct-outline';
-      case 'mechanic':
-        return 'build-outline';
-      case 'tow':
-        return 'car-outline';
-      case 'rental':
-        return 'car-sport-outline';
-      default:
-        return 'help-outline';
-    }
-  };
-
-  const getServiceColor = (service: string) => {
-    switch (service) {
-      case 'parts':
-        return '#10B981';
-      case 'mechanic':
-        return '#3B82F6';
-      case 'tow':
-        return '#F59E0B';
-      case 'rental':
-        return '#8B5CF6';
-      default:
-        return '#6366F1';
-    }
-  };
-
-  const getServiceGradient = (service: string) => {
-    switch (service) {
-      case 'parts':
-        return ['#10B981', '#059669'];
-      case 'mechanic':
-        return ['#3B82F6', '#1D4ED8'];
-      case 'tow':
-        return ['#F59E0B', '#D97706'];
-      case 'rental':
-        return ['#8B5CF6', '#7C3AED'];
-      default:
-        return ['#6366F1', '#4F46E5'];
-    }
-  };
-
-  const getAvailabilityColor = (availability: string) => {
-    switch (availability) {
-      case 'available':
-        return '#10B981';
-      case 'busy':
-        return '#F59E0B';
-      case 'offline':
-        return '#6B7280';
-      default:
-        return '#6366F1';
-    }
+    await fetchData();
+    setRefreshing(false);
   };
 
   const handleOfferPress = (offer: Offer) => {
-    // Toggle chat expansion for this offer
     if (expandedChatOfferId === offer.id) {
       setExpandedChatOfferId(null);
     } else {
       setExpandedChatOfferId(offer.id);
     }
+  };
+
+  /** ჩატის ეკრანზე გადასვლა ამ შეთავაზების პარტნიორთან */
+  const handleOpenChat = (offer: Offer) => {
+    if (!requestId) return;
+    const partnerId = offer.partnerId || offer.userId;
+    if (!partnerId) return;
+    router.push(`/chat/${requestId}/${partnerId}`);
   };
   
   const handleSendChatMessage = async (offer: Offer) => {
@@ -244,401 +158,359 @@ export default function OffersScreen() {
         message: messageText,
       });
       
-      // Clear input
       setNewChatMessage(prev => ({ ...prev, [offer.id]: '' }));
-      
-      // Send via socket
-      socketService.sendMessage(requestId, messageText, sender);
+      socketService.sendMessage(requestId, messageText);
     } catch (error) {
       console.error('Error sending chat message:', error);
     }
   };
 
-  const formatLastSeen = (timestamp: number) => {
+  const getTimeAgo = (dateStr: string | number) => {
     const now = Date.now();
-    const diff = now - timestamp;
-    
-    if (diff < 3600000) return 'ახლახანს';
-    if (diff < 86400000) return `${Math.floor(diff / 3600000)} საათის წინ`;
-    return `${Math.floor(diff / 86400000)} დღის წინ`;
+    const date = new Date(dateStr).getTime();
+    const diff = now - date;
+    const mins = Math.floor(diff / 60000);
+    if (mins < 1) return 'ახლახანს';
+    if (mins < 60) return `${mins} წთ წინ`;
+    const hrs = Math.floor(mins / 60);
+    if (hrs < 24) return `${hrs} სთ წინ`;
+    const days = Math.floor(hrs / 24);
+    return `${days} დღის წინ`;
   };
+
+  if (loading) {
+    return (
+      <>
+        <Stack.Screen options={{ headerShown: false }} />
+        <SafeAreaView style={styles.safeArea} edges={['top']}>
+          <StatusBar barStyle="dark-content" backgroundColor="#FFFFFF" />
+          <View style={styles.loadingContainer}>
+            <ActivityIndicator size="large" color="#111827" />
+            <Text style={styles.loadingText}>იტვირთება...</Text>
+          </View>
+        </SafeAreaView>
+      </>
+    );
+  }
 
   if (!request) {
     return (
-      <SafeAreaView style={styles.safeArea}>
-        <StatusBar barStyle="dark-content" backgroundColor="transparent" translucent />
-        <View style={styles.loadingContainer}>
-          <Text style={styles.loadingText}>იტვირთება...</Text>
-        </View>
-      </SafeAreaView>
+      <>
+        <Stack.Screen options={{ headerShown: false }} />
+        <SafeAreaView style={styles.safeArea} edges={['top']}>
+          <StatusBar barStyle="dark-content" backgroundColor="#FFFFFF" />
+          <View style={styles.header}>
+            <TouchableOpacity style={styles.headerBtn} onPress={() => router.back()}>
+              <Ionicons name="arrow-back" size={22} color="#111827" />
+            </TouchableOpacity>
+            <Text style={styles.headerTitle}>შეთავაზებები</Text>
+            <TouchableOpacity
+              style={styles.headerChatsBtn}
+              onPress={() => router.push('/chats')}
+              activeOpacity={0.7}
+            >
+              <Ionicons name="chatbubbles-outline" size={18} color="#111827" />
+              <Text style={styles.headerChatsBtnText}>ჩატები</Text>
+            </TouchableOpacity>
+          </View>
+          <View style={styles.emptyContainer}>
+            <View style={styles.emptyIconCircle}>
+              <Ionicons name="document-text-outline" size={40} color="#9CA3AF" />
+            </View>
+            <Text style={styles.emptyTitle}>განცხადება ვერ მოიძებნა</Text>
+            <Text style={styles.emptySubtitle}>
+              შესაძლოა განცხადება წაშლილია ან არ არსებობს
+            </Text>
+            <TouchableOpacity style={styles.emptyBtn} onPress={() => router.back()}>
+              <Text style={styles.emptyBtnText}>უკან დაბრუნება</Text>
+            </TouchableOpacity>
+          </View>
+        </SafeAreaView>
+      </>
     );
   }
+
+  const isMyRequest = user?.id && request.userId === user.id;
 
   return (
     <>
       <Stack.Screen options={{ headerShown: false }} />
-      <SafeAreaView style={styles.safeArea}>
-        <StatusBar barStyle="dark-content" backgroundColor="transparent" translucent />
+      <SafeAreaView style={styles.safeArea} edges={['top']}>
+        <StatusBar barStyle="dark-content" backgroundColor="#FFFFFF" />
         
-        <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
-          <Animated.View 
-            style={[
-              styles.content,
-              {
-                opacity: fadeAnim,
-                transform: [
-                  { translateY: slideAnim },
-                  { scale: scaleAnim }
-                ]
-              }
-            ]}
-          >
-            {/* Header / Summary */}
-            <LinearGradient
-              colors={['#6366F1', '#4F46E5']}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 1 }}
-              style={styles.headerCard}
+        {/* Header */}
+        <View style={styles.header}>
+          <TouchableOpacity style={styles.headerBtn} onPress={() => router.back()}>
+            <Ionicons name="arrow-back" size={22} color="#111827" />
+          </TouchableOpacity>
+          <Text style={styles.headerTitle}>შეთავაზებები</Text>
+          <View style={styles.headerRight}>
+            <View style={styles.headerCountBadge}>
+              <Text style={styles.headerCountText}>{offers.length}</Text>
+            </View>
+            <TouchableOpacity
+              style={styles.headerChatsBtn}
+              onPress={() => router.push('/chats')}
+              activeOpacity={0.7}
             >
-              <Pressable
-                style={styles.backButton}
-                onPress={() => router.back()}
-              >
-                <Ionicons name="arrow-back" size={22} color="#FFFFFF" />
-              </Pressable>
-              <View style={styles.headerTexts}>
-                <Text style={styles.heroTitle}>შეთავაზებები</Text>
-                <Text style={styles.heroSubtitle}>
-                  {request.partName} • {request.vehicle.make} {request.vehicle.model} ({request.vehicle.year})
-                </Text>
-              </View>
-              <View style={styles.countBadge}>
-                <Text style={styles.countBadgeText}>{offers.length}</Text>
-                <Text style={styles.countBadgeSub}>შეთავაზება</Text>
-              </View>
-            </LinearGradient>
+              <Ionicons name="chatbubbles-outline" size={18} color="#111827" />
+              <Text style={styles.headerChatsBtnText}>ჩატები</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
 
-            {/* Request Info */}
-            <View style={styles.requestInfoSection}>
-              <LinearGradient
-                colors={['#FFFFFF', '#F8FAFF']}
-                style={styles.requestCard}
-              >
-                <View style={styles.requestRow}>
-                  <LinearGradient
-                    colors={['#6366F1', '#4F46E5']}
-                    style={styles.requestIconContainer}
-                  >
-                    <Ionicons name={getServiceIcon(request.service || 'parts') as any} size={24} color="#FFFFFF" />
-                  </LinearGradient>
-                  <View style={styles.requestDetails}>
-                    <Text style={styles.requestTitle}>{request.partName}</Text>
-                    <View style={styles.vehicleInfoRow}>
-                      <Ionicons name="car-outline" size={14} color="#6366F1" />
-                      <Text style={styles.vehicleInfo}>
-                        {request.vehicle.make} {request.vehicle.model} ({request.vehicle.year})
-                      </Text>
-                    </View>
-                    {request.location && (
-                      <View style={styles.locationPill}>
-                        <Ionicons name="location-outline" size={14} color="#6366F1" />
-                        <Text style={styles.locationPillText}>{request.location}</Text>
-                      </View>
-                    )}
+        <ScrollView 
+          style={styles.scrollView} 
+          showsVerticalScrollIndicator={false}
+          contentContainerStyle={styles.scrollContent}
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={onRefresh}
+              tintColor="#111827"
+              colors={['#111827']}
+            />
+          }
+        >
+          <Animated.View style={{ opacity: fadeAnim, transform: [{ translateY: slideAnim }] }}>
+
+            {/* Request Summary Card */}
+            <View style={styles.requestCard}>
+              <View style={styles.requestCardHeader}>
+                <View style={styles.requestIconCircle}>
+                  <Ionicons name="construct" size={22} color="#111827" />
+                </View>
+                <View style={styles.requestCardInfo}>
+                  <Text style={styles.requestCardTitle} numberOfLines={1}>{request.partName}</Text>
+                  <View style={styles.requestCardMeta}>
+                    <Ionicons name="car-sport-outline" size={13} color="#6B7280" />
+                    <Text style={styles.requestCardMetaText}>
+                      {request.vehicle.make} {request.vehicle.model} ({request.vehicle.year})
+                    </Text>
                   </View>
                 </View>
-                {request.description && (
-                  <View style={styles.descriptionContainer}>
-                    <Text style={styles.requestDescriptionLight} numberOfLines={3}>
-                      {request.description}
+              </View>
+
+              {request.description && (
+                <View style={styles.requestDescBox}>
+                  <Text style={styles.requestDescText} numberOfLines={2}>{request.description}</Text>
+                </View>
+              )}
+
+              <View style={styles.requestChipsRow}>
+                {request.location && (
+                  <View style={styles.requestChip}>
+                    <Ionicons name="location-outline" size={12} color="#6B7280" />
+                    <Text style={styles.requestChipText}>{request.location}</Text>
+                  </View>
+                )}
+                {request.budgetGEL && (
+                  <View style={[styles.requestChip, { backgroundColor: '#ECFDF5', borderColor: '#D1FAE5' }]}>
+                    <Ionicons name="cash-outline" size={12} color="#059669" />
+                    <Text style={[styles.requestChipText, { color: '#059669' }]}>
+                      {request.budgetGEL} ₾
                     </Text>
                   </View>
                 )}
-              </LinearGradient>
+              </View>
             </View>
 
-            {/* Offers List */}
-            <View style={styles.offersSection}>
-              <Text style={styles.sectionTitle}>შეთავაზებები ({offers.length})</Text>
-              <ScrollView 
-                style={styles.offersContainer}
-                contentContainerStyle={styles.offersContent}
-                showsVerticalScrollIndicator={false}
-                refreshControl={
-                  <RefreshControl
-                    refreshing={refreshing}
-                    onRefresh={onRefresh}
-                    tintColor="#6366F1"
-                    colors={['#6366F1']}
-                  />
-                }
-              >
-                {/* Check if user is request owner */}
-                {user?.id && request && request.userId !== user.id ? (
-                  <View style={styles.restrictedView}>
-                    <Ionicons name="lock-closed" size={48} color="#9CA3AF" />
-                    <Text style={styles.restrictedTitle}>შეთავაზებები მხოლოდ request owner-ს ხედავს</Text>
-                    <Text style={styles.restrictedSubtitle}>
-                      შეთავაზებების სანახავად თქვენ უნდა იყოთ ამ მოთხოვნის მფლობელი
+            {/* Restricted View (not owner) */}
+            {user?.id && request && request.userId !== user.id ? (
+              <View style={styles.restrictedCard}>
+                <View style={styles.restrictedIconCircle}>
+                  <Ionicons name="lock-closed" size={32} color="#9CA3AF" />
+                </View>
+                <Text style={styles.restrictedTitle}>შეთავაზებები დაფარულია</Text>
+                <Text style={styles.restrictedSubtitle}>
+                  შეთავაზებების ნახვა მხოლოდ მოთხოვნის მფლობელს შეუძლია
+                </Text>
+              </View>
+            ) : (
+              <>
+                {/* Section Title */}
+                <View style={styles.sectionHeader}>
+                  <Text style={styles.sectionTitle}>მიღებული შეთავაზებები</Text>
+                  <Text style={styles.sectionCount}>{offers.length} შეთავაზება</Text>
+                </View>
+
+                {/* Offers List */}
+                {offers.length === 0 ? (
+                  <View style={styles.emptyOffersCard}>
+                    <View style={styles.emptyOffersIcon}>
+                      <Ionicons name="chatbubbles-outline" size={36} color="#9CA3AF" />
+                    </View>
+                    <Text style={styles.emptyOffersTitle}>ჯერ არ არის შეთავაზებები</Text>
+                    <Text style={styles.emptyOffersSubtitle}>
+                      მაღაზიები მალე გამოგიგზავნიან შეთავაზებებს
                     </Text>
                   </View>
                 ) : (
                   offers.map((offer, index) => {
-                  const service = (offer as any)?.service || request.service || 'parts';
-                  const price = (offer as any)?.price ?? (offer as any)?.priceGEL;
-                  const currency = (offer as any)?.currency ?? '₾';
-                  const isOnline = Boolean((offer as any)?.isOnline);
-                  const availability = (offer as any)?.availability ?? 'available';
-                  const rating = (offer as any)?.rating ?? '5.0';
-                  const reviewCount = (offer as any)?.reviewCount ?? 0;
-                  const responseTime = (offer as any)?.responseTime ?? `${offer.etaMin || 30} წთ`;
-                  const description = (offer as any)?.description ?? 'აღწერა არ არის მოცემული';
-                  const estimatedTime = (offer as any)?.estimatedTime ?? (offer.etaMin ? `${offer.etaMin} წთ` : undefined);
-                  const location = (offer as any)?.location ?? request.location;
-                  const warranty = (offer as any)?.warranty;
-                  
-                  // Check if offer is new (created after last viewed timestamp)
-                  // TODO: დროებით - ყველა შეთავაზება გამოჩნდება როგორც ახალი
-                  const isNewOffer = true; // lastViewedTimestamp !== null && offer.createdAt > lastViewedTimestamp;
-                  
-                  // Check if this offer is from current user
-                  const isMyOffer = user?.id && (
-                    offer.userId === user.id || 
-                    offer.partnerId === user.id ||
-                    String(offer.userId) === String(user.id) ||
-                    String(offer.partnerId) === String(user.id)
-                  );
+                    const price = (offer as any)?.price ?? (offer as any)?.priceGEL;
+                    const description = (offer as any)?.description ?? '';
+                    const estimatedTime = offer.etaMin ? `${offer.etaMin} წთ` : undefined;
+                    const location = (offer as any)?.location ?? request.location;
+                    const warranty = (offer as any)?.warranty;
+                    const isMyOffer = user?.id && (
+                      offer.userId === user.id || 
+                      offer.partnerId === user.id ||
+                      String(offer.userId) === String(user.id) ||
+                      String(offer.partnerId) === String(user.id)
+                    );
+                    const isChatOpen = expandedChatOfferId === offer.id;
 
-                  return (
-                  <Animated.View
-                    key={offer.id}
-                    style={[
-                      styles.offerWrapper,
-                      {
-                        transform: [
-                          { 
-                            translateY: slideAnim.interpolate({
-                              inputRange: [0, 50],
-                              outputRange: [0, 50 + (index * 20)],
-                              extrapolate: 'clamp',
-                            })
-                          }
-                        ]
-                      }
-                    ]}
-                  >
-                    <Pressable
-                      style={styles.offerCard}
-                      onPress={() => handleOfferPress(offer)}
-                    >
-                      <LinearGradient
-                        colors={['#FFFFFF', '#F8FAFF']}
-                        style={[
-                          styles.offerGradient,
-                          isNewOffer && {
-                            borderColor: '#3B82F6',
-                            borderWidth: 2,
-                          }
-                        ]}
-                      >
-                        <View style={styles.offerContent}>
-                          {/* Header with provider + price */}
-                          <View style={styles.offerHeaderRow}>
-                            <View style={styles.providerInfo}>
-                              <View style={styles.providerAvatarContainer}>
-                                <View style={[styles.providerAvatar, { backgroundColor: `${getServiceColor(service)}20` }]}>
-                                  <Ionicons 
-                                    name={getServiceIcon(service) as any} 
-                                    size={24} 
-                                    color={getServiceColor(service)} 
-                                  />
-                                </View>
-                                {isOnline && <View style={styles.onlineIndicator} />}
-                              </View>
-                              
-                              <View style={styles.providerDetails}>
-                                <View style={styles.providerHeader}>
-                                  <Text style={styles.providerName}>{offer.providerName}</Text>
-                                  <View style={styles.badgesContainer}>
-                                   {isNewOffer && (
-                          <View style={styles.newOfferBadge}>
-                            <Ionicons name="sparkles" size={14} color="#3B82F6" />
-                            <Text style={styles.newOfferBadgeText}>ახალი</Text>
-                          </View>
-                        )}
-                        {isMyOffer && (
-                          <View style={styles.myOfferBadge}>
-                            <Ionicons name="checkmark-circle" size={14} color="#10B981" />
-                            <Text style={styles.myOfferBadgeText}>ჩემგან</Text>
-                          </View>
-                        )}
+                    return (
+                      <View key={offer.id} style={styles.offerCard}>
+                        <Pressable onPress={() => handleOfferPress(offer)}>
+                          {/* Offer Header */}
+                          <View style={styles.offerHeader}>
+                            <View style={styles.offerAvatarCircle}>
+                              <Ionicons name="storefront-outline" size={20} color="#111827" />
+                            </View>
+                            <View style={styles.offerHeaderInfo}>
+                              <View style={styles.offerNameRow}>
+                                <Text style={styles.offerProviderName} numberOfLines={1}>
+                                  {offer.providerName}
+                                </Text>
+                                {isMyOffer && (
+                                  <View style={styles.myBadge}>
+                                    <Ionicons name="checkmark-circle" size={12} color="#059669" />
+                                    <Text style={styles.myBadgeText}>ჩემგან</Text>
                                   </View>
-                                </View>
-                                
-                               
-                                
-                                <Text style={styles.responseTime}>პასუხი: {responseTime}</Text>
+                                )}
                               </View>
-                            </View>
-
-                          </View>
-
-                          {/* Offer Details */}
-                          <View style={styles.offerDetails}>
-                            <Text style={styles.offerDescription} numberOfLines={2}>
-                              {description}
-                            </Text>
-                            
-                            <View style={styles.offerMetaRow}>
-                              {estimatedTime && (
-                                <View style={styles.metaPill}>
-                                  <Ionicons name="time-outline" size={12} color="#E5E7EB" />
-                                  <Text style={styles.metaText}>{estimatedTime}</Text>
-                                </View>
-                              )}
-                              {location && (
-                                <View style={styles.metaPill}>
-                                  <Ionicons name="location-outline" size={12} color="#E5E7EB" />
-                                  <Text style={styles.metaText}>{location}</Text>
-                                </View>
-                              )}
-                              {warranty && (
-                                <View style={styles.metaPill}>
-                                  <Ionicons name="shield-checkmark-outline" size={12} color="#E5E7EB" />
-                                  <Text style={styles.metaText}>{warranty} გარანტია</Text>
-                                </View>
-                              )}
-                            </View>
-                          </View>
-
-                          {/* Action */}
-                          <View style={styles.offerFooter}>
-                            <LinearGradient
-                              colors={[`${getServiceColor(service)}15`, `${getServiceColor(service)}08`]}
-                              style={styles.priceBadge}
-                            >
-                              <Text style={[styles.priceBadgeAmount, { color: getServiceColor(service) }]}>
-                                {price ?? '—'} {currency}
+                              <Text style={styles.offerTimeAgo}>
+                                {offer.createdAt ? getTimeAgo(offer.createdAt) : ''}
                               </Text>
-                              <Text style={styles.priceBadgeLabel}>ფასი</Text>
-                            </LinearGradient>
-                            <View style={styles.chatButtonContainer}>
-                              <Pressable
-                                style={styles.chatButton}
-                                onPress={() => handleOfferPress(offer)}
-                              >
-                                <LinearGradient
-                                  colors={[getServiceColor(service), `${getServiceColor(service)}DD`]}
-                                  style={styles.chatButtonGradient}
-                                >
-                                  <Ionicons name="chatbubbles-outline" size={18} color="#FFFFFF" />
-                                  <Text style={styles.chatButtonText}>ჩატი</Text>
-                                </LinearGradient>
-                              </Pressable>
+                            </View>
+                            <View style={styles.offerPriceBadge}>
+                              <Text style={styles.offerPriceText}>{price ?? '—'} ₾</Text>
                             </View>
                           </View>
-                        </View>
-                      </LinearGradient>
-                    </Pressable>
-                    
-                    {/* Chat Section */}
-                    {expandedChatOfferId === offer.id && (
-                      <View style={styles.chatSection}>
-                        <View style={styles.chatHeader}>
-                          <Text style={styles.chatHeaderText}>მიწერ-მოწერა</Text>
-                          <Pressable onPress={() => setExpandedChatOfferId(null)}>
-                            <Ionicons name="chevron-up" size={20} color="#6B7280" />
-                          </Pressable>
-                        </View>
-                        
-                        <ScrollView 
-                          style={styles.chatMessagesContainer}
-                          contentContainerStyle={styles.chatMessagesContent}
-                        >
-                          {(chatMessages[offer.id] || []).map((msg) => {
-                            const isMyMessage = (request?.userId === user?.id && msg.sender === 'user') ||
-                              (offer.partnerId === user?.id && msg.sender === 'partner');
-                            
-                            return (
-                              <View
-                                key={msg.id}
-                                style={[
-                                  styles.chatMessage,
-                                  isMyMessage ? styles.chatMessageMy : styles.chatMessageOther,
-                                ]}
-                              >
-                                <Text style={[
-                                  styles.chatMessageText,
-                                  isMyMessage ? styles.chatMessageTextMy : styles.chatMessageTextOther,
-                                ]}>
-                                  {msg.message}
-                                </Text>
-                                <Text style={[
-                                  styles.chatMessageTime,
-                                  isMyMessage ? styles.chatMessageTimeMy : styles.chatMessageTimeOther,
-                                ]}>
-                                  {new Date(msg.timestamp).toLocaleTimeString('ka-GE', { 
-                                    hour: '2-digit', 
-                                    minute: '2-digit' 
-                                  })}
-                                </Text>
-                              </View>
-                            );
-                          })}
-                          {(!chatMessages[offer.id] || chatMessages[offer.id].length === 0) && (
-                            <View style={styles.chatEmpty}>
-                              <Text style={styles.chatEmptyText}>ჯერ არ არის შეტყობინებები</Text>
+
+                          {/* Offer Description */}
+                          {description ? (
+                            <View style={styles.offerDescBox}>
+                              <Text style={styles.offerDescText} numberOfLines={3}>
+                                {description}
+                              </Text>
                             </View>
-                          )}
-                        </ScrollView>
-                        
-                        <KeyboardAvoidingView
-                          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-                          style={styles.chatInputContainer}
-                        >
-                          <TextInput
-                            style={styles.chatInput}
-                            placeholder="დაწერე შეტყობინება..."
-                            placeholderTextColor="#9CA3AF"
-                            value={newChatMessage[offer.id] || ''}
-                            onChangeText={(text) => setNewChatMessage(prev => ({ ...prev, [offer.id]: text }))}
-                            multiline
-                          />
-                          <Pressable
-                            style={styles.chatSendButton}
-                            onPress={() => handleSendChatMessage(offer)}
+                          ) : null}
+
+                          {/* Offer Meta */}
+                          <View style={styles.offerMetaRow}>
+                            {estimatedTime && (
+                              <View style={styles.offerMetaChip}>
+                                <Ionicons name="time-outline" size={13} color="#6B7280" />
+                                <Text style={styles.offerMetaText}>{estimatedTime}</Text>
+                              </View>
+                            )}
+                            {location && (
+                              <View style={styles.offerMetaChip}>
+                                <Ionicons name="location-outline" size={13} color="#6B7280" />
+                                <Text style={styles.offerMetaText}>{location}</Text>
+                              </View>
+                            )}
+                            {warranty && (
+                              <View style={styles.offerMetaChip}>
+                                <Ionicons name="shield-checkmark-outline" size={13} color="#6B7280" />
+                                <Text style={styles.offerMetaText}>{warranty} გარანტია</Text>
+                              </View>
+                            )}
+                          </View>
+
+                          {/* მიწერა → ჩატის ეკრანზე გადასვლა */}
+                          <TouchableOpacity 
+                            style={styles.chatToggleBtn}
+                            onPress={() => handleOpenChat(offer)}
+                            activeOpacity={0.7}
                           >
-                            <Ionicons name="send" size={20} color="#FFFFFF" />
-                          </Pressable>
-                        </KeyboardAvoidingView>
+                            <Ionicons 
+                              name="chatbubbles-outline" 
+                              size={16} 
+                              color="#111827" 
+                            />
+                            <Text style={styles.chatToggleBtnText}>მიწერა</Text>
+                          </TouchableOpacity>
+                        </Pressable>
+
+                        {/* Chat Section */}
+                        {isChatOpen && (
+                          <View style={styles.chatSection}>
+                            <View style={styles.chatDivider} />
+                            
+                            <ScrollView 
+                              style={styles.chatMessagesContainer}
+                              contentContainerStyle={styles.chatMessagesContent}
+                              showsVerticalScrollIndicator={false}
+                            >
+                              {(chatMessages[offer.id] || []).length === 0 && (
+                                <View style={styles.chatEmpty}>
+                                  <Ionicons name="chatbubble-ellipses-outline" size={24} color="#D1D5DB" />
+                                  <Text style={styles.chatEmptyText}>ჯერ არ არის შეტყობინებები</Text>
+                                </View>
+                              )}
+                              {(chatMessages[offer.id] || []).map((msg) => {
+                                const isMyMessage = (request?.userId === user?.id && msg.sender === 'user') ||
+                                  (offer.partnerId === user?.id && msg.sender === 'partner');
+                                
+                                return (
+                                  <View
+                                    key={msg.id}
+                                    style={[
+                                      styles.chatBubble,
+                                      isMyMessage ? styles.chatBubbleMy : styles.chatBubbleOther,
+                                    ]}
+                                  >
+                                    <Text style={[
+                                      styles.chatBubbleText,
+                                      isMyMessage ? styles.chatBubbleTextMy : styles.chatBubbleTextOther,
+                                    ]}>
+                                      {msg.message}
+                                    </Text>
+                                    <Text style={[
+                                      styles.chatBubbleTime,
+                                      isMyMessage ? styles.chatBubbleTimeMy : styles.chatBubbleTimeOther,
+                                    ]}>
+                                      {new Date(msg.timestamp).toLocaleTimeString('ka-GE', { 
+                                        hour: '2-digit', 
+                                        minute: '2-digit' 
+                                      })}
+                                    </Text>
+                                  </View>
+                                );
+                              })}
+                            </ScrollView>
+                            
+                            <KeyboardAvoidingView
+                              behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+                              style={styles.chatInputRow}
+                            >
+                              <TextInput
+                                style={styles.chatInput}
+                                placeholder="დაწერე შეტყობინება..."
+                                placeholderTextColor="#9CA3AF"
+                                value={newChatMessage[offer.id] || ''}
+                                onChangeText={(text) => setNewChatMessage(prev => ({ ...prev, [offer.id]: text }))}
+                                multiline
+                              />
+                              <TouchableOpacity
+                                style={styles.chatSendBtn}
+                                onPress={() => handleSendChatMessage(offer)}
+                                activeOpacity={0.7}
+                              >
+                                <Ionicons name="send" size={18} color="#FFFFFF" />
+                              </TouchableOpacity>
+                            </KeyboardAvoidingView>
+                          </View>
+                        )}
                       </View>
-                    )}
-                  </Animated.View>
-                  );
-                })
+                    );
+                  })
                 )}
-                
-                {offers.length === 0 && user?.id && request && request.userId === user.id && (
-                  <Animated.View 
-                    style={[
-                      styles.emptyState,
-                      {
-                        opacity: fadeAnim,
-                        transform: [{ translateY: slideAnim }]
-                      }
-                    ]}
-                  >
-                    <View style={styles.emptyIconContainer}>
-                      <Ionicons name="chatbubbles-outline" size={48} color="#6366F1" />
-                    </View>
-                    <Text style={styles.emptyTitle}>შეთავაზებები ჯერ არ არის</Text>
-                    <Text style={styles.emptySubtitle}>
-                      მაღაზიები გამოგიგზავნიან შეთავაზებებს მალე
-                    </Text>
-                  </Animated.View>
-                )}
-              </ScrollView>
-            </View>
+              </>
+            )}
           </Animated.View>
         </ScrollView>
       </SafeAreaView>
@@ -649,15 +521,7 @@ export default function OffersScreen() {
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
-    backgroundColor: '#F6F7FB',
-  },
-  container: {
-    flex: 1,
-    backgroundColor: '#F6F7FB',
-  },
-  content: {
-    padding: 20,
-    gap: 32,
+    backgroundColor: '#FFFFFF',
   },
 
   // Loading
@@ -665,605 +529,535 @@ const styles = StyleSheet.create({
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#F6F7FB',
+    gap: 14,
   },
   loadingText: {
-    fontSize: 18,
-    color: '#0F172A',
-    fontWeight: '600',
+    fontSize: 14,
+    fontFamily: 'HelveticaMedium',
+    color: '#6B7280',
+    textTransform: 'uppercase',
   },
 
-  // Hero Section
-  headerCard: {
-    borderRadius: 20,
-    padding: 20,
+  // Header
+  header: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 14,
-    shadowColor: '#6366F1',
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.3,
-    shadowRadius: 16,
-    elevation: 8,
-    marginBottom: 4,
+    justifyContent: 'space-between',
+    paddingHorizontal: 20,
+    paddingVertical: 14,
+    backgroundColor: '#FFFFFF',
+    borderBottomWidth: 1,
+    borderBottomColor: '#F3F4F6',
   },
-  backButton: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+  headerBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: 14,
+    backgroundColor: '#F3F4F6',
     alignItems: 'center',
     justifyContent: 'center',
   },
-  headerTexts: {
-    flex: 1,
-    gap: 6,
-  },
-  heroTitle: {
-    fontSize: 24,
-    color: '#FFFFFF',
-    fontWeight: '800',
-    letterSpacing: -0.5,
-  },
-  heroSubtitle: {
-    fontSize: 14,
-    color: 'rgba(255, 255, 255, 0.9)',
-    lineHeight: 20,
-    fontWeight: '500',
-  },
-  heroIconContainer: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: '#EEF2FF',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  countBadge: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    borderRadius: 16,
-    backgroundColor: 'rgba(255, 255, 255, 0.25)',
-    borderWidth: 1.5,
-    borderColor: 'rgba(255, 255, 255, 0.4)',
-    minWidth: 70,
-  },
-  countBadgeText: {
-    fontSize: 20,
-    fontWeight: '800',
-    color: '#FFFFFF',
-    lineHeight: 22,
-  },
-  countBadgeSub: {
-    fontSize: 11,
-    fontWeight: '700',
-    color: 'rgba(255, 255, 255, 0.95)',
-    marginTop: 2,
-  },
-
-  // Request Info
-  requestInfoSection: {
-    gap: 16,
-  },
-  requestCard: {
-    borderRadius: 20,
-    overflow: 'hidden',
-    shadowColor: '#6366F1',
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.15,
-    shadowRadius: 12,
-    elevation: 6,
-    padding: 18,
-  },
-  requestRow: {
-    flexDirection: 'row',
-    gap: 14,
-    alignItems: 'flex-start',
-  },
-  requestIconContainer: {
-    width: 52,
-    height: 52,
-    borderRadius: 16,
-    alignItems: 'center',
-    justifyContent: 'center',
-    shadowColor: '#6366F1',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 4,
-  },
-  requestDetails: {
-    gap: 8,
-    flex: 1,
-    alignItems: 'flex-start',
-  },
-  requestTitle: {
-    fontSize: 18,
-    color: '#111827',
-    textAlign: 'left',
-    fontWeight: '800',
-    letterSpacing: -0.3,
-  },
-  vehicleInfoRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-  },
-  vehicleInfo: {
-    fontSize: 14,
-    color: '#475569',
-    textAlign: 'left',
-    fontWeight: '600',
-  },
-  requestDescription: {
-    fontSize: 13,
-    color: 'rgba(255, 255, 255, 0.7)',
-    textAlign: 'center',
-    fontWeight: '400',
-    lineHeight: 18,
-  },
-  descriptionContainer: {
-    marginTop: 14,
-    paddingTop: 14,
-    borderTopWidth: 1.5,
-    borderTopColor: '#E5E7EB',
-    backgroundColor: '#F9FAFB',
-    padding: 14,
-    borderRadius: 12,
-  },
-  requestDescriptionLight: {
+  headerTitle: {
     fontSize: 15,
-    color: '#374151',
-    fontWeight: '600',
-    lineHeight: 22,
-    letterSpacing: -0.2,
+    fontFamily: 'HelveticaMedium',
+    color: '#111827',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
   },
-  locationContainer: {
+  headerRight: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 4,
-    backgroundColor: 'rgba(255, 255, 255, 0.1)',
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 10,
+    gap: 10,
   },
-  locationPill: {
+  headerCountBadge: {
+    width: 40,
+    height: 40,
+    borderRadius: 14,
+    backgroundColor: '#111827',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  headerChatsBtn: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
     paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 12,
-    backgroundColor: '#EEF2FF',
-    borderWidth: 1.5,
-    borderColor: '#E0E7FF',
-    marginTop: 4,
-  },
-  locationPillText: {
-    fontSize: 12,
-    color: '#6366F1',
-    fontWeight: '700',
-  },
-  locationText: {
-    fontSize: 11,
-    color: 'rgba(255, 255, 255, 0.8)',
-    fontWeight: '500',
-  },
-
-  // Offers Section
-  offersSection: {
-    gap: 20,
-  },
-  sectionTitle: {
-    fontSize: 22,
-    color: '#111827',
-    fontWeight: '800',
-    letterSpacing: -0.5,
-    marginBottom: 4,
-  },
-  offersContainer: {
-    // allow full height; outer ScrollView handles scrolling
-  },
-  offersContent: {
-    gap: 10,
-    paddingBottom: 14,
-  },
-  offerWrapper: {
-    borderRadius: 18,
-    overflow: 'hidden',
-    backgroundColor: '#FFFFFF',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.1,
-    shadowRadius: 12,
-    elevation: 6,
-    marginBottom: 4,
-  },
-  offerCard: {
-    flex: 1,
-  },
-  offerGradient: {
-    padding: 16,
-    borderWidth: 1.5,
-    borderColor: '#F3F4F6',
-    position: 'relative',
-  },
-  chatButtonContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  badgesContainer: {
-    flexDirection: 'row',
-    gap: 6,
-    alignItems: 'center',
-  },
-  newOfferBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    backgroundColor: 'rgba(59, 130, 246, 0.1)',
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: 'rgba(59, 130, 246, 0.3)',
-  },
-  newOfferBadgeText: {
-    fontSize: 11,
-    fontWeight: '700',
-    color: '#3B82F6',
-  },
-  myOfferBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    backgroundColor: 'rgba(16, 185, 129, 0.1)',
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: 'rgba(16, 185, 129, 0.3)',
-  },
-  myOfferBadgeText: {
-    fontSize: 11,
-    fontWeight: '700',
-    color: '#10B981',
-  },
-  offerContent: {
-    gap: 12,
-  },
-  offerHeaderRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
-    gap: 8,
-  },
-
-  // Provider Info
-  providerInfo: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: 10,
-  },
-  providerAvatarContainer: {
-    position: 'relative',
-  },
-  providerAvatar: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 2,
-    borderColor: '#FFFFFF',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 2,
-  },
-  onlineIndicator: {
-    position: 'absolute',
-    bottom: 2,
-    right: 2,
-    width: 16,
-    height: 16,
-    borderRadius: 8,
-    backgroundColor: '#10B981',
-    borderWidth: 2,
-    borderColor: '#0A0A0A',
-  },
-  providerDetails: {
-    flex: 1,
-    gap: 3,
-  },
-  providerHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  providerName: {
-    fontSize: 16,
-    color: '#111827',
-    fontWeight: '800',
-    flex: 1,
-    letterSpacing: -0.3,
-  },
-  availabilityBadge: {
-    borderRadius: 12,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderWidth: 1,
-    borderColor: '#C7D2FE',
-    backgroundColor: '#EEF2FF',
-  },
-  availabilityText: {
-    fontSize: 10,
-    fontWeight: '700',
-    color: '#4F46E5',
-  },
-  ratingContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-  },
-  ratingText: {
-    fontSize: 11,
-    color: '#111827',
-    fontWeight: '600',
-  },
-  reviewText: {
-    fontSize: 10,
-    color: '#6B7280',
-    fontWeight: '500',
-  },
-  responseTime: {
-    fontSize: 10,
-    color: '#6B7280',
-    fontWeight: '500',
-  },
-
-  // Offer Details
-  offerDetails: {
-    gap: 10,
-    backgroundColor: '#F9FAFB',
-    padding: 14,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: '#F3F4F6',
-  },
-  offerDescription: {
-    fontSize: 15,
-    color: '#1F2937',
-    fontWeight: '600',
-    lineHeight: 22,
-    letterSpacing: -0.2,
-  },
-  offerMetaRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 4,
-  },
-  metaPill: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    backgroundColor: '#F9FAFB',
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: '#E5E7EB',
-  },
-  metaText: {
-    fontSize: 11,
-    color: '#475569',
-    fontWeight: '600',
-  },
-
-  // Offer Footer
-  offerFooter: {
-    marginTop: 8,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: 12,
-  },
-  chatButton: {
-    borderRadius: 16,
-    overflow: 'hidden',
-    shadowColor: '#6366F1',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 6,
-  },
-  chatButtonGradient: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 20,
-    paddingVertical: 12,
-    gap: 8,
-  },
-  chatButtonText: {
-    fontSize: 14,
-    color: '#FFFFFF',
-    fontWeight: '700',
-    letterSpacing: 0.3,
-  },
-  priceBadge: {
-    paddingHorizontal: 14,
     paddingVertical: 10,
     borderRadius: 14,
-    alignItems: 'center',
-    justifyContent: 'center',
-    minWidth: 90,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 2,
+    backgroundColor: '#F3F4F6',
   },
-  priceBadgeAmount: {
-    fontSize: 18,
-    fontWeight: '800',
-    letterSpacing: -0.5,
+  headerChatsBtnText: {
+    fontSize: 14,
+    fontFamily: 'HelveticaMedium',
+    color: '#111827',
   },
-  priceBadgeLabel: {
-    fontSize: 11,
-    color: '#6B7280',
-    fontWeight: '600',
-    marginTop: 2,
+  headerCountText: {
+    fontSize: 16,
+    fontFamily: 'HelveticaMedium',
+    color: '#FFFFFF',
+    fontWeight: '700',
   },
 
-  // Empty State
-  emptyState: {
+  // Empty state
+  emptyContainer: {
+    flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 40,
-    gap: 16,
+    paddingHorizontal: 40,
+    gap: 12,
   },
-  emptyIconContainer: {
+  emptyIconCircle: {
     width: 80,
     height: 80,
-    borderRadius: 40,
-    backgroundColor: '#E0EAFF',
+    borderRadius: 24,
+    backgroundColor: '#F3F4F6',
     alignItems: 'center',
     justifyContent: 'center',
+    marginBottom: 8,
   },
   emptyTitle: {
-    fontSize: 20,
-    color: '#0F172A',
+    fontSize: 18,
+    fontFamily: 'HelveticaMedium',
+    color: '#111827',
+    textTransform: 'uppercase',
     textAlign: 'center',
-    fontWeight: '700',
   },
   emptySubtitle: {
     fontSize: 14,
-    color: '#475569',
+    fontFamily: 'HelveticaMedium',
+    color: '#6B7280',
     textAlign: 'center',
-    lineHeight: 20,
-    fontWeight: '500',
+    lineHeight: 22,
   },
-  restrictedView: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 60,
+  emptyBtn: {
+    marginTop: 20,
+    backgroundColor: '#111827',
     paddingHorizontal: 32,
+    paddingVertical: 14,
+    borderRadius: 14,
+  },
+  emptyBtnText: {
+    fontSize: 14,
+    fontFamily: 'HelveticaMedium',
+    color: '#FFFFFF',
+    textTransform: 'uppercase',
+  },
+
+  // Scroll
+  scrollView: {
+    flex: 1,
+    backgroundColor: '#F3F4F6',
+  },
+  scrollContent: {
+    paddingHorizontal: 20,
+    paddingTop: 20,
+    paddingBottom: 40,
     gap: 16,
   },
-  restrictedTitle: {
-    fontSize: 18,
-    fontWeight: '700',
+
+  // Request Summary Card
+  requestCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 20,
+    padding: 20,
+    gap: 14,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.06,
+    shadowRadius: 8,
+    elevation: 2,
+  },
+  requestCardHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 14,
+  },
+  requestIconCircle: {
+    width: 48,
+    height: 48,
+    borderRadius: 16,
+    backgroundColor: '#F3F4F6',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  requestCardInfo: {
+    flex: 1,
+    gap: 4,
+  },
+  requestCardTitle: {
+    fontSize: 17,
+    fontFamily: 'HelveticaMedium',
     color: '#111827',
+    fontWeight: '700',
+  },
+  requestCardMeta: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+  },
+  requestCardMetaText: {
+    fontSize: 13,
+    fontFamily: 'HelveticaMedium',
+    color: '#6B7280',
+  },
+  requestDescBox: {
+    backgroundColor: '#F9FAFB',
+    borderRadius: 12,
+    padding: 14,
+    borderWidth: 1,
+    borderColor: '#F3F4F6',
+  },
+  requestDescText: {
+    fontSize: 14,
+    fontFamily: 'HelveticaMedium',
+    color: '#374151',
+    lineHeight: 22,
+  },
+  requestChipsRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  requestChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 10,
+    backgroundColor: '#F3F4F6',
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+  },
+  requestChipText: {
+    fontSize: 12,
+    fontFamily: 'HelveticaMedium',
+    color: '#6B7280',
+  },
+
+  // Restricted
+  restrictedCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 20,
+    padding: 40,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 14,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.06,
+    shadowRadius: 8,
+    elevation: 2,
+  },
+  restrictedIconCircle: {
+    width: 72,
+    height: 72,
+    borderRadius: 22,
+    backgroundColor: '#F3F4F6',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 4,
+  },
+  restrictedTitle: {
+    fontSize: 16,
+    fontFamily: 'HelveticaMedium',
+    color: '#111827',
+    textTransform: 'uppercase',
     textAlign: 'center',
-    marginTop: 8,
   },
   restrictedSubtitle: {
-    fontSize: 14,
+    fontSize: 13,
+    fontFamily: 'HelveticaMedium',
     color: '#6B7280',
     textAlign: 'center',
     lineHeight: 20,
   },
-  // Chat Section
-  chatSection: {
-    marginTop: 12,
-    backgroundColor: '#F9FAFB',
+
+  // Section Header
+  sectionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 4,
+  },
+  sectionTitle: {
+    fontSize: 14,
+    fontFamily: 'HelveticaMedium',
+    color: '#111827',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  sectionCount: {
+    fontSize: 12,
+    fontFamily: 'HelveticaMedium',
+    color: '#9CA3AF',
+    textTransform: 'uppercase',
+  },
+
+  // Empty Offers
+  emptyOffersCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 20,
+    padding: 40,
+    alignItems: 'center',
+    gap: 12,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.06,
+    shadowRadius: 8,
+    elevation: 2,
+  },
+  emptyOffersIcon: {
+    width: 64,
+    height: 64,
+    borderRadius: 20,
+    backgroundColor: '#F3F4F6',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 4,
+  },
+  emptyOffersTitle: {
+    fontSize: 16,
+    fontFamily: 'HelveticaMedium',
+    color: '#111827',
+    textTransform: 'uppercase',
+  },
+  emptyOffersSubtitle: {
+    fontSize: 13,
+    fontFamily: 'HelveticaMedium',
+    color: '#9CA3AF',
+    textAlign: 'center',
+    lineHeight: 20,
+  },
+
+  // Offer Card
+  offerCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 20,
+    padding: 20,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.06,
+    shadowRadius: 8,
+    elevation: 2,
+  },
+  offerHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  offerAvatarCircle: {
+    width: 44,
+    height: 44,
+    borderRadius: 14,
+    backgroundColor: '#F3F4F6',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  offerHeaderInfo: {
+    flex: 1,
+    gap: 2,
+  },
+  offerNameRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  offerProviderName: {
+    fontSize: 15,
+    fontFamily: 'HelveticaMedium',
+    color: '#111827',
+    fontWeight: '700',
+    flex: 1,
+  },
+  myBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: '#ECFDF5',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#D1FAE5',
+  },
+  myBadgeText: {
+    fontSize: 10,
+    fontFamily: 'HelveticaMedium',
+    color: '#059669',
+    textTransform: 'uppercase',
+  },
+  offerTimeAgo: {
+    fontSize: 12,
+    fontFamily: 'HelveticaMedium',
+    color: '#9CA3AF',
+  },
+  offerPriceBadge: {
+    backgroundColor: '#ECFDF5',
+    paddingHorizontal: 14,
+    paddingVertical: 8,
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: '#E5E7EB',
-    maxHeight: 400,
+    borderColor: '#D1FAE5',
   },
-  chatHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    padding: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: '#E5E7EB',
-  },
-  chatHeaderText: {
-    fontSize: 14,
+  offerPriceText: {
+    fontSize: 16,
+    fontFamily: 'HelveticaMedium',
+    color: '#059669',
     fontWeight: '700',
+  },
+
+  // Offer Description
+  offerDescBox: {
+    marginTop: 14,
+    backgroundColor: '#F9FAFB',
+    borderRadius: 12,
+    padding: 14,
+    borderWidth: 1,
+    borderColor: '#F3F4F6',
+  },
+  offerDescText: {
+    fontSize: 14,
+    fontFamily: 'HelveticaMedium',
+    color: '#374151',
+    lineHeight: 22,
+  },
+
+  // Offer Meta
+  offerMetaRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginTop: 12,
+  },
+  offerMetaChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 10,
+    backgroundColor: '#F3F4F6',
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+  },
+  offerMetaText: {
+    fontSize: 12,
+    fontFamily: 'HelveticaMedium',
+    color: '#6B7280',
+  },
+
+  // Chat Toggle
+  chatToggleBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    marginTop: 16,
+    backgroundColor: '#F3F4F6',
+    borderRadius: 14,
+    paddingVertical: 12,
+  },
+  chatToggleBtnText: {
+    fontSize: 13,
+    fontFamily: 'HelveticaMedium',
     color: '#111827',
+    textTransform: 'uppercase',
+    letterSpacing: 0.3,
+  },
+
+  // Chat Section
+  chatSection: {
+    marginTop: 0,
+  },
+  chatDivider: {
+    height: 1,
+    backgroundColor: '#F3F4F6',
+    marginTop: 16,
+    marginBottom: 12,
   },
   chatMessagesContainer: {
     maxHeight: 250,
-    padding: 12,
   },
   chatMessagesContent: {
     gap: 8,
-  },
-  chatMessage: {
-    padding: 10,
-    borderRadius: 12,
-    maxWidth: '80%',
-  },
-  chatMessageMy: {
-    alignSelf: 'flex-end',
-    backgroundColor: '#6366F1',
-  },
-  chatMessageOther: {
-    alignSelf: 'flex-start',
-    backgroundColor: '#FFFFFF',
-    borderWidth: 1,
-    borderColor: '#E5E7EB',
-  },
-  chatMessageText: {
-    fontSize: 14,
-    lineHeight: 20,
-  },
-  chatMessageTextMy: {
-    color: '#FFFFFF',
-  },
-  chatMessageTextOther: {
-    color: '#111827',
-  },
-  chatMessageTime: {
-    fontSize: 10,
-    marginTop: 4,
-  },
-  chatMessageTimeMy: {
-    color: 'rgba(255, 255, 255, 0.7)',
-  },
-  chatMessageTimeOther: {
-    color: '#6B7280',
+    paddingVertical: 4,
   },
   chatEmpty: {
-    padding: 20,
     alignItems: 'center',
+    paddingVertical: 24,
+    gap: 8,
   },
   chatEmptyText: {
     fontSize: 13,
+    fontFamily: 'HelveticaMedium',
     color: '#9CA3AF',
   },
-  chatInputContainer: {
+  chatBubble: {
+    padding: 12,
+    borderRadius: 16,
+    maxWidth: '80%',
+  },
+  chatBubbleMy: {
+    alignSelf: 'flex-end',
+    backgroundColor: '#111827',
+    borderBottomRightRadius: 4,
+  },
+  chatBubbleOther: {
+    alignSelf: 'flex-start',
+    backgroundColor: '#F3F4F6',
+    borderBottomLeftRadius: 4,
+  },
+  chatBubbleText: {
+    fontSize: 14,
+    fontFamily: 'HelveticaMedium',
+    lineHeight: 20,
+  },
+  chatBubbleTextMy: {
+    color: '#FFFFFF',
+  },
+  chatBubbleTextOther: {
+    color: '#111827',
+  },
+  chatBubbleTime: {
+    fontSize: 10,
+    fontFamily: 'HelveticaMedium',
+    marginTop: 4,
+  },
+  chatBubbleTimeMy: {
+    color: 'rgba(255, 255, 255, 0.6)',
+    textAlign: 'right',
+  },
+  chatBubbleTimeOther: {
+    color: '#9CA3AF',
+  },
+
+  // Chat Input
+  chatInputRow: {
     flexDirection: 'row',
     alignItems: 'flex-end',
-    padding: 12,
+    gap: 10,
+    marginTop: 12,
+    paddingTop: 12,
     borderTopWidth: 1,
-    borderTopColor: '#E5E7EB',
-    gap: 8,
+    borderTopColor: '#F3F4F6',
   },
   chatInput: {
     flex: 1,
-    backgroundColor: '#FFFFFF',
-    borderRadius: 20,
+    backgroundColor: '#F3F4F6',
+    borderRadius: 16,
     paddingHorizontal: 16,
-    paddingVertical: 10,
+    paddingVertical: 12,
     fontSize: 14,
+    fontFamily: 'HelveticaMedium',
     color: '#111827',
-    borderWidth: 1,
-    borderColor: '#E5E7EB',
     maxHeight: 100,
   },
-  chatSendButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: '#6366F1',
+  chatSendBtn: {
+    width: 44,
+    height: 44,
+    borderRadius: 14,
+    backgroundColor: '#111827',
     alignItems: 'center',
     justifyContent: 'center',
   },

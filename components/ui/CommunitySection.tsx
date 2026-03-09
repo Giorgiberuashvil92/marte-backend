@@ -213,15 +213,18 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   sectionTitle: {
-    fontSize: 20,
-    fontFamily: 'NotoSans_700Bold',
+    fontSize: 16,
+    fontFamily: 'HelveticaMedium',
+    fontWeight: '700',
     color: '#1A1A1A',
-    letterSpacing: -0.5,
+    textTransform: 'uppercase',
   },
   sectionAction: {
     fontSize: 13,
     color: '#111827',
-    fontFamily: 'NotoSans_600SemiBold',
+    fontFamily: 'HelveticaMedium',
+    fontWeight: '700',
+    textTransform: 'uppercase',
   },
   viewAllButton: {
     flexDirection: 'row',
@@ -235,7 +238,9 @@ const styles = StyleSheet.create({
   viewAllText: {
     fontSize: 13,
     color: '#111827',
-    fontFamily: 'NotoSans_600SemiBold',
+    fontFamily: 'HelveticaMedium',
+    fontWeight: '600',
+    textTransform: 'uppercase',
   },
   communityContent: {
     gap: 16,
@@ -274,20 +279,24 @@ const styles = StyleSheet.create({
   avatarText: {
     color: '#FFFFFF',
     fontSize: 16,
+    fontFamily: 'HelveticaMedium',
     fontWeight: '600',
   },
   userName: {
     fontSize: 14,
+    fontFamily: 'HelveticaMedium',
     fontWeight: '600',
     color: '#1F2937',
   },
   postTime: {
     fontSize: 12,
+    fontFamily: 'HelveticaMedium',
     color: '#6B7280',
     marginTop: 2,
   },
   postText: {
     fontSize: 14,
+    fontFamily: 'HelveticaMedium',
     color: '#374151',
     lineHeight: 20,
     marginBottom: 12,
@@ -322,6 +331,7 @@ const styles = StyleSheet.create({
   actionText: {
     fontSize: 12,
     color: '#6B7280',
+    fontFamily: 'HelveticaMedium',
     fontWeight: '500',
   },
   likedText: {
@@ -337,6 +347,7 @@ const styles = StyleSheet.create({
     marginTop: 12,
     fontSize: 14,
     color: '#6B7280',
+    fontFamily: 'HelveticaMedium',
     fontWeight: '500',
   },
   emptyContainer: {
@@ -347,6 +358,7 @@ const styles = StyleSheet.create({
   },
   emptyTitle: {
     fontSize: 16,
+    fontFamily: 'HelveticaMedium',
     fontWeight: '600',
     color: '#374151',
     marginTop: 16,
@@ -354,6 +366,7 @@ const styles = StyleSheet.create({
   },
   emptySubtitle: {
     fontSize: 14,
+    fontFamily: 'HelveticaMedium',
     color: '#6B7280',
     textAlign: 'center',
     lineHeight: 20,

@@ -85,7 +85,7 @@ import {
     const [hasMoreDismantlers, setHasMoreDismantlers] = useState(true);
     const [hasMoreParts, setHasMoreParts] = useState(true);
     const [loadingMore, setLoadingMore] = useState(false);
-    const ITEMS_PER_PAGE = 20; // Android-ისთვის ნაკლები ელემენტი
+    const ITEMS_PER_PAGE = 3; // 3-4 ელემენტი ცალ-ცალკე
     
     // Parts likes state
     const [partsLikes, setPartsLikes] = useState<Record<string, { likesCount: number; isLiked: boolean }>>({});
@@ -331,7 +331,7 @@ import {
     };
 
     // Render Dismantler Card for FlatList
-    const renderDismantlerCard = ({ item: dismantler, index }: { item: any; index: number }) => {
+    const renderDismantlerCard = React.useCallback(({ item: dismantler, index }: { item: any; index: number }) => {
       const dismantlerId = dismantler.id || dismantler._id;
       return (
         <View key={dismantlerId || index} style={styles.modernDismantlerCard}>
@@ -474,10 +474,10 @@ import {
           </ImageBackground>
         </View>
       );
-    };
+    }, [dismantlersLikes, user?.id]);
 
     // Render Part Card for FlatList
-    const renderPartCard = ({ item: part, index }: { item: any; index: number }) => {
+    const renderPartCard = React.useCallback(({ item: part, index }: { item: any; index: number }) => {
       const partId = part.id || part._id;
       return (
         <View key={partId || index} style={styles.modernPartCard}>
@@ -611,7 +611,7 @@ import {
           </ImageBackground>
         </View>
       );
-    };
+    }, [partsLikes, user?.id]);
 
     // Render VIP Part Card
     const renderVIPPart = (part: any) => {
@@ -1230,9 +1230,18 @@ import {
                     horizontal
                     data={vipDismantlers}
                     renderItem={({ item }) => renderVIPDismantler(item)}
-                    keyExtractor={(item, index) => item.id || item._id || index.toString()}
+                    keyExtractor={(item, index) => item.id || item._id || `vip-dismantler-${index}`}
                     showsHorizontalScrollIndicator={false}
                     contentContainerStyle={styles.vipList}
+                    removeClippedSubviews={true}
+                    initialNumToRender={3}
+                    maxToRenderPerBatch={3}
+                    windowSize={2}
+                    getItemLayout={(data, index) => ({
+                      length: width * 0.75 + 16,
+                      offset: (width * 0.75 + 16) * index,
+                      index,
+                    })}
                   />
                 </View>
               )}
@@ -1247,7 +1256,7 @@ import {
                     <FlatList
                       data={dismantlers}
                       renderItem={renderDismantlerCard}
-                      keyExtractor={(item, index) => item.id || item._id || index.toString()}
+                      keyExtractor={(item, index) => item.id || item._id || `dismantler-${index}`}
                       ListFooterComponent={
                         loadingMore ? (
                           <View style={styles.loadingMoreContainer}>
@@ -1261,10 +1270,15 @@ import {
                       scrollEnabled={false}
                       nestedScrollEnabled={true}
                       removeClippedSubviews={true}
-                      initialNumToRender={10}
-                      maxToRenderPerBatch={5}
-                      windowSize={3}
-                      updateCellsBatchingPeriod={100}
+                      initialNumToRender={3}
+                      maxToRenderPerBatch={3}
+                      windowSize={2}
+                      updateCellsBatchingPeriod={50}
+                      getItemLayout={(data, index) => ({
+                        length: 220,
+                        offset: 220 * index,
+                        index,
+                      })}
                     />
                   ) : (
                     <View style={styles.emptyState}>
@@ -1285,9 +1299,18 @@ import {
                     horizontal
                     data={vipParts}
                     renderItem={({ item }) => renderVIPPart(item)}
-                    keyExtractor={(item, index) => item.id || item._id || index.toString()}
+                    keyExtractor={(item, index) => item.id || item._id || `vip-part-${index}`}
                     showsHorizontalScrollIndicator={false}
                     contentContainerStyle={styles.vipList}
+                    removeClippedSubviews={true}
+                    initialNumToRender={3}
+                    maxToRenderPerBatch={3}
+                    windowSize={2}
+                    getItemLayout={(data, index) => ({
+                      length: width * 0.75 + 16,
+                      offset: (width * 0.75 + 16) * index,
+                      index,
+                    })}
                   />
                 </View>
               )}
@@ -1302,7 +1325,7 @@ import {
                     <FlatList
                       data={filteredParts}
                       renderItem={renderPartCard}
-                      keyExtractor={(item, index) => item.id || item._id || index.toString()}
+                      keyExtractor={(item, index) => item.id || item._id || `part-${index}`}
                       ListFooterComponent={
                         loadingMore ? (
                           <View style={styles.loadingMoreContainer}>
@@ -1316,10 +1339,15 @@ import {
                       scrollEnabled={false}
                       nestedScrollEnabled={true}
                       removeClippedSubviews={true}
-                      initialNumToRender={10}
-                      maxToRenderPerBatch={5}
-                      windowSize={3}
-                      updateCellsBatchingPeriod={100}
+                      initialNumToRender={3}
+                      maxToRenderPerBatch={3}
+                      windowSize={2}
+                      updateCellsBatchingPeriod={50}
+                      getItemLayout={(data, index) => ({
+                        length: 220,
+                        offset: 220 * index,
+                        index,
+                      })}
                     />
                   ) : (
                     <View style={styles.emptyState}>
@@ -2227,7 +2255,8 @@ import {
     },
     sectionTitle: {
       fontSize: 18,
-      fontFamily: 'NotoSans_700Bold',
+      fontFamily: 'HelveticaMedium',
+      textTransform: 'uppercase',
       color: '#111827',
     },
     vipCard: {
@@ -2270,7 +2299,8 @@ import {
       fontSize: 11,
       fontWeight: '700',
       color: '#F59E0B',
-      fontFamily: 'NotoSans_700Bold',
+      fontFamily: 'HelveticaMedium',
+      textTransform: 'uppercase',
     },
     vipCardContent: {
       gap: 8,
@@ -2279,7 +2309,8 @@ import {
       fontSize: 18,
       fontWeight: '700',
       color: '#FFFFFF',
-      fontFamily: 'NotoSans_700Bold',
+      fontFamily: 'HelveticaMedium',
+      textTransform: 'uppercase',
     },
     vipCardMeta: {
       flexDirection: 'row',
@@ -2290,7 +2321,8 @@ import {
       fontSize: 13,
       color: '#FFFFFF',
       fontWeight: '500',
-      fontFamily: 'NotoSans_500Medium',
+      fontFamily: 'HelveticaMedium',
+      textTransform: 'uppercase',
     },
     vipList: {
       paddingRight: 20,
@@ -2321,7 +2353,9 @@ import {
     },
     modernSectionTitle: {
       fontSize: 16,
-      fontWeight: '600',
+      fontFamily: 'HelveticaMedium',
+      textTransform: 'uppercase',
+      fontWeight: '700',
       color: '#111827',
       letterSpacing: -0.2,
     },
@@ -3377,7 +3411,7 @@ import {
     fontSize: 13,
     fontWeight: '600',
     color: '#FFFFFF',
-    fontFamily: 'Outfit',
+    fontFamily: 'HelveticaMedium', textTransform: 'uppercase',
   },
   
   modernStoreLikeButton: {
@@ -3396,7 +3430,7 @@ import {
   modernStoreActionText: {
     fontSize: 10,
     color: '#FFFFFF',
-    fontFamily: 'Outfit',
+    fontFamily: 'HelveticaMedium', textTransform: 'uppercase',
     fontWeight: '500',
   },
   
@@ -3418,7 +3452,7 @@ import {
   modernStoreLocationText: {
     fontSize: 12,
     color: '#FFFFFF',
-    fontFamily: 'Outfit',
+    fontFamily: 'HelveticaMedium', textTransform: 'uppercase',
     fontWeight: '500',
   },
   
@@ -3498,7 +3532,7 @@ import {
   modernStoreLocationButtonText: {
     fontSize: 10,
     color: '#FFFFFF',
-    fontFamily: 'Outfit',
+    fontFamily: 'HelveticaMedium', textTransform: 'uppercase',
     fontWeight: '500',
     maxWidth: 80,
   },
@@ -3564,7 +3598,7 @@ import {
   modernPartUsername: {
     fontSize: 14,
     color: '#FFFFFF',
-    fontFamily: 'Outfit',
+    fontFamily: 'HelveticaMedium', textTransform: 'uppercase',
     fontWeight: '600',
     flex: 1,
   },
@@ -3585,7 +3619,7 @@ import {
   modernPartActionText: {
     fontSize: 10,
     color: '#FFFFFF',
-    fontFamily: 'Outfit',
+    fontFamily: 'HelveticaMedium', textTransform: 'uppercase',
     fontWeight: '600',
   },
 
@@ -3601,7 +3635,7 @@ import {
   modernPartNameInfo: {
     fontSize: 14,
     color: '#FFFFFF',
-    fontFamily: 'Outfit',
+    fontFamily: 'HelveticaMedium', textTransform: 'uppercase',
     fontWeight: '700',
     marginBottom: 2,
   },
@@ -3609,7 +3643,7 @@ import {
   modernPartCategoryInfo: {
     fontSize: 12,
     color: 'rgba(255, 255, 255, 0.8)',
-    fontFamily: 'Outfit',
+    fontFamily: 'HelveticaMedium', textTransform: 'uppercase',
     fontWeight: '500',
   },
 
@@ -3633,7 +3667,7 @@ import {
   modernPartLocationText: {
     fontSize: 11,
     color: 'rgba(255, 255, 255, 0.8)',
-    fontFamily: 'Outfit',
+    fontFamily: 'HelveticaMedium', textTransform: 'uppercase',
     fontWeight: '500',
   },
 
@@ -3695,7 +3729,7 @@ import {
   modernPartLocationButtonText: {
     fontSize: 10,
     color: '#FFFFFF',
-    fontFamily: 'Outfit',
+    fontFamily: 'HelveticaMedium', textTransform: 'uppercase',
     fontWeight: '500',
     maxWidth: 80,
   },
@@ -3720,7 +3754,7 @@ import {
   modernPartContactButtonText: {
     fontSize: 10,
     color: '#FFFFFF',
-    fontFamily: 'Outfit',
+    fontFamily: 'HelveticaMedium', textTransform: 'uppercase',
     fontWeight: '600',
   },
 
@@ -3785,7 +3819,7 @@ import {
   modernDismantlerUsername: {
     fontSize: 14,
     color: '#FFFFFF',
-    fontFamily: 'Outfit',
+    fontFamily: 'HelveticaMedium', textTransform: 'uppercase',
     fontWeight: '600',
     flex: 1,
   },
@@ -3806,7 +3840,7 @@ import {
   modernDismantlerActionText: {
     fontSize: 10,
     color: '#FFFFFF',
-    fontFamily: 'Outfit',
+    fontFamily: 'HelveticaMedium', textTransform: 'uppercase',
     fontWeight: '600',
   },
 
@@ -3833,7 +3867,7 @@ import {
   modernDismantlerCarInfoText: {
     fontSize: 12,
     color: '#FFFFFF',
-    fontFamily: 'Outfit',
+    fontFamily: 'HelveticaMedium', textTransform: 'uppercase',
     fontWeight: '600',
   },
 
@@ -3850,7 +3884,7 @@ import {
   modernDismantlerYearText: {
     fontSize: 10,
     color: '#FFFFFF',
-    fontFamily: 'Outfit',
+    fontFamily: 'HelveticaMedium', textTransform: 'uppercase',
     fontWeight: '500',
   },
 
@@ -3874,7 +3908,7 @@ import {
   modernDismantlerLocationText: {
     fontSize: 11,
     color: 'rgba(255, 255, 255, 0.8)',
-    fontFamily: 'Outfit',
+    fontFamily: 'HelveticaMedium', textTransform: 'uppercase',
     fontWeight: '500',
   },
 
@@ -3936,7 +3970,7 @@ import {
   modernDismantlerLocationButtonText: {
     fontSize: 10,
     color: '#FFFFFF',
-    fontFamily: 'Outfit',
+    fontFamily: 'HelveticaMedium', textTransform: 'uppercase',
     fontWeight: '500',
     maxWidth: 80,
   },
@@ -3961,7 +3995,7 @@ import {
   modernDismantlerContactButtonText: {
     fontSize: 10,
     color: '#FFFFFF',
-    fontFamily: 'Outfit',
+    fontFamily: 'HelveticaMedium', textTransform: 'uppercase',
     fontWeight: '600',
   },
 
@@ -4006,7 +4040,7 @@ import {
   modernStoreContactButtonText: {
     fontSize: 10,
     color: '#FFFFFF',
-    fontFamily: 'Outfit',
+    fontFamily: 'HelveticaMedium', textTransform: 'uppercase',
     fontWeight: '600',
   },
   loadingMoreContainer: {
@@ -4018,7 +4052,7 @@ import {
     marginTop: 8,
     fontSize: 14,
     color: '#6B7280',
-    fontFamily: 'Outfit',
+    fontFamily: 'HelveticaMedium', textTransform: 'uppercase',
   },
 });
 

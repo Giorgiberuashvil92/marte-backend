@@ -433,6 +433,48 @@ class AnalyticsService {
       }).catch(() => {});
     }
   }
+
+  logSalesItemView(itemId: string, itemName: string, itemType: string, pageName: string, userId?: string) {
+    this.logEvent('sales_item_view', {
+      item_id: itemId,
+      item_name: itemName,
+      item_type: itemType,
+      page_name: pageName,
+    });
+    
+    if (typeof fetch !== 'undefined') {
+      import('./analyticsApi').then(({ analyticsApi }) => {
+        analyticsApi.trackEvent('sales_item_view', itemName, userId, pageName, {
+          item_id: itemId,
+          item_name: itemName,
+          item_type: itemType,
+          page_name: pageName,
+        }).catch(() => {});
+      }).catch(() => {});
+    }
+  }
+
+  logSalesItemImpression(itemId: string, itemName: string, itemType: string, pageName: string, userId?: string, additionalParams?: Record<string, any>) {
+    this.logEvent('sales_item_impression', {
+      item_id: itemId,
+      item_name: itemName,
+      item_type: itemType,
+      page_name: pageName,
+      ...additionalParams,
+    });
+    
+    if (typeof fetch !== 'undefined') {
+      import('./analyticsApi').then(({ analyticsApi }) => {
+        analyticsApi.trackEvent('sales_item_impression', itemName, userId, pageName, {
+          item_id: itemId,
+          item_name: itemName,
+          item_type: itemType,
+          page_name: pageName,
+          ...additionalParams,
+        }).catch(() => {});
+      }).catch(() => {});
+    }
+  }
 }
 
 export const analyticsService = new AnalyticsService();

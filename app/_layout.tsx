@@ -25,6 +25,7 @@ if (__DEV__) {
 import { ToastProvider } from '../contexts/ToastContext';
 import { ModalProvider } from '../contexts/ModalContext';
 import { SubscriptionProvider } from '../contexts/SubscriptionContext';
+import { FinesProvider } from '../contexts/FinesContext';
 import API_BASE_URL from '../config/api';
 import  {requestPermission, getToken, AuthorizationStatus } from '@react-native-firebase/messaging';
 import messaging from '@react-native-firebase/messaging';
@@ -35,6 +36,7 @@ import { getCurrentAppVersion, checkVersionUpdate, compareVersions } from '../se
 import SessionTracker from '../components/SessionTracker';
 import CookiePolicyModal, { hasCookieConsent } from '../components/ui/CookiePolicyModal';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import RouterScreenTracker from '../components/RouterScreenTracker';
 
 
 export {
@@ -50,7 +52,12 @@ SplashScreen.preventAutoHideAsync();
 export default function RootLayout() {
   const [fontsLoaded, fontError] = useFonts({
     ...FontAwesome.font,
-    Outfit: Outfit_400Regular,
+
+    'HelveticaMedium': require('../assets/fonts/helveticamediumrusbyme.otf'),
+    'NotoSansGeorgian-Bold': require('../assets/fonts/firago-latin-700-normal.ttf'),
+    'NotoSansGeorgian-SemiBold': require('../assets/fonts/firago-latin-600-normal.ttf'),
+    'NotoSansGeorgian-Regular': require('../assets/fonts/firago-latin-400-normal.ttf'),
+    'NotoSansGeorgian-Medium': require('../assets/fonts/firago-latin-500-normal.ttf'),
   });
   const [outfitLoaded] = useOutfitFonts({
     Outfit_400Regular,
@@ -240,10 +247,12 @@ function RootLayoutNav() {
     <UserProvider>
       <SubscriptionProvider>
         <CarProvider>
+          <FinesProvider>
           <MarketplaceProvider>
             <ToastProvider>
               <ModalProvider>
             <SessionTracker />
+            <RouterScreenTracker />
             <ThemeProvider value={customTheme}>
               {(() => {
                 
@@ -251,14 +260,26 @@ function RootLayoutNav() {
                 // eslint-disable-next-line @typescript-eslint/no-explicit-any
                 (RNText as any).defaultProps.style = [
                   (RNText as any).defaultProps.style,
-                  { fontFamily: 'Outfit' },
+                  { 
+                    fontFamily: 'HelveticaMedium',
+                    fontWeight: '500',
+                    fontSize: 12,
+                    lineHeight: 12,
+                    letterSpacing: 0,
+                  },
                 ];
                 // eslint-disable-next-line @typescript-eslint/no-explicit-any
                 (RNTextInput as any).defaultProps = (RNTextInput as any).defaultProps || {};
                 // eslint-disable-next-line @typescript-eslint/no-explicit-any
                 (RNTextInput as any).defaultProps.style = [
                   (RNTextInput as any).defaultProps.style,
-                  { fontFamily: 'Outfit' },
+                  { 
+                    fontFamily: 'HelveticaMedium',
+                    fontWeight: '500',
+                    fontSize: 12,
+                    lineHeight: 12,
+                    letterSpacing: 0,
+                  },
                 ];
                 return null;
               })()}
@@ -296,11 +317,30 @@ function RootLayoutNav() {
               <Stack.Screen name="all-requests" options={{ headerShown: false }} />
               <Stack.Screen name="partner-dashboard" options={{ headerShown: false, presentation: 'card' }} />
               <Stack.Screen name="partner-dashboard-store" options={{ headerShown: false, presentation: 'card' }} />
+              <Stack.Screen name="special-offers-manage" options={{ headerShown: false, presentation: 'card' }} />
+              <Stack.Screen name="special-offer-form" options={{ headerShown: false, presentation: 'card' }} />
               <Stack.Screen name="partner" options={{ headerShown: false }} />
               <Stack.Screen name="parts-order" options={{ headerShown: false }} />
               <Stack.Screen name="parts" options={{ headerShown: false }} />
+              <Stack.Screen name="parts-new" options={{ headerShown: false }} />
+              <Stack.Screen name="parts-details-new" options={{ headerShown: false }} />
               <Stack.Screen name="stores" options={{ headerShown: false }} />
+              <Stack.Screen name="stores-new" options={{ headerShown: false }} />
+              <Stack.Screen name="oils-new" options={{ headerShown: false }} />
+              <Stack.Screen name="mechanics-new" options={{ headerShown: false }} />
+              <Stack.Screen name="services-new" options={{ headerShown: false }} />
               <Stack.Screen name="detailing" options={{ headerShown: false }} />
+              <Stack.Screen name="add-car" options={{ headerShown: false }} />
+              <Stack.Screen name="garage" options={{ headerShown: false }} />
+              <Stack.Screen name="garage/service" options={{ headerShown: false }} />
+              <Stack.Screen name="garage/reminders" options={{ headerShown: false }} />
+              <Stack.Screen name="garage/reminders/[id]" options={{ headerShown: false }} />
+              <Stack.Screen name="garage/add-reminder" options={{ headerShown: false }} />
+              <Stack.Screen name="garage/add-service" options={{ headerShown: false }} />
+              <Stack.Screen name="garage/service/[id]" options={{ headerShown: false }} />
+              <Stack.Screen name="garage/documents" options={{ headerShown: false }} />
+              <Stack.Screen name="garage/fuel" options={{ headerShown: false }} />
+              <Stack.Screen name="garage/statistics" options={{ headerShown: false }} />
               <Stack.Screen name="service-form" options={{ headerShown: false }} />
               <Stack.Screen name="fuel-stations" options={{ headerShown: false }} />
               <Stack.Screen name="fuel-price-details" options={{ headerShown: false }} />
@@ -328,6 +368,7 @@ function RootLayoutNav() {
               <Stack.Screen name="partner-chats" options={{headerShown: false}} />
               <Stack.Screen name="partner-chat/[requestId]" options={{headerShown: false}} />
               <Stack.Screen name="news-feed" options={{headerShown: false}} />
+              <Stack.Screen name="news-detail" options={{headerShown: false}} />
               <Stack.Screen name="offers/[requestId]" options={{headerShown: false}} />
               <Stack.Screen name="mechanic/[id]" options={{headerShown: false}} />
               <Stack.Screen name="mechanic-detail" options={{headerShown: false}} />
@@ -350,13 +391,17 @@ function RootLayoutNav() {
               <Stack.Screen name="car-rental-add" options={{headerShown: false}} />
               <Stack.Screen name="radars" options={{headerShown: false}} />
               <Stack.Screen name="review" options={{headerShown: false}} />
+              <Stack.Screen name="edit-car" options={{headerShown: false}} />
               </Stack>
             </ThemeProvider>
               </ModalProvider>
             </ToastProvider>
           </MarketplaceProvider>
+          </FinesProvider>
         </CarProvider>
       </SubscriptionProvider>
     </UserProvider>
   );
 }
+
+

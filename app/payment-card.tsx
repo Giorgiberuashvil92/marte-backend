@@ -116,6 +116,10 @@ export default function PaymentCardScreen() {
         return;
       }
 
+      // თუ ეს არ არის subscription payment, არ ვეძებთ subscription payment-ს და არ ვცვლით amount-ს
+      // IMPORTANT: car_fines_subscription-ს ცალკე ფლოუ აქვს და არ უნდა გადაიწეროს არსებული subscription-ით
+      const isSubscriptionPayment = params.context === 'subscription';
+
       try {
         
         
@@ -126,13 +130,14 @@ export default function PaymentCardScreen() {
         
         if (result.success && result.data && result.data.length > 0) {
          
-          
-          // ვიღებთ subscription-ის გადახდას
-          const subscriptionPayment = result.data.find((p: any) => 
-            p.context === 'subscription' && p.status === 'completed'
-          );
+          // ვიღებთ subscription-ის გადახდას მხოლოდ თუ ეს subscription payment-ია
+          const subscriptionPayment = isSubscriptionPayment 
+            ? result.data.find((p: any) => 
+                p.context === 'subscription' && p.status === 'completed'
+              )
+            : null;
 
-          if (subscriptionPayment) {
+          if (subscriptionPayment && isSubscriptionPayment) {
            
             
             setPaymentFromDB(subscriptionPayment);
@@ -173,28 +178,32 @@ export default function PaymentCardScreen() {
               }
               
               // Payment Data-ს განახლება subscription-ის მონაცემებით
-              if (subscriptionData) {
+              // მხოლოდ თუ ეს subscription payment-ია
+              if (subscriptionData && isSubscriptionPayment) {
                 console.log('📦 Using subscription data:', subscriptionData);
+                // params.amount-ს პრიორიტეტი ვაძლეთთ, რადგან ეს ახალი გადახდაა
+                const amountFromParams = params.amount ? parseFloat(params.amount) : null;
+                const planPriceFromParams = params.planPrice || null;
                 setPaymentData(prev => ({
                   ...prev,
-                  amount: subscriptionData.planPrice || subscriptionPayment.amount || prev.amount,
+                  amount: amountFromParams || subscriptionData.planPrice || subscriptionPayment.amount || prev.amount,
                   currency: subscriptionData.currency === 'GEL' ? '₾' : subscriptionData.currency || prev.currency,
                   description: subscriptionPayment.description || prev.description,
                   context: subscriptionPayment.context || prev.context,
                   isSubscription: true,
                   planId: subscriptionData.planId || prev.planId,
                   planName: subscriptionData.planName || prev.planName,
-                  planPrice: subscriptionData.planPrice?.toString() || prev.planPrice,
+                  planPrice: planPriceFromParams || subscriptionData.planPrice?.toString() || prev.planPrice,
                   planCurrency: subscriptionData.currency === 'GEL' ? '₾' : subscriptionData.currency || prev.planCurrency,
                   planDescription: subscriptionData.planName 
-                    ? `CarAppX ${subscriptionData.planName} პაკეტი - ${subscriptionData.period || 'თვეში'}`
+                    ? `მართეს ${subscriptionData.planName} პაკეტი - ${subscriptionData.period || 'თვეში'}`
                     : prev.planDescription,
                   metadata: {
                     ...prev.metadata,
                     ...subscriptionPayment.metadata,
                     planId: subscriptionData.planId,
                     planName: subscriptionData.planName,
-                    planPrice: subscriptionData.planPrice?.toString(),
+                    planPrice: planPriceFromParams || subscriptionData.planPrice?.toString(),
                     planCurrency: subscriptionData.currency === 'GEL' ? '₾' : subscriptionData.currency,
                     planPeriod: subscriptionData.period,
                   },
@@ -204,33 +213,46 @@ export default function PaymentCardScreen() {
               }
             } else {
               // Payment Data-ს განახლება DB-დან მიღებული მონაცემებით (თუ plan-ის მონაცემები არის)
-              setPaymentData(prev => ({
-                ...prev,
-                amount: subscriptionPayment.amount || prev.amount,
+              // მხოლოდ თუ ეს subscription payment-ია
+              if (isSubscriptionPayment) {
+                // params.amount-ს პრიორიტეტი ვაძლეთთ, რადგან ეს ახალი გადახდაა
+                const amountFromParams = params.amount ? parseFloat(params.amount) : null;
+                const planPriceFromParams = params.planPrice || null;
+                setPaymentData(prev => ({
+                  ...prev,
+                  amount: amountFromParams || subscriptionPayment.amount || prev.amount,
                 currency: subscriptionPayment.currency === 'GEL' ? '₾' : subscriptionPayment.currency || prev.currency,
                 description: subscriptionPayment.description || prev.description,
                 context: subscriptionPayment.context || prev.context,
                 isSubscription: subscriptionPayment.context === 'subscription' || prev.isSubscription,
                 planId: subscriptionPayment.metadata?.planId || prev.planId,
                 planName: subscriptionPayment.metadata?.planName || prev.planName,
-                planPrice: subscriptionPayment.metadata?.planPrice || subscriptionPayment.amount?.toString() || prev.planPrice,
+                planPrice: planPriceFromParams || subscriptionPayment.metadata?.planPrice || subscriptionPayment.amount?.toString() || prev.planPrice,
                 planCurrency: subscriptionPayment.metadata?.planCurrency || (subscriptionPayment.currency === 'GEL' ? '₾' : subscriptionPayment.currency) || prev.planCurrency,
                 planDescription: subscriptionPayment.metadata?.planName 
-                  ? `CarAppX ${subscriptionPayment.metadata.planName} პაკეტი - ${subscriptionPayment.metadata?.planPeriod || 'თვეში'}`
+                  ? `მართეს ${subscriptionPayment.metadata.planName} პაკეტი - ${subscriptionPayment.metadata?.planPeriod || 'თვეში'}`
                   : prev.planDescription,
                 metadata: {
                   ...prev.metadata,
                   ...subscriptionPayment.metadata,
-                  planId: subscriptionPayment.metadata?.planId,
-                  planName: subscriptionPayment.metadata?.planName,
-                  planPrice: subscriptionPayment.metadata?.planPrice,
+                    planId: subscriptionPayment.metadata?.planId,
+                    planName: subscriptionPayment.metadata?.planName,
+                    planPrice: planPriceFromParams || subscriptionPayment.metadata?.planPrice,
                   planCurrency: subscriptionPayment.metadata?.planCurrency,
                   planPeriod: subscriptionPayment.metadata?.planPeriod,
                 },
               }));
+              } else {
+                // თუ ეს არ არის subscription payment, არ ვცვლით amount-ს
+                console.log('💰 This is not a subscription payment, keeping amount from params:', params.amount);
+              }
             }
           } else {
-            console.log('⚠️ No subscription payment found');
+            if (!isSubscriptionPayment) {
+              console.log('💰 This is not a subscription payment, using amount from params:', params.amount);
+            } else {
+              console.log('⚠️ No subscription payment found');
+            }
           }
 
           // ვიღებთ ბოლო წარმატებულ გადახდას ბარათის მონაცემებისთვის
@@ -343,7 +365,9 @@ export default function PaymentCardScreen() {
 
     try {
       // თუ subscription აქვს და bogCardToken აქვს, recurring payment გამოვიყენოთ
-      if (subscription?.bogCardToken && paymentData.isSubscription) {
+      // IMPORTANT: car_fines_subscription-ს ცალკე ფლოუ აქვს — ახალი BOG order უნდა შეიქმნას,
+      // რადგან საჭიროა თავისი save_card/bogCardToken და onSuccess-ში confirmCarFinesPayment-ის გამოძახება
+      if (subscription?.bogCardToken && paymentData.isSubscription && paymentData.context !== 'car_fines_subscription') {
         console.log('💳 შენახული ბარათით recurring payment-ის განხორციელება...');
         console.log('📦 BOG Card Token:', subscription.bogCardToken);
         console.log('📦 Subscription Plan:', subscription.plan);
@@ -398,8 +422,9 @@ export default function PaymentCardScreen() {
       } else if (paymentData.context === 'carfax-package' && !externalOrderId.includes('carfax_package')) {
         // CarFAX პაკეტისთვის prefix-ის დამატება
         externalOrderId = `carfax_package_${user.id}_${Date.now()}`;
-      } else if (paymentData.isSubscription && paymentData.planId && !externalOrderId.includes('subscription_')) {
+      } else if (paymentData.isSubscription && paymentData.planId && !externalOrderId.includes('subscription_') && paymentData.context === 'subscription') {
         // თუ orderId არ შეიცავს subscription prefix-ს, დავამატოთ
+        // IMPORTANT: car_fines_subscription-ს თავისი orderId აქვს, არ გადავწეროთ
         externalOrderId = `subscription_${paymentData.planId}_${Date.now()}_${user.id}`;
       }
       
@@ -423,7 +448,7 @@ export default function PaymentCardScreen() {
         description: paymentData.description,
         success_url: successUrl,
         fail_url: failUrl,
-        save_card: paymentData.isSubscription || paymentData.context === 'dismantler', // Subscription-ისა და დაშლილებისთვის ბარათის დამახსოვრება
+        save_card: paymentData.isSubscription || paymentData.context === 'dismantler' || paymentData.context === 'car_fines_subscription', // Subscription-ისა, დაშლილებისა და car fines subscription-ისთვის ბარათის დამახსოვრება
       };
 
       console.log('💳 BOG Order Data:', {
@@ -496,43 +521,23 @@ export default function PaymentCardScreen() {
       <View style={styles.modalOverlay}>
         <StatusBar barStyle="dark-content" backgroundColor="#FFFFFF" />
         <SafeAreaView style={styles.safeArea}>
-          {/* Header */}
-          <Animated.View
-            style={[
-              styles.header,
-              {
-                paddingTop: insets.top,
-                opacity: fadeAnim,
-                transform: [{ translateY: slideAnim }],
-              },
-            ]}
-          >
-            <TouchableOpacity
-              style={styles.backButton}
-              onPress={() => {
-                setVisible(false);
-                router.back();
-              }}
-            >
-              <Ionicons name="arrow-back" size={20} color="#0B1220" />
-            </TouchableOpacity>
-            <Text style={styles.headerTitle}>გადახდა</Text>
-            <View style={styles.headerSpacer} />
-          </Animated.View>
-
-          {/* Progress Indicator */}
-          <View style={styles.progressContainer}>
-            <Text style={styles.progressText}>2 of 3</Text>
-            <View style={styles.progressBar}>
-              <View style={[styles.progressFill, { width: '66.66%' }]} />
-            </View>
-          </View>
-
           <ScrollView
             style={styles.content}
             showsVerticalScrollIndicator={false}
             contentContainerStyle={styles.scrollContent}
           >
+            {/* Close Button */}
+            <View style={[styles.closeButtonContainer, { paddingTop: insets.top }]}>
+              <TouchableOpacity
+                onPress={() => {
+                  setVisible(false);
+                  router.back();
+                }}
+                style={styles.closeButton}
+              >
+                <Ionicons name="close" size={24} color="#111827" />
+              </TouchableOpacity>
+            </View>
             {/* Payment Details Card */}
             <Animated.View
               style={[
@@ -887,6 +892,30 @@ export default function PaymentCardScreen() {
               }
             }
 
+            // CarFinesSubscription-ის აქტივაცია გადახდის შემდეგ
+            if (paymentData.context === 'car_fines_subscription' && paymentData.metadata) {
+              try {
+                const metadata = paymentData.metadata;
+                const carFinesSubId = metadata.carFinesSubscriptionId;
+                
+                if (carFinesSubId) {
+                  const { finesApi } = require('../services/finesApi');
+                  // bogOrderId არის BOG order_id, რომელიც გამოიყენება:
+                  // 1. transactionId-ად (გადახდის იდენტიფიკატორი)
+                  // 2. bogCardToken-ად (recurring payment-ებისთვის)
+                  await finesApi.confirmCarFinesPayment(
+                    carFinesSubId,
+                    bogOrderId || undefined, // transactionId
+                    bogOrderId || undefined, // bogCardToken for recurring payments
+                  );
+                  console.log('✅ CarFinesSubscription აქტივირებულია გადახდის შემდეგ, bogCardToken:', bogOrderId);
+                }
+              } catch (error) {
+                console.error('❌ CarFinesSubscription-ის აქტივაციისას მოხდა შეცდომა:', error);
+                // არ ვაჩვენებთ error-ს, რადგან BOG callback-იც ამუშავებს
+              }
+            }
+
             // ავტოსერვისის შექმნა (initial creation)
             if (paymentData.context === 'service' && paymentData.metadata) {
               try {
@@ -1135,6 +1164,12 @@ export default function PaymentCardScreen() {
                 setShowSuccessModal(false);
                 router.replace('/parts' as any);
               }, 3000);
+            } else if (paymentData.context === 'car_fines_subscription') {
+              // მანქანის ჯარიმების გამოწერის შემდეგ ჯარიმების გვერდზე დაბრუნება
+              setTimeout(() => {
+                setShowSuccessModal(false);
+                router.replace('/garage/fines' as any);
+              }, 3000);
             } else {
               setTimeout(() => {
                 setShowSuccessModal(false);
@@ -1307,6 +1342,16 @@ export default function PaymentCardScreen() {
                 >
                   <Text style={styles.successButtonText}>კარგი</Text>
                 </TouchableOpacity>
+              ) : paymentData.context === 'car_fines_subscription' ? (
+                <TouchableOpacity
+                  style={styles.successButton}
+                  onPress={() => {
+                    setShowSuccessModal(false);
+                    router.replace('/garage/fines' as any);
+                  }}
+                >
+                  <Text style={styles.successButtonText}>კარგი</Text>
+                </TouchableOpacity>
               ) : (
                 <TouchableOpacity
                   style={styles.successButton}
@@ -1339,65 +1384,39 @@ const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
   },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 20,
-    paddingBottom: 12,
-    backgroundColor: '#FFFFFF',
-  },
-  backButton: {
-    width: 40,
-    height: 40,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  headerTitle: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#0B1220',
-    fontFamily: 'System',
-  },
-  headerSpacer: {
-    width: 40,
-  },
-  progressContainer: {
-    paddingHorizontal: 20,
-    paddingBottom: 16,
-  },
-  progressText: {
-    fontSize: 11,
-    color: '#6B7280',
-    marginBottom: 8,
-    fontWeight: '500',
-    fontFamily: 'System',
-  },
-  progressBar: {
-    height: 4,
-    backgroundColor: '#E5E7EB',
-    borderRadius: 2,
-    overflow: 'hidden',
-  },
-  progressFill: {
-    height: '100%',
-    backgroundColor: '#6366F1',
-    borderRadius: 2,
-  },
   content: {
     flex: 1,
   },
   scrollContent: {
     paddingHorizontal: 20,
     paddingTop: 16,
+    paddingBottom: 16,
+  },
+  closeButtonContainer: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    marginBottom: 8,
+  },
+  closeButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: '#F3F4F6',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   paymentDetailsCard: {
     backgroundColor: '#FFFFFF',
     borderRadius: 12,
-    borderWidth: 1.5,
+    borderWidth: 1,
     borderColor: '#E5E7EB',
     padding: 20,
     marginBottom: 16,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 8,
+    elevation: 2,
   },
   paymentDetailsHeader: {
     flexDirection: 'row',
@@ -1416,8 +1435,9 @@ const styles = StyleSheet.create({
   paymentDetailsTitle: {
     fontSize: 16,
     fontWeight: '600',
-    color: '#0B1220',
-    fontFamily: 'System',
+    color: '#111827',
+    fontFamily: 'HelveticaMedium',
+    textTransform: 'uppercase',
   },
   detailsDivider: {
     height: 1,
@@ -1433,14 +1453,16 @@ const styles = StyleSheet.create({
   detailLabel: {
     fontSize: 13,
     color: '#6B7280',
-    fontFamily: 'System',
+    fontFamily: 'HelveticaMedium',
+    textTransform: 'uppercase',
     flex: 1,
   },
   detailValue: {
     fontSize: 13,
-    color: '#0B1220',
+    color: '#111827',
     fontWeight: '600',
-    fontFamily: 'System',
+    fontFamily: 'HelveticaMedium',
+    textTransform: 'uppercase',
     flex: 1,
     textAlign: 'right',
   },
@@ -1456,15 +1478,16 @@ const styles = StyleSheet.create({
   },
   amountLabel: {
     fontSize: 15,
-    color: '#0B1220',
+    color: '#111827',
     fontWeight: '600',
-    fontFamily: 'System',
+    fontFamily: 'HelveticaMedium',
+    textTransform: 'uppercase',
   },
   amountValue: {
     fontSize: 20,
     color: '#6366F1',
     fontWeight: '700',
-    fontFamily: 'System',
+    fontFamily: 'HelveticaMedium',
   },
   cardLoadingContainer: {
     alignItems: 'center',
@@ -1482,16 +1505,22 @@ const styles = StyleSheet.create({
   sectionTitle: {
     fontSize: 15,
     fontWeight: '600',
-    color: '#0B1220',
+    color: '#111827',
     marginBottom: 12,
-    fontFamily: 'System',
+    fontFamily: 'HelveticaMedium',
+    textTransform: 'uppercase',
   },
   cardPreview: {
     backgroundColor: '#F5F5DC',
     borderRadius: 12,
-    borderWidth: 1.5,
+    borderWidth: 1,
     borderColor: '#6366F1',
     padding: 16,
+    shadowColor: '#6366F1',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 10,
+    elevation: 6,
   },
   cardHeader: {
     flexDirection: 'row',
@@ -1502,8 +1531,9 @@ const styles = StyleSheet.create({
   cardTypeText: {
     fontSize: 12,
     fontWeight: '600',
-    color: '#0B1220',
-    fontFamily: 'System',
+    color: '#111827',
+    fontFamily: 'HelveticaMedium',
+    textTransform: 'uppercase',
   },
   visaLogo: {
     paddingHorizontal: 8,
@@ -1540,9 +1570,9 @@ const styles = StyleSheet.create({
   cardNumberText: {
     fontSize: 18,
     fontWeight: '700',
-    color: '#0B1220',
+    color: '#111827',
     letterSpacing: 2,
-    fontFamily: 'System',
+    fontFamily: 'HelveticaMedium',
   },
   cardExpiryContainer: {
     flexDirection: 'row',
@@ -1557,20 +1587,25 @@ const styles = StyleSheet.create({
   cardExpiryText: {
     fontSize: 13,
     fontWeight: '600',
-    color: '#0B1220',
-    fontFamily: 'System',
+    color: '#111827',
+    fontFamily: 'HelveticaMedium',
   },
   paymentButtonContainer: {
     marginTop: 8,
   },
   paymentButton: {
-    backgroundColor: '#0B1220',
+    backgroundColor: '#111827',
     borderRadius: 12,
     paddingVertical: 16,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: 8,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    elevation: 4,
   },
   paymentButtonDisabled: {
     opacity: 0.5,
@@ -1579,7 +1614,8 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontSize: 15,
     fontWeight: '600',
-    fontFamily: 'System',
+    fontFamily: 'HelveticaMedium',
+    textTransform: 'uppercase',
   },
   securityBadge: {
     flexDirection: 'row',
@@ -1592,7 +1628,8 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: '#22C55E',
     fontWeight: '600',
-    fontFamily: 'System',
+    fontFamily: 'HelveticaMedium',
+    textTransform: 'uppercase',
   },
   successModalOverlay: {
     flex: 1,
@@ -1615,10 +1652,11 @@ const styles = StyleSheet.create({
   successTitle: {
     fontSize: 20,
     fontWeight: '700',
-    color: '#0B1220',
+    color: '#111827',
     marginBottom: 8,
     textAlign: 'center',
-    fontFamily: 'System',
+    fontFamily: 'HelveticaMedium',
+    textTransform: 'uppercase',
   },
   successMessage: {
     fontSize: 13,
@@ -1629,17 +1667,23 @@ const styles = StyleSheet.create({
     fontFamily: 'System',
   },
   successButton: {
-    backgroundColor: '#0B1220',
+    backgroundColor: '#111827',
     borderRadius: 12,
     paddingVertical: 14,
     paddingHorizontal: 32,
     width: '100%',
     alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    elevation: 4,
   },
   successButtonText: {
     color: '#FFFFFF',
     fontSize: 15,
     fontWeight: '600',
-    fontFamily: 'System',
+    fontFamily: 'HelveticaMedium',
+    textTransform: 'uppercase',
   },
 });

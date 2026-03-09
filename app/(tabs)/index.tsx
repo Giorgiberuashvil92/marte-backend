@@ -24,6 +24,7 @@ import Colors from '../../constants/Colors';
 import { useRouter } from 'expo-router';
 import { useUser } from '../../contexts/UserContext';
 import { useSubscription } from '../../contexts/SubscriptionContext';
+import { useFines } from '../../contexts/FinesContext';
 import SubscriptionModal from '../../components/ui/SubscriptionModal';
 import PremiumInfoModal from '../../components/ui/PremiumInfoModal';
 import API_BASE_URL from '../../config/api';
@@ -63,6 +64,8 @@ export default function TabOneScreen() {
   const colors = Colors['light'];
   const { user, shouldOpenPremiumModal, clearPremiumModalFlag, logout } = useUser();
   const { subscription, hasActiveSubscription, isPremiumUser } = useSubscription();
+  const { getTotalFinesCount } = useFines();
+  const finesCount = getTotalFinesCount();
   const displayFirstName = user?.name ? user.name.split(' ')[0] : '';
   const insets = useSafeAreaInsets();
   const fabBottom = Math.max(96, 20 + insets.bottom);
@@ -88,6 +91,7 @@ export default function TabOneScreen() {
   const [showFeedbackModal, setShowFeedbackModal] = useState(false);
   const [feedbackText, setFeedbackText] = useState('');
   const [sendingFeedback, setSendingFeedback] = useState(false);
+  const [feedbackCategory, setFeedbackCategory] = useState<'problem' | 'idea' | 'question' | 'other'>('problem');
   const [showPremiumInfoModal, setShowPremiumInfoModal] = useState(false);
   
   // Refresh stories when overlay closes (to update seen status)
@@ -135,7 +139,7 @@ export default function TabOneScreen() {
   const [refreshing, setRefreshing] = useState(false); // Pull-to-refresh state
   const [offers, setOffers] = useState<any[]>([]);
   const [offersLoading, setOffersLoading] = useState<boolean>(false);
-  const [quickActionsIndex, setQuickActionsIndex] = useState(0);
+  // quickActionsIndex removed — categories are now vertical list
   const [showServiceModal, setShowServiceModal] = useState(false);
   const [selectedService, setSelectedService] = useState<any | null>(null);
   
@@ -145,58 +149,69 @@ export default function TabOneScreen() {
 
   const quickActionsList = [
     {
+      key: 'carfax',
+      title: 'კარფაქსი',
+      subtitle: 'ავტომობილის ისტორიის შემოწმება',
+      icon: 'document-text-outline',
+      colors: ['#111827', '#1F2937'],
+      route: '/carfax' as any,
+    },
+    {
+      key: 'fines',
+      title: 'ჯარიმები',
+      subtitle: 'შსს და მერიის ჯარიმების შემოწმება',
+      icon: 'alert-circle-outline',
+      colors: ['#EF4444', '#DC2626'],
+      route: '/garage/fines' as any,
+    },
+    {
+      key: 'radars',
+      title: 'რადარი',
+      subtitle: 'რადარების რუკა და გაფრთხილებები',
+      icon: 'camera-outline',
+      colors: ['#8B5CF6', '#7C3AED'],
+      route: '/radars' as any,
+    },
+    {
+      key: 'services',
+      title: 'სერვისები',
+      subtitle: 'ავტოსერვისები და მოვლა',
+      icon: 'settings-outline',
+      colors: ['#F59E0B', '#D97706'],
+      route: '/services-new' as any,
+    },
+    {
       key: 'fuel',
       title: 'საწვავი',
       subtitle: 'ფასების შედარება და რეკომენდაციები',
-      icon: 'flame',
-      colors: ['#F59E0B', '#D97706'],
-      pill: 'საწვავი',
-      tag: 'ახალი',
+      icon: 'flame-outline',
+      colors: ['#10B981', '#059669'],
       route: '/fuel-stations' as any,
+    },
+    {
+      key: 'leaderboard',
+      title: 'ლიდერბორდი',
+      subtitle: 'რეფერალების რეიტინგი და ჯილდოები',
+      icon: 'trophy-outline',
+      colors: ['#3B82F6', '#1D4ED8'],
+      route: '/referral' as any,
     },
     {
       key: 'parts',
       title: 'ნაწილები',
       subtitle: 'ავტონაწილების მოძიება და შეძენა',
-      icon: 'construct',
-      colors: ['#10B981', '#059669'],
-      pill: 'დაშლილები',
-      tag: 'ძიება',
-      route: '/parts' as any,
+      icon: 'construct-outline',
+      colors: ['#EC4899', '#DB2777'],
+      route: '/parts-new' as any,
     },
     {
-      key: 'wash',
-      title: 'ავტო სამრეცხაო',
-      subtitle: 'ბუქინგი უახლოეს სამრეცხაოში',
-      icon: 'water',
-      colors: ['#22C55E', '#16A34A'],
-      pill: 'დაჯავშნა',
-      tag: 'ახალი',
-      route: '/(tabs)/carwash' as any,
+      key: 'stores',
+      title: 'მაღაზიები',
+      subtitle: 'მაღაზიები და სერვისები',
+      icon: 'storefront-outline',
+      colors: ['#0EA5E9', '#0284C7'],
+      route: '/stores-new' as any,
     },
-
-    {
-      key: 'mechanic',
-      title: 'ხელოსანი',
-      subtitle: 'მექანიკოსების ძიება და ჯავშნები',
-      icon: 'build',
-      colors: ['#3B82F6', '#1D4ED8'],
-      pill: 'ჯავშნა',
-      tag: 'სერვისი',
-      route: '/mechanics' as any,
-    },
-
-    {
-      key: 'rental',
-      title: 'მანქანის გაქირავება',
-      subtitle: 'მანქანების გაქირავება და ჯავშნები',
-      icon: 'car-sport',
-      colors: ['#8B5CF6', '#7C3AED'],
-      pill: 'გაქირავება',
-      tag: 'ახალი',
-      route: '/car-rental-list' as any,
-    },
-   
   ];
 
   const carfaxCard = {
@@ -373,6 +388,13 @@ export default function TabOneScreen() {
     }
   };
 
+  const feedbackCategories = [
+    { key: 'problem' as const, label: 'პრობლემა', icon: 'bug-outline' as const, color: '#EF4444' },
+    { key: 'idea' as const, label: 'იდეა', icon: 'bulb-outline' as const, color: '#F59E0B' },
+    { key: 'question' as const, label: 'შეკითხვა', icon: 'help-circle-outline' as const, color: '#3B82F6' },
+    { key: 'other' as const, label: 'სხვა', icon: 'chatbubble-outline' as const, color: '#8B5CF6' },
+  ];
+
   const handleSendFeedback = async () => {
     const message = feedbackText.trim();
     if (!message) {
@@ -381,23 +403,26 @@ export default function TabOneScreen() {
     }
     setSendingFeedback(true);
     try {
+      const categoryLabel = feedbackCategories.find(c => c.key === feedbackCategory)?.label || 'სხვა';
       const response = await fetch(`${API_BASE_URL}/feedback`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          message,
+          message: `[${categoryLabel}] ${message}`,
           userId: user?.id,
           userName: user?.name,
           phone: user?.phone,
           source: 'home_fab',
+          category: feedbackCategory,
         }),
       });
       
       const result = await response.json();
       
       if (result.success) {
-        Alert.alert('გაგზავნილია', 'მადლობა ფიდბექისთვის!');
+        Alert.alert('გაგზავნილია ✅', 'მადლობა! ჩვენი გუნდი განიხილავს შენს შეტყობინებას.');
         setFeedbackText('');
+        setFeedbackCategory('problem');
         setShowFeedbackModal(false);
       } else {
         Alert.alert('შეცდომა', result.error || 'ვერ გავაგზავნეთ, სცადე ხელახლა.');
@@ -559,7 +584,8 @@ export default function TabOneScreen() {
     },
     userName: { 
       fontSize: 18, 
-      fontFamily: 'Outfit', 
+      fontFamily: 'HelveticaMedium',
+      textTransform: 'uppercase', 
       fontWeight: '600',
       color: colors.text,
       marginBottom: 2,
@@ -567,7 +593,8 @@ export default function TabOneScreen() {
     smallLocation: { 
       fontSize: 13, 
       color: colors.secondary, 
-      fontFamily: 'Outfit',
+      fontFamily: 'HelveticaMedium',
+      textTransform: 'uppercase',
       opacity: 0.8,
     },
     roundIcon: {
@@ -622,14 +649,16 @@ export default function TabOneScreen() {
       fontWeight: '600' as const,
       color: '#1E293B',
       marginLeft: 8,
-      fontFamily: 'Outfit',
+      fontFamily: 'HelveticaMedium',
+      textTransform: 'uppercase',
     },
     recommendationText: {
       fontSize: 14,
       color: '#64748B',
       lineHeight: 20,
       marginBottom: 16,
-      fontFamily: 'Outfit',
+      fontFamily: 'HelveticaMedium',
+      textTransform: 'uppercase',
     },
     recommendationButton: {
       backgroundColor: '#6366F1',
@@ -645,7 +674,8 @@ export default function TabOneScreen() {
       color: '#FFFFFF',
       fontSize: 14,
       fontWeight: '500' as const,
-      fontFamily: 'Outfit',
+      fontFamily: 'HelveticaMedium',
+      textTransform: 'uppercase',
     },
     headerTop: {
       flexDirection: 'row' as const,
@@ -701,7 +731,8 @@ export default function TabOneScreen() {
       fontWeight: '600' as const,
       color: colors.text,
       letterSpacing: -0.5,
-      fontFamily: 'Outfit',
+      fontFamily: 'HelveticaMedium',
+      textTransform: 'uppercase',
     },
     themeButton: {
       width: 44,
@@ -782,172 +813,70 @@ export default function TabOneScreen() {
     searchIcon: {
       marginRight: 10,
     },
-    quickActionsContainer: {
-      paddingHorizontal: 2,
-      paddingTop: 10,
-      paddingBottom: 10,
-      gap: 8,
+    categoriesSection: {
+      paddingTop: 20,
+      // paddingHorizontal: 16,
     },
-    quickActions: {
+    categoriesGrid: {
       flexDirection: 'row' as const,
-      gap: 12,
-    },
-    quickActionsScroll: {
-      paddingHorizontal: 4,
-      paddingVertical: 4,
-      gap: 12,
-    },
-    quickActionCard: {
-      width: 230,
-      borderRadius: 18,
-      overflow: 'hidden' as const,
-      shadowColor: '#0F172A',
-      shadowOffset: { width: 0, height: 6 },
-      shadowOpacity: 0.12,
-      shadowRadius: 14,
-      elevation: 5,
-      borderWidth: 1,
-      borderColor: '#E5E7EB',
-      backgroundColor: '#FFFFFF',
-      position: 'relative' as const,
-    },
-    quickActionSurface: {
-      paddingHorizontal: 14,
-      paddingVertical: 12,
-      borderRadius: 18,
-      borderWidth: 0,
-      gap: 10,
-      minHeight: 128,
-    },
-    quickActionHeader: {
-      flexDirection: 'row' as const,
-      alignItems: 'center' as const,
-      gap: 10,
-      position: 'relative' as const,
-    },
-    quickActionIconWrap: {
-      width: 40,
-      height: 40,
-      borderRadius: 12,
-      alignItems: 'center' as const,
-      justifyContent: 'center' as const,
-      borderWidth: 1,
-      borderColor: 'rgba(255,255,255,0.3)',
-    },
-    quickActionTitle: {
-      fontSize: 13,
-      fontWeight: '600' as const,
-      color: '#0B1220',
-      fontFamily: 'Outfit',
-      letterSpacing: -0.1,
-      lineHeight: 18,
-    },
-    quickActionSubtitle: {
-      fontSize: 12,
-      color: '#6B7280',
-      fontFamily: 'Outfit',
-      marginTop: 2,
-      lineHeight: 16,
-    },
-    quickActionBadge: {
-      position: 'absolute' as const,
-      top: -6,
-      right: -6,
-      borderRadius: 10,
-      paddingHorizontal: 10,
-      paddingVertical: 6,
-      backgroundColor: 'rgba(255,255,255,0.16)',
-      borderWidth: 1,
-      borderColor: 'rgba(0,0,0,0.15)',
-      zIndex: 2,
-      color: '#FFFFFF',
-    },
-    quickActionBadgeText: {
-      color: '#FFFFFF',
-      fontSize: 11,
-      fontFamily: 'Outfit_700Bold',
-      letterSpacing: 0.3,
-      textTransform: 'uppercase',
-    },
-    quickActionFooter: {
-      flexDirection: 'row' as const,
-      alignItems: 'center' as const,
+      flexWrap: 'wrap' as const,
       justifyContent: 'space-between' as const,
+      rowGap: 8,
     },
-    quickActionPill: {
-      paddingHorizontal: 10,
-      paddingVertical: 6,
-      borderRadius: 12,
-    },
-    quickActionPillText: {
-      color: '#0B1220',
-      fontSize: 12,
-      fontFamily: 'Outfit',
-      fontWeight: '600' as const,
-      letterSpacing: 0.2,
-    },
-    quickActionsIndicatorRow: {
-      flexDirection: 'row' as const,
-      justifyContent: 'center' as const,
+    categoryCard: {
+      width: '23.5%' as any,
       alignItems: 'center' as const,
-      gap: 6,
-      paddingTop: 10,
-      paddingBottom: 2,
+      backgroundColor: '#F3F4F6',
+      borderRadius: 14,
+      paddingVertical: 12,
+      paddingHorizontal: 2,
     },
-    quickActionsDot: {
-      width: 6,
-      height: 6,
-      borderRadius: 3,
-      backgroundColor: '#E5E7EB',
+    categoryCardInner: {
+      position: 'relative' as const,
+      marginBottom: 6,
     },
-    quickActionsDotActive: {
-      width: 16,
-      backgroundColor: '#0F172A',
+    categoryIconContainer: {
+      width: 42,
+      height: 42,
+      borderRadius: 12,
+      alignItems: 'center' as const,
+      justifyContent: 'center' as const,
     },
-    quickActionTextWrap: {
-      flex: 1,
-      paddingTop: 6,
-      paddingRight: 64,
+    categoryCountBadge: {
+      position: 'absolute' as const,
+      top: -4,
+      right: -8,
+      minWidth: 18,
+      height: 18,
+      borderRadius: 9,
+      backgroundColor: '#EF4444',
+      alignItems: 'center' as const,
+      justifyContent: 'center' as const,
+      paddingHorizontal: 4,
     },
-    categoriesContainer: {
-      paddingTop: 24,
-      paddingHorizontal: 20,
+    categoryCountBadgeText: {
+      fontSize: 10,
+      fontFamily: 'HelveticaMedium',
+      fontWeight: '700' as const,
+      color: '#FFFFFF',
+    },
+    categoryTitle: {
+      fontSize: 10,
+      fontFamily: 'HelveticaMedium',
+      textTransform: 'uppercase' as const,
+      fontWeight: '600' as const,
+      color: '#111827',
+      textAlign: 'center' as const,
+      letterSpacing: -0.2,
     },
     sectionTitle: {
       fontSize: 18,
-      color: '#1F2937',
-      fontFamily: 'Outfit',
-      marginBottom: 18,
-      fontWeight: '500' as const,
+      color: '#111827',
+      fontFamily: 'HelveticaMedium',
+      textTransform: 'uppercase',
+      marginBottom: 14,
+      fontWeight: '700' as const,
       letterSpacing: -0.5,
-    },
-    categoriesList: {
-      marginHorizontal: 0,
-      paddingLeft: H_MARGIN,
-      paddingRight: H_MARGIN,
-    },
-    categoryCard: {
-      alignItems: 'center' as const,
-      marginRight: H_GAP,
-      padding: 16,
-      borderRadius: 24,
-      width: 110,
-      borderWidth: 1,
-      gap: 12,
-    },
-    categoryIcon: {
-      width: 56,
-      height: 56,
-      borderRadius: 20,
-      alignItems: 'center' as const,
-      justifyContent: 'center' as const,
-    },
-    categoryName: {
-      fontSize: 13,
-      fontFamily: 'Outfit',
-      fontWeight: '500' as const,
-      textAlign: 'center' as const,
-      lineHeight: 18,
     },
     featuredContainer: {
       paddingTop: 32,
@@ -989,7 +918,8 @@ export default function TabOneScreen() {
       textShadowColor: 'rgba(0, 0, 0, 0.3)',
       textShadowOffset: { width: 0, height: 2 },
       textShadowRadius: 4,
-      fontFamily: 'Outfit',
+      fontFamily: 'HelveticaMedium',
+      textTransform: 'uppercase',
     },
     serviceDetails: {
       flexDirection: 'row' as const,
@@ -1028,7 +958,8 @@ export default function TabOneScreen() {
       textShadowColor: 'rgba(0, 0, 0, 0.2)',
       textShadowOffset: { width: 0, height: 1 },
       textShadowRadius: 2,
-      fontFamily: 'Outfit',
+      fontFamily: 'HelveticaMedium',
+      textTransform: 'uppercase',
     },
     popularContainer: {
       paddingHorizontal: 20,
@@ -1064,8 +995,8 @@ export default function TabOneScreen() {
       shadowRadius: 16,
       elevation: 8,
     },
-    mapBannerTitle: { color: '#FFFFFF', fontFamily: 'Outfit', fontSize: 14 },
-    mapBannerSubtitle: { color: '#E5E7EB', fontFamily: 'Outfit', fontSize: 11, marginTop: 4 },
+    mapBannerTitle: { color: '#FFFFFF', fontFamily: 'HelveticaMedium', textTransform: 'uppercase', fontSize: 14 },
+    mapBannerSubtitle: { color: '#E5E7EB', fontFamily: 'HelveticaMedium', textTransform: 'uppercase', fontSize: 11, marginTop: 4 },
     sectionHeader: {
       flexDirection: 'row' as const,
       justifyContent: 'space-between' as const,
@@ -1074,7 +1005,8 @@ export default function TabOneScreen() {
     },
     sectionAction: {
       fontSize: 13,
-      fontFamily: 'Outfit',
+      fontFamily: 'HelveticaMedium',
+      textTransform: 'uppercase',
     },
     popularContent: {
       paddingRight: H_MARGIN,
@@ -1114,7 +1046,8 @@ export default function TabOneScreen() {
     },
     categoryText: {
       fontSize: 11,
-      fontFamily: 'Outfit',
+      fontFamily: 'HelveticaMedium',
+      textTransform: 'uppercase',
       color: '#FFFFFF',
     },
     ratingBadge: {
@@ -1128,7 +1061,8 @@ export default function TabOneScreen() {
     },
     popularName: {
       fontSize: 18,
-      fontFamily: 'Outfit',
+      fontFamily: 'HelveticaMedium',
+      textTransform: 'uppercase',
       color: '#FFFFFF',
       textShadowColor: 'rgba(0, 0, 0, 0.3)',
       textShadowOffset: { width: 0, height: 2 },
@@ -1157,7 +1091,8 @@ export default function TabOneScreen() {
     },
     priceText: {
       fontSize: 12,
-      fontFamily: 'Outfit',
+      fontFamily: 'HelveticaMedium',
+      textTransform: 'uppercase',
       color: '#FFFFFF',
     },
     chatsContainer: {
@@ -1181,12 +1116,17 @@ export default function TabOneScreen() {
     chatRow: { flexDirection: 'row' as const, alignItems: 'center' as const, justifyContent: 'space-between' as const, gap: 12 },
     chatLeft: { flexDirection: 'row' as const, alignItems: 'center' as const, gap: 12, flex: 1 },
     chatAvatar: { width: 36, height: 36, borderRadius: 18, backgroundColor: 'rgba(255,255,255,0.08)', alignItems: 'center' as const, justifyContent: 'center' as const, borderWidth: 1, borderColor: 'rgba(229,231,235,0.25)' },
-    chatInitials: { color: '#E5E7EB', fontFamily: 'Outfit', fontSize: 12 },
-    chatTitle: { color: '#F3F4F6', fontFamily: 'Outfit', fontSize: 14, fontWeight: '700' as const },
-    chatMeta: { color: '#D1D5DB', fontFamily: 'Outfit', fontSize: 11, opacity: 0.8 },
-    chatSnippet: { color: '#E5E7EB', fontFamily: 'Outfit', fontSize: 12, marginTop: 4, opacity: 0.9 },
+    chatInitials: { color: '#E5E7EB', fontFamily: 'HelveticaMedium', textTransform: 'uppercase',
+ fontSize: 12 },
+    chatTitle: { color: '#F3F4F6', fontFamily: 'HelveticaMedium', textTransform: 'uppercase',
+ fontSize: 14, fontWeight: '700' as const },
+    chatMeta: { color: '#D1D5DB', fontFamily: 'HelveticaMedium', textTransform: 'uppercase',
+ fontSize: 11, opacity: 0.8 },
+    chatSnippet: { color: '#E5E7EB', fontFamily: 'HelveticaMedium', textTransform: 'uppercase',
+ fontSize: 12, marginTop: 4, opacity: 0.9 },
     unreadBadge: { paddingHorizontal: 8, paddingVertical: 4, borderRadius: 12, backgroundColor: '#EF4444', borderWidth: 1, borderColor: 'rgba(255,255,255,0.2)' },
-    unreadText: { color: '#FFFFFF', fontFamily: 'Outfit', fontSize: 11, fontWeight: '700' as const },
+    unreadText: { color: '#FFFFFF', fontFamily: 'HelveticaMedium', textTransform: 'uppercase',
+ fontSize: 11, fontWeight: '700' as const },
     bannerContainer: {
       paddingHorizontal: 20,
       marginTop: 20,
@@ -1233,7 +1173,8 @@ export default function TabOneScreen() {
     },
     bannerBadgeText: {
       fontSize: 12,
-      fontFamily: 'Outfit',
+      fontFamily: 'HelveticaMedium',
+      textTransform: 'uppercase',
       fontWeight: '600',
       color: '#FFFFFF',
     },
@@ -1245,7 +1186,8 @@ export default function TabOneScreen() {
     },
     discountText: {
       fontSize: 14,
-      fontFamily: 'Outfit',
+      fontFamily: 'HelveticaMedium',
+      textTransform: 'uppercase',
       fontWeight: '700',
       color: '#FFFFFF',
     },
@@ -1256,7 +1198,8 @@ export default function TabOneScreen() {
     },
     bannerTitle: {
       fontSize: 24,
-      fontFamily: 'Outfit',
+      fontFamily: 'HelveticaMedium',
+      textTransform: 'uppercase',
       fontWeight: '700',
       color: '#FFFFFF',
       marginBottom: 6,
@@ -1266,7 +1209,8 @@ export default function TabOneScreen() {
     },
     bannerSubtitle: {
       fontSize: 14,
-      fontFamily: 'Outfit',
+      fontFamily: 'HelveticaMedium',
+      textTransform: 'uppercase',
       color: 'rgba(255, 255, 255, 0.9)',
       lineHeight: 20,
     },
@@ -1286,7 +1230,8 @@ export default function TabOneScreen() {
     },
     featureText: {
       fontSize: 12,
-      fontFamily: 'Outfit',
+      fontFamily: 'HelveticaMedium',
+      textTransform: 'uppercase',
       fontWeight: '500',
       color: 'rgba(255, 255, 255, 0.9)',
     },
@@ -1306,7 +1251,8 @@ export default function TabOneScreen() {
     },
     bannerButtonText: {
       fontSize: 14,
-      fontFamily: 'Outfit',
+      fontFamily: 'HelveticaMedium',
+      textTransform: 'uppercase',
       fontWeight: '600',
       color: '#FFFFFF',
     },
@@ -1354,13 +1300,15 @@ export default function TabOneScreen() {
       fontSize: 14,
       fontWeight: '600',
       color: '#111827',
-      fontFamily: 'Outfit',
+      fontFamily: 'HelveticaMedium',
+      textTransform: 'uppercase',
     },
     
     postTime: {
       fontSize: 12,
       color: '#6B7280',
-      fontFamily: 'Outfit',
+      fontFamily: 'HelveticaMedium',
+      textTransform: 'uppercase',
     },
     
     moreButton: {
@@ -1377,7 +1325,8 @@ export default function TabOneScreen() {
       fontSize: 14,
       color: '#374151',
       lineHeight: 20,
-      fontFamily: 'Outfit',
+      fontFamily: 'HelveticaMedium',
+      textTransform: 'uppercase',
     },
     
     postImage: {
@@ -1402,7 +1351,8 @@ export default function TabOneScreen() {
       fontSize: 24,
       fontWeight: '800',
       color: '#FFFFFF',
-      fontFamily: 'Outfit',
+      fontFamily: 'HelveticaMedium',
+      textTransform: 'uppercase',
     },
     
     interactionsBar: {
@@ -1430,7 +1380,8 @@ export default function TabOneScreen() {
     interactionText: {
       fontSize: 13,
       color: '#6B7280',
-      fontFamily: 'Outfit',
+      fontFamily: 'HelveticaMedium',
+      textTransform: 'uppercase',
       fontWeight: '500',
     },
     
@@ -1441,23 +1392,25 @@ export default function TabOneScreen() {
     subscriptionBadge: {
       flexDirection: 'row',
       alignItems: 'center',
-      paddingHorizontal: 14,
-      paddingVertical: 9,
-      borderRadius: 20,
+      paddingHorizontal: 10,
+      paddingVertical: 6,
+      borderRadius: 10,
       marginTop: 6,
-      gap: 6,
-      borderWidth: 1.5,
-      shadowColor: '#000',
-      shadowOffset: { width: 0, height: 2 },
-      shadowOpacity: 0.25,
-      shadowRadius: 4,
-      elevation: 5,
-      position: 'relative',
-      overflow: 'hidden',
+      gap: 5,
+      backgroundColor: '#F3F4F6',
+      borderWidth: 1,
+      borderColor: '#E5E7EB',
+      borderLeftWidth: 3,
+      borderLeftColor: '#9CA3AF',
     },
-    subscriptionGradient: {
-      ...StyleSheet.absoluteFillObject,
-      borderRadius: 20,
+    subscriptionBadgePremium: {
+      borderLeftColor: '#D97706',
+    },
+    subscriptionBadgeBasic: {
+      borderLeftColor: '#2563EB',
+    },
+    subscriptionBadgeFree: {
+      borderLeftColor: '#059669',
     },
     // Modern Subscription CTA
     subscriptionCTA: {
@@ -1505,33 +1458,19 @@ export default function TabOneScreen() {
       color: colors.text,
       fontSize: 13,
       fontWeight: '800',
-      fontFamily: 'Outfit',
+      fontFamily: 'HelveticaMedium',
+      textTransform: 'uppercase',
       letterSpacing: 0.2,
     },
     subscriptionCTASubtitle: {
       display: 'none',
     },
-    premiumBadge: {
-      backgroundColor: '#F59E0B',
-      borderColor: '#D97706',
-    },
-    basicBadge: {
-      backgroundColor: '#3B82F6',
-      borderColor: '#2563EB',
-    },
-    freeBadge: {
-      backgroundColor: '#10B981',
-      borderColor: '#059669',
-    },
-    
     subscriptionText: {
-      fontSize: 12,
-      fontWeight: '700',
-      fontFamily: 'Outfit',
-      color: '#FFFFFF',
-      textShadowColor: 'rgba(0, 0, 0, 0.3)',
-      textShadowOffset: { width: 0, height: 1 },
-      textShadowRadius: 2,
+      fontSize: 11,
+      fontFamily: 'HelveticaMedium',
+      textTransform: 'uppercase',
+      color: '#111827',
+      fontWeight: '600',
     },
     referralBanner: {
       marginHorizontal: 2,
@@ -1565,14 +1504,16 @@ export default function TabOneScreen() {
     },
     referralBannerTitle: {
       fontSize: 16,
-      fontFamily: 'NotoSans_700Bold',
+      fontFamily: 'HelveticaMedium',
+      textTransform: 'uppercase',
       color: '#FFFFFF',
       marginBottom: 4,
       fontWeight: '700',
     },
     referralBannerSubtitle: {
       fontSize: 13,
-      fontFamily: 'NotoSans_400Regular',
+      fontFamily: 'HelveticaMedium',
+      textTransform: 'uppercase',
       color: '#EDE9FE',
     },
   });
@@ -1644,23 +1585,13 @@ export default function TabOneScreen() {
                 >
                   <View style={[
                     styles.subscriptionBadge,
-                    subscription.plan === 'premium' && styles.premiumBadge,
-                    subscription.plan === 'basic' && styles.basicBadge,
+                    subscription.plan === 'premium' && styles.subscriptionBadgePremium,
+                    subscription.plan === 'basic' && styles.subscriptionBadgeBasic,
                   ]}>
-                    <LinearGradient
-                      colors={
-                        subscription.plan === 'premium' 
-                          ? ['#F59E0B', '#D97706']
-                          : ['#3B82F6', '#2563EB']
-                      }
-                      start={{ x: 0, y: 0 }}
-                      end={{ x: 1, y: 1 }}
-                      style={styles.subscriptionGradient}
-                    />
-                    <Ionicons 
-                      name={subscription.plan === 'premium' ? 'star' : 'shield-checkmark'} 
-                      size={14} 
-                      color="#FFFFFF" 
+                    <Ionicons
+                      name={subscription.plan === 'premium' ? 'star' : 'shield-checkmark'}
+                      size={13}
+                      color="#6B7280"
                     />
                     <Text style={styles.subscriptionText}>
                       {subscription.plan === 'premium' ? 'პრემიუმ' : 'ძირითადი'}
@@ -1673,21 +1604,8 @@ export default function TabOneScreen() {
                   onPress={() => setShowSubscriptionModal(true)}
                   activeOpacity={0.7}
                 >
-                  <View style={[
-                    styles.subscriptionBadge,
-                    styles.freeBadge,
-                  ]}>
-                    <LinearGradient
-                      colors={['#10B981', '#059669']}
-                      start={{ x: 0, y: 0 }}
-                      end={{ x: 1, y: 1 }}
-                      style={styles.subscriptionGradient}
-                    />
-                    <Ionicons 
-                      name="checkmark-circle" 
-                      size={14} 
-                      color="#FFFFFF" 
-                    />
+                  <View style={[styles.subscriptionBadge, styles.subscriptionBadgeFree]}>
+                    <Ionicons name="checkmark-circle" size={13} color="#6B7280" />
                     <Text style={styles.subscriptionText}>უფასო</Text>
                   </View>
                 </TouchableOpacity>
@@ -1714,7 +1632,7 @@ export default function TabOneScreen() {
         </View>
 
         {/* Referral Banner */}
-        {user?.id && (
+        {/* {user?.id && (
           <TouchableOpacity
             onPress={() => router.push('/referral')}
             activeOpacity={0.8}
@@ -1738,10 +1656,10 @@ export default function TabOneScreen() {
               </View>
             </LinearGradient>
           </TouchableOpacity>
-        )}
+        )} */}
 
         {/* რადარების ბანერი */}
-        <TouchableOpacity
+        {/* <TouchableOpacity
           onPress={() => {
             analyticsService.logButtonClick('რადარები', 'მთავარი', undefined, user?.id);
             router.push('/radars');
@@ -1766,7 +1684,7 @@ export default function TabOneScreen() {
               <Ionicons name="chevron-forward" size={20} color="#FFFFFF" />
             </View>
           </LinearGradient>
-        </TouchableOpacity>
+        </TouchableOpacity> */}
 
         {/* ინოვაციური Stories სექცია */}
         <View style={{ 
@@ -1806,8 +1724,8 @@ export default function TabOneScreen() {
               <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
                 <View style={{ flex: 1, paddingRight: 12 }}>
                   
-                  <Text style={{ color: '#FFFFFF', fontSize: 18, fontWeight: '800', letterSpacing: -0.2, marginBottom: 8 }}>0%-იანი განვადება ყველაფერზე</Text>
-                  <Text style={{ color: '#CBD5E1', fontSize: 13 }}>გჭირდება ფული ნაწილისთვის ? შეავსე ფორმა და იყიდე ნებისმიერი ნივთი</Text>
+                  <Text style={{ color: '#FFFFFF', fontSize: 18, fontWeight: '800', letterSpacing: -0.2, marginBottom: 8, fontFamily: 'HelveticaMedium', textTransform: 'uppercase' }}>0%-იანი განვადება ყველაფერზე</Text>
+                  <Text style={{ color: '#CBD5E1', fontSize: 13, fontFamily: 'HelveticaMedium', textTransform: 'uppercase' }}>გჭირდება ფული ნაწილისთვის ? შეავსე ფორმა და იყიდე ნებისმიერი ნივთი</Text>
                 </View>
                 <View style={{ backgroundColor: 'rgba(255,255,255,0.08)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.12)', padding: 12, borderRadius: 12 }}>
                   <Ionicons name="arrow-forward" size={18} color="#FFFFFF" />
@@ -1816,261 +1734,52 @@ export default function TabOneScreen() {
             </LinearGradient>
           </TouchableOpacity>
         </View>
-        <View style={{ marginTop: 24, marginBottom: 16 }}>
-        <TouchableOpacity
-          style={{
-            width: '100%',
-            height: 100,
-            borderRadius: 20,
-            overflow: 'hidden',
-            backgroundColor: '#FFFFFF',
-            shadowColor: '#000',
-            shadowOffset: { width: 0, height: 8 },
-            shadowOpacity: 0.12,
-            shadowRadius: 16,
-            elevation: 8,
-            borderWidth: 1,
-            borderColor: '#E5E7EB',
-          }}
-          activeOpacity={0.9}
-          onPress={() => {
-            // შევამოწმოთ subscription - მხოლოდ premium იუზერებს აქვთ წვდომა
-            if (!subscription || subscription.plan !== 'premium' || !isPremiumUser) {
-              analyticsService.logButtonClick('CarFAX (Premium)', 'მთავარი', { requiresPremium: true }, user?.id);
-              setShowSubscriptionModal(true);
-            } else {
-              analyticsService.logButtonClick('CarFAX', 'მთავარი', undefined, user?.id);
-              router.push('/carfax' as any);
-            }
-          }}
-        >
-          <View style={{
-            flex: 1,
-            paddingHorizontal: 24,
-            paddingVertical: 20,
-            backgroundColor: '#FFFFFF',
-            position: 'relative',
-          }}>
-            {/* Decorative background pattern */}
-            <View style={{
-              position: 'absolute',
-              right: -20,
-              top: -20,
-              width: 120,
-              height: 120,
-              borderRadius: 60,
-              backgroundColor: '#F3F4F6',
-              opacity: 0.5,
-            }} />
-            <View style={{
-              position: 'absolute',
-              right: 40,
-              bottom: -30,
-              width: 80,
-              height: 80,
-              borderRadius: 40,
-              backgroundColor: '#F9FAFB',
-              opacity: 0.6,
-            }} />
-            
-            <View style={{
-              flex: 1,
-              flexDirection: 'row',
-              alignItems: 'center',
-              justifyContent: 'space-between',
-              zIndex: 1,
-            }}>
-              <View style={{
-                flexDirection: 'row',
-                alignItems: 'center',
-                flex: 1,
-                gap: 16,
-              }}>
-                <View style={{
-                  width: 56,
-                  height: 56,
-                  borderRadius: 16,
-                  backgroundColor: '#111827',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  shadowColor: '#111827',
-                  shadowOffset: { width: 0, height: 4 },
-                  shadowOpacity: 0.2,
-                  shadowRadius: 8,
-                  elevation: 4,
-                }}>
-                  <Ionicons name={carfaxCard.icon as any} size={28} color="#FFFFFF" />
-                </View>
-                <View style={{
-                  flex: 1,
-                  gap: 6,
-                }}>
-                  <View style={{
-                    flexDirection: 'row',
-                    alignItems: 'center',
-                    gap: 8,
-                  }}>
-                    <Text style={{
-                      fontSize: 18,
-                      fontWeight: '800',
-                      color: '#111827',
-                      fontFamily: 'Outfit',
-                      letterSpacing: -0.5,
-                    }}>{carfaxCard.title}</Text>
-                    <View style={{
-                      backgroundColor: '#111827',
-                      paddingHorizontal: 8,
-                      paddingVertical: 3,
-                      borderRadius: 6,
-                    }}>
-                      <Text style={{
-                        fontSize: 10,
-                        fontWeight: '700',
-                        color: '#FFFFFF',
-                        fontFamily: 'Outfit',
-                        letterSpacing: 0.5,
-                      }}>{carfaxCard.tag}</Text>
-                    </View>
-                  </View>
-                  <Text style={{
-                    fontSize: 13,
-                    color: '#6B7280',
-                    fontFamily: 'Outfit',
-                    lineHeight: 18,
-                    fontWeight: '500',
-                  }}>{carfaxCard.subtitle}</Text>
-                </View>
-              </View>
-              <View style={{
-                flexDirection: 'row',
-                alignItems: 'center',
-                gap: 12,
-              }}>
-                <View style={{
-                  backgroundColor: '#F3F4F6',
-                  paddingHorizontal: 12,
-                  paddingVertical: 6,
-                  borderRadius: 10,
-                  borderWidth: 1,
-                  borderColor: '#E5E7EB',
-                }}>
-                  <Text style={{
-                    fontSize: 11,
-                    fontWeight: '700',
-                    color: '#111827',
-                    fontFamily: 'Outfit',
-                    letterSpacing: 0.3,
-                  }}>{carfaxCard.pill}</Text>
-                </View>
-                <View style={{
-                  width: 36,
-                  height: 36,
-                  borderRadius: 18,
-                  backgroundColor: '#111827',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                }}>
-                  <Ionicons name="chevron-forward" size={18} color="#FFFFFF" />
-                </View>
-              </View>
-            </View>
-          </View>
-        </TouchableOpacity>
-      </View>
+       
 
-        {/* ახალი სექცია - ჩვენი სერვისები */}
-        <View style={styles.quickActionsContainer}>
+        {/* კატეგორიების სექცია - 4x2 გრიდი */}
+        <View style={styles.categoriesSection}>
           <Text style={styles.sectionTitle}>კატეგორიები</Text>
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.quickActionsScroll}
-            snapToAlignment="start"
-            decelerationRate="fast"
-            onScroll={(e) => {
-              const cardFull = 230 + 12; 
-              const idx = Math.round(e.nativeEvent.contentOffset.x / cardFull);
-              setQuickActionsIndex(Math.min(Math.max(idx, 0), quickActionsList.length - 1));
-            }}
-            scrollEventThrottle={16}
-          >
-            <View style={styles.quickActions}>
-              {quickActionsList.map((action) => (
-                <TouchableOpacity
-                  key={action.key}
-                  style={styles.quickActionCard}
-                  activeOpacity={0.9}
-                  onPress={() => {
-                    // Track category click from home
-                    analyticsService.logButtonClick(action.title, 'მთავარი', {
+          <View style={styles.categoriesGrid}>
+            {quickActionsList.map((action) => (
+              <TouchableOpacity
+                key={action.key}
+                style={styles.categoryCard}
+                activeOpacity={0.7}
+                onPress={() => {
+                  analyticsService.logButtonClick(action.title, 'მთავარი', {
+                    category_key: action.key,
+                    category_route: action.route,
+                  }, user?.id);
+                  analyticsApi.trackEvent(
+                    'home_category_click',
+                    `მთავარი - კატეგორია: ${action.title}`,
+                    user?.id,
+                    'მთავარი',
+                    {
                       category_key: action.key,
+                      category_title: action.title,
                       category_route: action.route,
-                    }, user?.id);
-                    analyticsApi.trackEvent(
-                      'home_category_click',
-                      `მთავარი - კატეგორია: ${action.title}`,
-                      user?.id,
-                      'მთავარი',
-                      {
-                        category_key: action.key,
-                        category_title: action.title,
-                        category_route: action.route,
-                      }
-                    ).catch(() => {});
-                    router.push(action.route);
-                  }}
-                >
-                  <LinearGradient
-                    colors={action.colors as [string, string]}
-                    start={{ x: 0, y: 0 }}
-                    end={{ x: 1, y: 1 }}
-                    style={styles.quickActionSurface}
-                  >
-                    <View style={styles.quickActionHeader}>
-                      <View style={[styles.quickActionIconWrap, { backgroundColor: 'rgba(255,255,255,0.18)' }]}>
-                        <Ionicons name={action.icon as any} size={18} color="#FFFFFF" />
-                      </View>
-                      <View style={styles.quickActionTextWrap}>
-                        <Text style={[styles.quickActionTitle, { color: '#FFFFFF', lineHeight: 18 }]} numberOfLines={1} ellipsizeMode="tail">
-                          {action.title}
-                        </Text>
-                        <Text style={[styles.quickActionSubtitle, { color: '#E5E7EB', lineHeight: 16 }]} numberOfLines={2} ellipsizeMode="tail">
-                          {action.subtitle}
-                        </Text>
-                      </View>
-                      <View style={styles.quickActionBadge}>
-                        <Text style={styles.quickActionBadgeText}>{action.tag}</Text>
-                      </View>
+                    }
+                  ).catch(() => {});
+                  router.push(action.route);
+                }}
+              >
+                <View style={styles.categoryCardInner}>
+                  <View style={[styles.categoryIconContainer, { backgroundColor: `${action.colors[0]}15` }]}>
+                    <Ionicons name={action.icon as any} size={24} color={action.colors[0]} />
+                  </View>
+                  {action.key === 'fines' && finesCount > 0 && (
+                    <View style={styles.categoryCountBadge}>
+                      <Text style={styles.categoryCountBadgeText}>{finesCount > 99 ? '99+' : finesCount}</Text>
                     </View>
-
-                    <View style={styles.quickActionFooter}>
-                      <View style={[
-                        styles.quickActionPill,
-                        { backgroundColor: 'rgba(255,255,255,0.16)', borderColor: 'rgba(255,255,255,0.28)', borderWidth: 1 }
-                      ]}>
-                        <Text style={[styles.quickActionPillText, { color: '#FFFFFF' }]}>{action.pill}</Text>
-                      </View>
-                      <Ionicons name="chevron-forward" size={16} color="rgba(255,255,255,0.86)" />
-                    </View>
-                  </LinearGradient>
-                </TouchableOpacity>
-              ))}
-            </View>
-          </ScrollView>
-          <View style={styles.quickActionsIndicatorRow}>
-            {quickActionsList.map((_, i) => (
-              <View
-                key={i}
-                style={[
-                  styles.quickActionsDot,
-                  i === quickActionsIndex && styles.quickActionsDotActive
-                ]}
-              />
+                  )}
+                </View>
+                <Text style={styles.categoryTitle} numberOfLines={1}>{action.title}</Text>
+              </TouchableOpacity>
             ))}
           </View>
         </View>
 
-        {/* Test Payment Button - 1 ლარი */}
         
       </View>
 
@@ -2086,7 +1795,7 @@ export default function TabOneScreen() {
         <View style={styles.sectionHeader}>
           <View style={{ display: 'flex',  alignItems: 'center', justifyContent: 'center', }}>
             <View style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 2 }}>
-              <Text style={{ fontSize: 18, fontWeight: '500', color: '#111827', fontFamily: 'Outfit' }}>მანქანების გაქირავება</Text>
+              <Text style={{ fontSize: 18, fontWeight: '500', color: '#111827', fontFamily: 'HelveticaMedium', textTransform: 'uppercase' }}>მანქანების გაქირავება</Text>
             </View>
           </View>
           <TouchableOpacity onPress={() => {
@@ -2107,7 +1816,7 @@ export default function TabOneScreen() {
         >
           {rentalCarsLoading ? (
             <View style={{ padding: 20, alignItems: 'center' }}>
-              <Text style={{ color: colors.secondary, fontFamily: 'Outfit' }}>მანქანების ჩატვირთვა...</Text>
+              <Text style={{ color: colors.secondary, fontFamily: 'HelveticaMedium', textTransform: 'uppercase' }}>მანქანების ჩატვირთვა...</Text>
             </View>
           ) : (
             rentalCars.map((car) => (
@@ -2145,7 +1854,7 @@ export default function TabOneScreen() {
           <Text style={styles.sectionTitle}>პოპულარული სერვისები</Text>
           <TouchableOpacity onPress={() => {
             analyticsService.logButtonClick('ყველა სერვისი', 'მთავარი', undefined, user?.id);
-            router.push('/all-services');
+            router.push('/services-new' as any);
           }}>
             <Text style={styles.sectionAction}>ყველა</Text>
           </TouchableOpacity>
@@ -2161,7 +1870,7 @@ export default function TabOneScreen() {
         >
           {loading ? (
             <View style={{ padding: 20, alignItems: 'center' }}>
-              <Text style={{ color: colors.secondary, fontFamily: 'Outfit' }}>სერვისების ჩატვირთვა...</Text>
+              <Text style={{ color: colors.secondary, fontFamily: 'HelveticaMedium', textTransform: 'uppercase' }}>სერვისების ჩატვირთვა...</Text>
             </View>
           ) : (
             popularServices.map((service) => (
@@ -2384,8 +2093,9 @@ export default function TabOneScreen() {
         activeOpacity={0.85}
         onPress={() => setShowFeedbackModal(true)}
       >
-        <Ionicons name="chatbubble-ellipses" size={22} color="#FFFFFF" />
-        <Text style={feedbackStyles.fabText}>მოგვწერე</Text>
+        <View style={feedbackStyles.fabIconWrap}>
+          <Ionicons name="chatbubble-ellipses" size={20} color="#FFFFFF" />
+        </View>
       </TouchableOpacity>
 
       {/* Feedback Modal */}
@@ -2396,46 +2106,107 @@ export default function TabOneScreen() {
         onRequestClose={() => setShowFeedbackModal(false)}
       >
         <View style={feedbackStyles.modalOverlay}>
-          <View style={[feedbackStyles.modalCard, { backgroundColor: colors.card || '#FFFFFF' }]}>
+          <View style={feedbackStyles.modalCard}>
+            {/* Header */}
             <View style={feedbackStyles.modalHeader}>
-              <Text style={[feedbackStyles.modalTitle, { color: colors.text }]}>მოგვწერე იდეა ან პრობლემა</Text>
+              <View style={feedbackStyles.modalHeaderLeft}>
+                <View style={feedbackStyles.modalIconCircle}>
+                  <Ionicons name="mail-open" size={22} color="#6366F1" />
+                </View>
+                <View>
+                  <Text style={feedbackStyles.modalTitle}>უკუკავშირი</Text>
+                  <Text style={feedbackStyles.modalSubtitle}>გააზიარე აზრი ან დააფიქსირე პრობლემა</Text>
+                </View>
+              </View>
               <TouchableOpacity onPress={() => setShowFeedbackModal(false)} style={feedbackStyles.closeButton}>
-                <Ionicons name="close" size={20} color={colors.secondary} />
+                <Ionicons name="close" size={22} color="#9CA3AF" />
               </TouchableOpacity>
             </View>
-            <Text style={[feedbackStyles.modalSubtitle, { color: colors.secondary }]}>
-              მოგვწერე რა მოგეწონა ან რა უნდა გამოვასწოროთ. შენი სახელი: {user?.name || 'სტუმარი'}
-            </Text>
+
+            {/* Category chips */}
+            <Text style={feedbackStyles.categoryLabel}>აირჩიე კატეგორია</Text>
+            <View style={feedbackStyles.categoryRow}>
+              {feedbackCategories.map((cat) => (
+                <TouchableOpacity
+                  key={cat.key}
+                  style={[
+                    feedbackStyles.categoryChip,
+                    feedbackCategory === cat.key && { backgroundColor: cat.color, borderColor: cat.color },
+                  ]}
+                  onPress={() => setFeedbackCategory(cat.key)}
+                  activeOpacity={0.7}
+                >
+                  <Ionicons
+                    name={cat.icon as any}
+                    size={16}
+                    color={feedbackCategory === cat.key ? '#FFFFFF' : cat.color}
+                  />
+                  <Text style={[
+                    feedbackStyles.categoryChipText,
+                    feedbackCategory === cat.key && { color: '#FFFFFF' },
+                  ]}>
+                    {cat.label}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+
+            {/* Text input */}
             <TextInput
-              style={[
-                feedbackStyles.textArea,
-                { borderColor: colors.border, color: colors.text, backgroundColor: colors.surface },
-              ]}
-              placeholder="აღწერე პრობლემა ან გააზიარე იდეა..."
-              placeholderTextColor={colors.placeholder}
+              style={feedbackStyles.textArea}
+              placeholder={
+                feedbackCategory === 'problem' ? 'აღწერე რა პრობლემა შეგხვდა...' :
+                feedbackCategory === 'idea' ? 'გაგვიზიარე შენი იდეა...' :
+                feedbackCategory === 'question' ? 'დასვი შეკითხვა...' :
+                'დაწერე შეტყობინება...'
+              }
+              placeholderTextColor="#9CA3AF"
               value={feedbackText}
               onChangeText={setFeedbackText}
               multiline
-              numberOfLines={4}
+              numberOfLines={5}
+              textAlignVertical="top"
             />
+
+            {/* User info hint */}
+            <View style={feedbackStyles.userHint}>
+              <Ionicons name="person-circle-outline" size={16} color="#9CA3AF" />
+              <Text style={feedbackStyles.userHintText}>
+                {user?.name || 'სტუმარი'} • {user?.phone || 'ტელეფონი არ არის'}
+              </Text>
+            </View>
+
+            {/* Actions */}
             <View style={feedbackStyles.modalActions}>
               <TouchableOpacity
-                style={[feedbackStyles.secondaryBtn, { borderColor: colors.border }]}
+                style={feedbackStyles.secondaryBtn}
                 onPress={() => {
                   setFeedbackText('');
+                  setFeedbackCategory('problem');
                   setShowFeedbackModal(false);
                 }}
                 disabled={sendingFeedback}
               >
-                <Text style={[feedbackStyles.secondaryText, { color: colors.secondary }]}>დახურვა</Text>
+                <Text style={feedbackStyles.secondaryText}>გაუქმება</Text>
               </TouchableOpacity>
               <TouchableOpacity
-                style={[feedbackStyles.primaryBtn, sendingFeedback && { opacity: 0.7 }]}
+                style={[
+                  feedbackStyles.primaryBtn,
+                  sendingFeedback && { opacity: 0.6 },
+                  !feedbackText.trim() && { opacity: 0.4 },
+                ]}
                 onPress={handleSendFeedback}
-                disabled={sendingFeedback}
-                activeOpacity={0.85}
+                disabled={sendingFeedback || !feedbackText.trim()}
+                activeOpacity={0.8}
               >
-                <Text style={feedbackStyles.primaryText}>{sendingFeedback ? 'იგზავნება...' : 'გაგზავნა'}</Text>
+                {sendingFeedback ? (
+                  <Text style={feedbackStyles.primaryText}>იგზავნება...</Text>
+                ) : (
+                  <>
+                    <Ionicons name="send" size={16} color="#FFFFFF" />
+                    <Text style={feedbackStyles.primaryText}>გაგზავნა</Text>
+                  </>
+                )}
               </TouchableOpacity>
             </View>
           </View>
@@ -2451,97 +2222,164 @@ const feedbackStyles = StyleSheet.create({
     position: 'absolute',
     right: 18,
     bottom: 24,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    backgroundColor: '#111827',
-    paddingHorizontal: 16,
-    paddingVertical: 14,
-    borderRadius: 30,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.25,
-    shadowRadius: 10,
-    elevation: 8,
     zIndex: 50,
   },
-  fabText: {
-    color: '#FFFFFF',
-    fontFamily: 'Outfit',
-    fontWeight: '700',
-    fontSize: 14,
+  fabIconWrap: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: '#111827',
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.3,
+    shadowRadius: 12,
+    elevation: 10,
   },
   modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.35)',
+    backgroundColor: 'rgba(0,0,0,0.6)',
     alignItems: 'center',
     justifyContent: 'center',
-    paddingHorizontal: 24,
+    padding: 24,
   },
   modalCard: {
     width: '100%',
-    borderRadius: 18,
-    padding: 18,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.2,
-    shadowRadius: 12,
-    elevation: 6,
+    maxWidth: 400,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 24,
+    padding: 24,
   },
   modalHeader: {
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     justifyContent: 'space-between',
-    marginBottom: 8,
+    marginBottom: 20,
+  },
+  modalHeaderLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    flex: 1,
+  },
+  modalIconCircle: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: '#EDE9FE',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   modalTitle: {
     fontSize: 18,
-    fontFamily: 'Outfit',
-    fontWeight: '700',
+    fontFamily: 'HelveticaMedium',
+    textTransform: 'uppercase',
+    fontWeight: '800',
+    color: '#111827',
   },
   modalSubtitle: {
-    fontSize: 13,
-    fontFamily: 'Outfit',
-    marginBottom: 12,
+    fontSize: 12,
+    fontFamily: 'HelveticaMedium',
+    color: '#6B7280',
+    marginTop: 2,
   },
   closeButton: {
-    padding: 6,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: '#F3F4F6',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  textArea: {
-    borderWidth: 1,
-    borderRadius: 12,
-    padding: 12,
-    minHeight: 120,
-    textAlignVertical: 'top',
-    fontFamily: 'Outfit',
-    fontSize: 14,
-    marginBottom: 12,
+  categoryLabel: {
+    fontSize: 12,
+    fontFamily: 'HelveticaMedium',
+    textTransform: 'uppercase',
+    fontWeight: '700',
+    color: '#6B7280',
+    marginBottom: 10,
   },
-  modalActions: {
+  categoryRow: {
     flexDirection: 'row',
-    justifyContent: 'flex-end',
-    gap: 10,
+    flexWrap: 'wrap',
+    gap: 8,
+    marginBottom: 16,
   },
-  secondaryBtn: {
+  categoryChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
     paddingHorizontal: 14,
     paddingVertical: 10,
     borderRadius: 12,
-    borderWidth: 1,
+    backgroundColor: '#F9FAFB',
+    borderWidth: 1.5,
+    borderColor: '#E5E7EB',
+  },
+  categoryChipText: {
+    fontSize: 13,
+    fontFamily: 'HelveticaMedium',
+    fontWeight: '600',
+    color: '#374151',
+  },
+  textArea: {
+    borderWidth: 1.5,
+    borderColor: '#E5E7EB',
+    borderRadius: 14,
+    padding: 14,
+    minHeight: 120,
+    textAlignVertical: 'top',
+    fontFamily: 'HelveticaMedium',
+    fontSize: 14,
+    color: '#111827',
+    backgroundColor: '#F9FAFB',
+    marginBottom: 12,
+  },
+  userHint: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginBottom: 20,
+  },
+  userHintText: {
+    fontSize: 12,
+    fontFamily: 'HelveticaMedium',
+    color: '#9CA3AF',
+  },
+  modalActions: {
+    flexDirection: 'row',
+    gap: 10,
+  },
+  secondaryBtn: {
+    flex: 1,
+    paddingVertical: 14,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#F3F4F6',
   },
   secondaryText: {
-    fontFamily: 'Outfit',
+    fontFamily: 'HelveticaMedium',
+    textTransform: 'uppercase',
     fontSize: 14,
     fontWeight: '600',
+    color: '#6B7280',
   },
   primaryBtn: {
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    borderRadius: 12,
+    flex: 1,
+    flexDirection: 'row',
+    paddingVertical: 14,
+    borderRadius: 14,
     backgroundColor: '#111827',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
   },
   primaryText: {
     color: '#FFFFFF',
-    fontFamily: 'Outfit',
+    fontFamily: 'HelveticaMedium',
+    textTransform: 'uppercase',
     fontSize: 14,
     fontWeight: '700',
   },

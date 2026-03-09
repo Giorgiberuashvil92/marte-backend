@@ -5,18 +5,14 @@ import {
   Text,
   ScrollView,
   TouchableOpacity,
-  Dimensions,
   RefreshControl,
+  StatusBar,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { LinearGradient } from 'expo-linear-gradient';
-import Colors from '../../constants/Colors';
-import { useColorScheme } from '../../components/useColorScheme';
-import { useRouter } from 'expo-router';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { useRouter, Stack } from 'expo-router';
 import { useUser } from '../../contexts/UserContext';
 import API_BASE_URL from '../../config/api';
-
-const { width } = Dimensions.get('window');
 
 type AnyObject = { [key: string]: any };
 interface NotificationItem {
@@ -31,8 +27,6 @@ interface NotificationItem {
 
 export default function NotificationsScreen() {
   const router = useRouter();
-  const colorScheme = useColorScheme();
-  const colors = Colors[colorScheme ?? 'light'];
   const { user } = useUser();
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
   const [filter, setFilter] = useState<'all' | 'unread' | 'chat' | 'offer' | 'booking' | 'system'>('all');
@@ -195,8 +189,10 @@ export default function NotificationsScreen() {
       router.push(`/offers/${offerId || requestId}`);
     } else if (screen === 'Bookings' && carwashId) {
       router.push(`/bookings/${carwashId}`);
-    } else if (screen === 'Chat' && (chatId || offerId)) {
-      router.push(`/chat/${chatId || offerId}`);
+    } else if (screen === 'Chat') {
+      const partId = d.partnerId as string | undefined;
+      if (requestId && partId) router.push(`/chat/${requestId}/${partId}`);
+      else router.push('/chats');
     } else {
       // თუ სპეციფიკური route არ არის, უბრალოდ არაფერი არ ვაკეთებთ
       // რათა არ მოხდეს უსასრულო მარყუჟი
@@ -205,382 +201,353 @@ export default function NotificationsScreen() {
   };
 
   return (
-    <View style={styles.container}>
-      <LinearGradient
-        colors={['#0F172A', '#111827', '#0B1220']}
-        style={StyleSheet.absoluteFillObject}
-      />
-      
-      {/* Header */}
-      <View style={styles.header}>
-        <View style={styles.headerTop}>
-          <TouchableOpacity 
-            style={styles.backButton}
-            onPress={() => router.back()}
-            activeOpacity={0.7}
-          >
-            <Ionicons name="arrow-back" size={24} color="#111827" />
-          </TouchableOpacity>
-          <Text style={styles.headerTitle}>შეტყობინებები</Text>
-          {unreadCount > 0 && (
-            <TouchableOpacity 
-              style={styles.markAllButton}
-              onPress={markAllAsRead}
-              activeOpacity={0.7}
-            >
-              <Text style={styles.markAllText}>ყველა წაკითხული</Text>
+    <>
+      <Stack.Screen options={{ headerShown: false }} />
+      <SafeAreaView style={styles.safeArea} edges={['top']}>
+        <StatusBar barStyle="dark-content" backgroundColor="#FFFFFF" />
+        <View style={styles.container}>
+          {/* Header */}
+          <View style={styles.header}>
+            <TouchableOpacity style={styles.headerBtn} onPress={() => router.back()} activeOpacity={0.7}>
+              <Ionicons name="arrow-back" size={22} color="#111827" />
             </TouchableOpacity>
-          )}
-        </View>
-        
-        {unreadCount > 0 && (
-          <View style={styles.unreadBadge}>
-            <Text style={styles.unreadText}>
-              {unreadCount} ახალი შეტყობინება
-            </Text>
-          </View>
-        )}
-      </View>
-
-      {/* Filters */}
-      <View style={styles.filtersRow}>
-        {([
-          { key: 'all', label: 'ყველა' },
-          { key: 'unread', label: 'არაკითხული' },
-          { key: 'chat', label: 'ჩათი' },
-          { key: 'offer', label: 'შეთავ.' },
-          { key: 'booking', label: 'ჯავშ.' },
-          { key: 'system', label: 'სისტემა' },
-        ] as const).map(tab => (
-          <TouchableOpacity
-            key={tab.key}
-            style={[styles.filterChip, filter === tab.key && styles.filterChipActive]}
-            onPress={() => { setFilter(tab.key); setDisplayCount(20); }}
-            activeOpacity={0.8}
-          >
-            <Text style={[styles.filterChipText, filter === tab.key && styles.filterChipTextActive]}>
-              {tab.label}
-            </Text>
-          </TouchableOpacity>
-        ))}
-      </View>
-
-      {/* Notifications List */}
-      <ScrollView 
-        style={styles.content}
-        showsVerticalScrollIndicator={false}
-        refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
-        }
-      >
-        {grouped.map(section => (
-          <View key={section.title} style={styles.sectionBlock}>
-            <Text style={styles.sectionTitleText}>{section.title}</Text>
-            {section.items.map((notification) => (
-              <TouchableOpacity
-                key={notification.id}
-                style={[
-                  styles.notificationCard,
-                  !notification.isRead && styles.unreadCard
-                ]}
-                onPress={() => {
-                  markAsRead(notification.id);
-                  handleNavigation(notification.data);
-                }}
-                activeOpacity={0.7}
-              >
-                <View style={styles.notificationContent}>
-                  {(() => { const p = getIconPalette(notification.type); return (
-                    <View style={[
-                      styles.iconContainer,
-                      { backgroundColor: p.bg, borderColor: p.border }
-                    ]}>
-                      <Ionicons 
-                        name={getNotificationIcon(notification.type) as any} 
-                        size={20} 
-                        color={p.color} 
-                      />
-                    </View>
-                  ); })()}
-                  
-                  <View style={styles.notificationText}>
-                    <View style={styles.titleRow}>
-                      <Text style={[
-                        styles.notificationTitle,
-                        !notification.isRead && styles.unreadTitle
-                      ]}>
-                        {notification.title}
-                      </Text>
-                      {!notification.isRead && (
-                        <View style={styles.unreadDot} />
-                      )}
-                    </View>
-                    <Text style={styles.notificationMessage}>
-                      {notification.message}
-                    </Text>
-                    <Text style={styles.timestamp}>
-                      {formatTimeAgo(notification.createdAt)}
-                    </Text>
+            <Text style={styles.headerTitle}>შეტყობინებები</Text>
+            <View style={styles.headerRight}>
+              {unreadCount > 0 ? (
+                <>
+                  <TouchableOpacity style={styles.markAllBtn} onPress={markAllAsRead} activeOpacity={0.7}>
+                    <Text style={styles.markAllBtnText}>ყველა წაკითხული</Text>
+                  </TouchableOpacity>
+                  <View style={styles.unreadBadge}>
+                    <Text style={styles.unreadBadgeText}>{unreadCount}</Text>
                   </View>
-                </View>
+                </>
+              ) : (
+                <View style={styles.headerBtn} />
+              )}
+            </View>
+          </View>
+
+          {/* Filters */}
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            style={styles.filtersScroll}
+            contentContainerStyle={styles.filtersContent}
+          >
+            {([
+              { key: 'all', label: 'ყველა' },
+              { key: 'unread', label: 'წაუკითხავი' },
+              { key: 'system', label: 'ჩათი' },
+              { key: 'offer', label: 'შეთავაზება' },
+
+            ] as const).map((tab) => (
+              <TouchableOpacity
+                key={tab.key}
+                style={[styles.filterChip, filter === tab.key && styles.filterChipActive]}
+                onPress={() => { setFilter(tab.key); setDisplayCount(20); }}
+                activeOpacity={0.8}
+              >
+                <Text style={[styles.filterChipText, filter === tab.key && styles.filterChipTextActive]}>
+                  {tab.label}
+                </Text>
               </TouchableOpacity>
             ))}
-          </View>
-        ))}
+          </ScrollView>
 
-        {filtered.length > displayCount && (
-          <TouchableOpacity
-            style={styles.loadMoreButton}
-            onPress={() => setDisplayCount(c => c + 20)}
-            activeOpacity={0.8}
+          {/* List */}
+          <ScrollView
+            style={styles.scrollView}
+            contentContainerStyle={styles.scrollContent}
+            showsVerticalScrollIndicator={false}
+            refreshControl={
+              <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#111827" colors={['#111827']} />
+            }
           >
-            <Text style={styles.loadMoreText}>მეტის ჩატვირთვა</Text>
-          </TouchableOpacity>
-        )}
-        
-        {notifications.length === 0 && (
-          <View style={styles.emptyState}>
-            <Ionicons name="notifications-outline" size={64} color="#9CA3AF" />
-            <Text style={styles.emptyTitle}>შეტყობინებები არ არის</Text>
-            <Text style={styles.emptySubtitle}>
-              ახალი შეტყობინებები აქ გამოჩნდება
-            </Text>
-          </View>
-        )}
-      </ScrollView>
-    </View>
+            {grouped.map((section) => (
+              <View key={section.title} style={styles.sectionBlock}>
+                <Text style={styles.sectionTitle}>{section.title}</Text>
+                {section.items.map((notification) => {
+                  const p = getIconPalette(notification.type);
+                  return (
+                    <TouchableOpacity
+                      key={notification.id}
+                      style={[styles.card, !notification.isRead && styles.cardUnread]}
+                      onPress={() => {
+                        markAsRead(notification.id);
+                        handleNavigation(notification.data);
+                      }}
+                      activeOpacity={0.7}
+                    >
+                      <View style={[styles.iconWrap, { backgroundColor: p.bg }]}>
+                        <Ionicons name={getNotificationIcon(notification.type) as any} size={20} color={p.color} />
+                      </View>
+                      <View style={styles.cardBody}>
+                        <View style={styles.titleRow}>
+                          <Text style={[styles.cardTitle, !notification.isRead && styles.cardTitleUnread]} numberOfLines={1}>
+                            {notification.title}
+                          </Text>
+                          {!notification.isRead && <View style={styles.unreadDot} />}
+                        </View>
+                        <Text style={styles.cardMessage} numberOfLines={2}>{notification.message}</Text>
+                        <Text style={styles.timestamp}>{formatTimeAgo(notification.createdAt)}</Text>
+                      </View>
+                      <Ionicons name="chevron-forward" size={18} color="#9CA3AF" />
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+            ))}
+
+            {filtered.length > displayCount && (
+              <TouchableOpacity style={styles.loadMore} onPress={() => setDisplayCount((c) => c + 20)} activeOpacity={0.8}>
+                <Text style={styles.loadMoreText}>მეტის ჩატვირთვა</Text>
+              </TouchableOpacity>
+            )}
+
+            {notifications.length === 0 && (
+              <View style={styles.emptyState}>
+                <View style={styles.emptyIconWrap}>
+                  <Ionicons name="notifications-outline" size={40} color="#9CA3AF" />
+                </View>
+                <Text style={styles.emptyTitle}>შეტყობინებები არ არის</Text>
+                <Text style={styles.emptySubtitle}>ახალი შეტყობინებები აქ გამოჩნდება</Text>
+              </View>
+            )}
+          </ScrollView>
+        </View>
+      </SafeAreaView>
+    </>
   );
 }
 
 const styles = StyleSheet.create({
+  safeArea: {
+    flex: 1,
+    backgroundColor: '#FFFFFF',
+  },
   container: {
     flex: 1,
+    backgroundColor: '#FFFFFF',
   },
   header: {
-    paddingTop: 60,
-    paddingHorizontal: 20,
-    paddingBottom: 20,
-    backgroundColor: 'rgba(17,24,39,0.35)',
-    borderBottomWidth: 1,
-    borderBottomColor: 'rgba(148,163,184,0.25)',
-  },
-  headerTop: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
+    paddingHorizontal: 20,
+    paddingVertical: 14,
+    backgroundColor: '#FFFFFF',
+    borderBottomWidth: 1,
+    borderBottomColor: '#E5E7EB',
   },
-  backButton: {
-    padding: 8,
-    borderRadius: 20,
-    backgroundColor: 'rgba(255,255,255,0.12)',
-    borderWidth: 1,
-    borderColor: 'rgba(148,163,184,0.35)',
+  headerBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: 14,
+    backgroundColor: '#F3F4F6',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   headerTitle: {
-    fontSize: 20,
+    fontSize: 15,
+    fontFamily: 'HelveticaMedium',
+    color: '#111827',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
     fontWeight: '700',
-    color: '#F8FAFC',
-    fontFamily: 'Outfit',
   },
-  markAllButton: {
+  headerRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  markAllBtn: {
     paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 16,
-    backgroundColor: 'rgba(255,255,255,0.16)',
-    borderWidth: 1,
-    borderColor: 'rgba(148,163,184,0.35)',
+    paddingVertical: 10,
+    borderRadius: 14,
+    backgroundColor: '#F3F4F6',
   },
-  markAllText: {
+  markAllBtnText: {
     fontSize: 12,
+    fontFamily: 'HelveticaMedium',
+    color: '#111827',
     fontWeight: '600',
-    color: '#F8FAFC',
-    fontFamily: 'Outfit',
   },
   unreadBadge: {
-    marginTop: 12,
-    paddingHorizontal: 12,
-    paddingVertical: 6,
+    minWidth: 24,
+    height: 24,
     borderRadius: 12,
-    backgroundColor: 'rgba(255,255,255,0.10)',
-    alignSelf: 'flex-start',
-    borderWidth: 1,
-    borderColor: 'rgba(148,163,184,0.25)',
+    backgroundColor: '#111827',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 8,
   },
-  unreadText: {
+  unreadBadgeText: {
     fontSize: 12,
-    fontWeight: '600',
-    color: '#E5E7EB',
-    fontFamily: 'Outfit',
+    fontFamily: 'HelveticaMedium',
+    fontWeight: '700',
+    color: '#FFFFFF',
   },
-  content: {
-    flex: 1,
-    paddingHorizontal: 20,
+  filtersScroll: {
+    maxHeight: 48,
+    borderBottomWidth: 1,
+    borderBottomColor: '#E5E7EB',
   },
-  filtersRow: {
+  filtersContent: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
+    alignItems: 'center',
+    gap: 10,
     paddingHorizontal: 20,
-    paddingBottom: 8,
-    paddingTop: 8,
+    paddingVertical: 14,
   },
   filterChip: {
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 14,
-    backgroundColor: 'rgba(255,255,255,0.08)',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 20,
+    backgroundColor: '#F3F4F6',
     borderWidth: 1,
-    borderColor: 'rgba(148,163,184,0.25)',
+    borderColor: '#E5E7EB',
+    minHeight: 34,
+    justifyContent: 'center',
+    flexShrink: 0,
   },
   filterChipActive: {
-    backgroundColor: 'rgba(99,102,241,0.18)',
-    borderColor: '#6366F1',
+    backgroundColor: '#111827',
+    borderColor: '#111827',
   },
   filterChipText: {
-    color: '#E5E7EB',
-    fontFamily: 'Outfit',
-    fontSize: 12,
+    fontSize: 13,
+    fontFamily: 'HelveticaMedium',
+    color: '#111827',
     fontWeight: '600',
   },
   filterChipTextActive: {
     color: '#FFFFFF',
   },
-  sectionBlock: {
-    paddingTop: 8,
+  scrollView: {
+    flex: 1,
   },
-  sectionTitleText: {
-    color: '#94A3B8',
-    fontFamily: 'Outfit',
+  scrollContent: {
+    paddingHorizontal: 20,
+    paddingTop: 16,
+    paddingBottom: 40,
+  },
+  sectionBlock: {
+    marginBottom: 8,
+  },
+  sectionTitle: {
     fontSize: 12,
-    fontWeight: '700',
-    letterSpacing: 0.4,
-    marginTop: 8,
-    marginBottom: 6,
+    fontFamily: 'HelveticaMedium',
+    color: '#9CA3AF',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+    marginBottom: 10,
     paddingHorizontal: 4,
   },
-  loadMoreButton: {
-    alignSelf: 'center',
-    marginTop: 8,
-    marginBottom: 16,
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    borderRadius: 12,
-    backgroundColor: 'rgba(255,255,255,0.12)',
-    borderWidth: 1,
-    borderColor: 'rgba(148,163,184,0.35)',
-  },
-  loadMoreText: {
-    color: '#F8FAFC',
-    fontFamily: 'Outfit',
-    fontSize: 13,
-    fontWeight: '700',
-  },
-  notificationCard: {
-    backgroundColor: 'rgba(255,255,255,0.12)',
-    borderRadius: 16,
-    marginTop: 12,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.12,
-    shadowRadius: 12,
-    elevation: 3,
-    borderWidth: 1,
-    borderColor: 'rgba(148,163,184,0.30)',
-  },
-  unreadCard: {
-    borderColor: '#6366F1',
-    borderWidth: 1.5,
-    backgroundColor: 'rgba(99,102,241,0.12)',
-  },
-  notificationContent: {
+  card: {
     flexDirection: 'row',
-    padding: 16,
-    alignItems: 'flex-start',
+    alignItems: 'center',
+    backgroundColor: '#FFFFFF',
+    borderRadius: 12,
+    padding: 14,
+    marginBottom: 10,
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    gap: 12,
   },
-  iconContainer: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
+  cardUnread: {
+    backgroundColor: '#F9FAFB',
+    borderColor: '#E5E7EB',
+  },
+  iconWrap: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
     alignItems: 'center',
     justifyContent: 'center',
-    marginRight: 12,
-    borderWidth: 1,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.06,
-    shadowRadius: 4,
   },
-  notificationText: {
+  cardBody: {
     flex: 1,
+    minWidth: 0,
   },
   titleRow: {
     flexDirection: 'row',
     alignItems: 'center',
     marginBottom: 4,
   },
-  notificationTitle: {
-    fontSize: 16,
+  cardTitle: {
+    fontSize: 15,
+    fontFamily: 'HelveticaMedium',
+    color: '#111827',
     fontWeight: '600',
-    color: '#E5E7EB',
-    fontFamily: 'Outfit',
     flex: 1,
   },
-  unreadTitle: {
-    color: '#F8FAFC',
+  cardTitleUnread: {
     fontWeight: '700',
   },
   unreadDot: {
     width: 8,
     height: 8,
     borderRadius: 4,
-    backgroundColor: '#6366F1',
-    marginLeft: 8,
+    backgroundColor: '#111827',
+    marginLeft: 6,
   },
-  notificationMessage: {
-    fontSize: 14,
-    color: '#CBD5E1',
-    lineHeight: 20,
-    marginBottom: 8,
-    fontFamily: 'Outfit',
+  cardMessage: {
+    fontSize: 13,
+    fontFamily: 'HelveticaMedium',
+    color: '#6B7280',
+    lineHeight: 18,
+    marginBottom: 4,
   },
   timestamp: {
     fontSize: 12,
-    color: '#A1A1AA',
-    fontFamily: 'Outfit',
+    fontFamily: 'HelveticaMedium',
+    color: '#9CA3AF',
   },
-  actionButton: {
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 12,
-    marginLeft: 12,
-    alignSelf: 'flex-start',
-    backgroundColor: '#111827',
+  loadMore: {
+    alignSelf: 'center',
+    marginTop: 16,
+    marginBottom: 8,
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+    borderRadius: 14,
+    backgroundColor: '#F3F4F6',
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
   },
-  actionButtonText: {
-    fontSize: 12,
+  loadMoreText: {
+    fontSize: 13,
+    fontFamily: 'HelveticaMedium',
+    color: '#111827',
     fontWeight: '600',
-    color: '#FFFFFF',
-    fontFamily: 'Outfit',
   },
   emptyState: {
-    flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    paddingTop: 100,
+    paddingVertical: 60,
+  },
+  emptyIconWrap: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    backgroundColor: '#E5E7EB',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 16,
   },
   emptyTitle: {
     fontSize: 18,
-    fontWeight: '600',
-    color: '#374151',
-    marginTop: 16,
+    fontFamily: 'HelveticaMedium',
+    textTransform: 'uppercase',
+    fontWeight: '700',
+    color: '#111827',
     marginBottom: 8,
-    fontFamily: 'Outfit',
   },
   emptySubtitle: {
     fontSize: 14,
+    fontFamily: 'HelveticaMedium',
     color: '#6B7280',
     textAlign: 'center',
-    fontFamily: 'Outfit',
   },
 });
 

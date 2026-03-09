@@ -9,6 +9,7 @@ import { useUser } from '../contexts/UserContext';
 import { addItemApi } from '../services/addItemApi';
 import { LinearGradient } from 'expo-linear-gradient';
 import AddModal, { AddModalType } from '../components/ui/AddModal';
+import { DetailItem } from '../components/ui/DetailModal';
 
 const { width } = Dimensions.get('window');
 const GAP = 16;
@@ -146,12 +147,44 @@ export default function MechanicsScreen() {
     fetchData();
   };
 
+  // Convert mechanic to DetailItem
+  const convertMechanicToDetailItem = (mechanic: MechanicDTO): DetailItem => {
+    const mainImage = mechanic.avatar || 'https://images.unsplash.com/photo-1581094271901-8022df4466b9?q=80&w=600&auto=format&fit=crop';
+    return {
+      id: mechanic.id,
+      title: mechanic.name,
+      name: mechanic.name,
+      description: mechanic.description || `${mechanic.name} - პროფესიონალი ${mechanic.specialty}`,
+      image: mainImage,
+      type: 'mechanic',
+      location: mechanic.location,
+      phone: mechanic.phone,
+      address: mechanic.address,
+      gallery: mechanic.avatar ? [mechanic.avatar] : [mainImage],
+      services: mechanic.services,
+      specifications: {
+        'სპეციალობა': mechanic.specialty || '',
+        'გამოცდილება': mechanic.experience || '',
+        'მდებარეობა': mechanic.location || '',
+        'ტელეფონი': mechanic.phone || '',
+        'რეიტინგი': mechanic.rating ? `${mechanic.rating.toFixed(1)} ⭐` : '',
+        'რევიუები': mechanic.reviews ? `${mechanic.reviews} რევიუ` : '',
+      }
+    };
+  };
+
   const renderVIPMechanic = ({ item }: { item: MechanicDTO }) => {
     const img = item.avatar || 'https://images.unsplash.com/photo-1581094271901-8022df4466b9?q=80&w=600&auto=format&fit=crop';
     return (
       <TouchableOpacity
         style={styles.vipMechanicCard}
-        onPress={() => router.push(`/mechanic/${item.id}`)}
+        onPress={() => {
+          const detailItem = convertMechanicToDetailItem(item);
+          router.push({
+            pathname: '/parts-details-new',
+            params: { item: JSON.stringify(detailItem) }
+          });
+        }}
         activeOpacity={0.7}
       >
         <ImageBackground
@@ -192,7 +225,13 @@ export default function MechanicsScreen() {
       <TouchableOpacity 
         style={styles.modernMechanicCard} 
         activeOpacity={0.9} 
-        onPress={() => router.push(`/mechanic/${item.id}`)}
+        onPress={() => {
+          const detailItem = convertMechanicToDetailItem(item);
+          router.push({
+            pathname: '/parts-details-new',
+            params: { item: JSON.stringify(detailItem) }
+          });
+        }}
       >
         <ImageBackground 
           source={{ uri: img }}

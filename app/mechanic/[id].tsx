@@ -136,12 +136,12 @@ export default function MechanicDetailsScreen() {
                   <View style={styles.dot} />
                   <Text style={styles.badgeText}>{data.isAvailable ? 'ხელმისაწვდომი' : 'დაკავებული'}</Text>
                 </View>
-                {typeof data.rating === 'number' && (
+                {typeof data.rating === 'number' ? (
                   <View style={styles.ratingLight}>
                     <Ionicons name="star" size={14} color="#F59E0B" />
                     <Text style={styles.ratingLightText}>{data.rating.toFixed(1)}</Text>
                   </View>
-                )}
+                ) : null}
               </View>
             )}
           </View>
@@ -157,15 +157,15 @@ export default function MechanicDetailsScreen() {
               <View style={styles.headerBlock}>
                 <Text style={styles.title}>{data.name}</Text>
                 <Text style={styles.sub}>{data.specialty}</Text>
-                {typeof data.rating === 'number' && data.rating > 0 && (
+                {typeof data.rating === 'number' && data.rating > 0 ? (
                   <View style={styles.ratingRow}>
                     <Ionicons name="star" size={16} color="#F59E0B" />
                     <Text style={styles.ratingText}>{data.rating.toFixed(1)}</Text>
-                    {data.reviews && data.reviews > 0 && (
+                    {data.reviews != null && data.reviews > 0 ? (
                       <Text style={styles.reviewsCount}>({data.reviews} მიმოხილვა)</Text>
-                    )}
+                    ) : null}
                   </View>
-                )}
+                ) : null}
               </View>
 
               <View style={styles.infoGrid}>
@@ -250,11 +250,11 @@ export default function MechanicDetailsScreen() {
                               <Ionicons name="image-outline" size={32} color="#9CA3AF" />
                             </View>
                           )}
-                          {p?.title && (
+                          {p?.title ? (
                             <View style={styles.projectTitleWrap}>
-                              <Text numberOfLines={2} style={styles.projectTitle}>{p.title}</Text>
+                              <Text numberOfLines={2} style={styles.projectTitle}>{String(p.title)}</Text>
                             </View>
-                          )}
+                          ) : null}
                         </TouchableOpacity>
                       ))}
                     </View>
@@ -278,7 +278,7 @@ export default function MechanicDetailsScreen() {
                               </View>
                               <View>
                                 <Text style={styles.reviewUser}>{r.user || 'მომხმარებელი'}</Text>
-                                {r.date && <Text style={styles.reviewDate}>{r.date}</Text>}
+                                {r.date != null && r.date !== '' ? <Text style={styles.reviewDate}>{String(r.date)}</Text> : null}
                               </View>
                             </View>
                             <View style={styles.reviewStars}>
@@ -287,7 +287,7 @@ export default function MechanicDetailsScreen() {
                               ))}
                             </View>
                           </View>
-                          {r.comment && <Text style={styles.reviewText}>{r.comment}</Text>}
+                          {r.comment ? <Text style={styles.reviewText}>{String(r.comment)}</Text> : null}
                         </View>
                       ))}
                     </View>

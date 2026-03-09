@@ -3,23 +3,17 @@ import {
   View,
   Text,
   StyleSheet,
-  SafeAreaView,
   ScrollView,
-  Pressable,
-  Image,
-  Animated,
-  Dimensions,
+  TouchableOpacity,
   StatusBar,
   RefreshControl,
+  ActivityIndicator,
 } from 'react-native';
-import { LinearGradient } from 'expo-linear-gradient';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { router } from 'expo-router';
-import { Stack } from 'expo-router';
+import { router, Stack } from 'expo-router';
 import { useUser } from '@/contexts/UserContext';
 import { requestsApi } from '@/services/requestsApi';
-
-const { width } = Dimensions.get('window');
 
 type Chat = {
   id: string;
@@ -34,66 +28,49 @@ type Chat = {
 
 export default function ChatsScreen() {
   const { user } = useUser();
-  const [chats, setChats] = useState<Chat[]>([]);
+  const [chats, setChats] = useState<(Chat & { requestId: string; partnerId: string })[]>([]);
   const [loading, setLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
-  const [fadeAnim] = useState(new Animated.Value(0));
-  const [slideAnim] = useState(new Animated.Value(50));
 
   useEffect(() => {
     fetchChats();
-    
-    Animated.parallel([
-      Animated.timing(fadeAnim, {
-        toValue: 1,
-        duration: 800,
-        useNativeDriver: true,
-      }),
-      Animated.timing(slideAnim, {
-        toValue: 0,
-        duration: 600,
-        useNativeDriver: true,
-      }),
-    ]).start();
   }, [user?.id]);
 
   const fetchChats = async () => {
     if (!user?.id) return;
-    
     setLoading(true);
     try {
       const userRequests = await requestsApi.getRequests(user.id);
-      
-      const chatPromises = userRequests.map(async (request) => {
+      const byConversation = new Map<string, Chat & { requestId: string; partnerId: string }>();
+      for (const request of userRequests) {
         try {
           const offers = await requestsApi.getOffers(request.id);
-          
-          if (offers.length > 0) {
-            // Create a chat for each offer (or combine them into one chat per request)
-            const latestOffer = offers[0]; // Get the latest offer
-            return {
-              id: `chat-${request.id}`,
-              name: latestOffer.providerName,
-              lastMessage: `შეთავაზება: ${latestOffer.priceGEL}₾ | ${latestOffer.etaMin} წუთი`,
-              timestamp: latestOffer.updatedAt,
-              unreadCount: latestOffer.status === 'pending' ? 1 : 0,
+          for (const offer of offers) {
+            const partnerId = offer.partnerId ?? '';
+            const key = `${request.id}-${partnerId}`;
+            const existing = byConversation.get(key);
+            const item: Chat & { requestId: string; partnerId: string } = {
+              id: `chat-${key}`,
+              name: offer.providerName || 'მაღაზია',
+              lastMessage: `შეთავაზება: ${offer.priceGEL}₾ | ${offer.etaMin} წუთი`,
+              timestamp: offer.updatedAt,
+              unreadCount: offer.status === 'pending' ? 1 : 0,
               avatar: undefined,
-              isOnline: Math.random() > 0.5, // Mock online status
+              isOnline: Math.random() > 0.5,
               service: getServiceFromRequest(request) as 'parts' | 'mechanic' | 'tow' | 'rental',
               requestId: request.id,
-            } as Chat & { requestId: string };
+              partnerId,
+            };
+            if (!existing || offer.updatedAt > existing.timestamp) {
+              byConversation.set(key, item);
+            }
           }
-          return null;
-        } catch (error) {
-          console.error('Error fetching offers for request:', error);
-          return null;
+        } catch {
+          /* skip */
         }
-      });
-
-      const resolvedChats = await Promise.all(chatPromises);
-      setChats(resolvedChats.filter(chat => chat !== null) as Chat[]);
-    } catch (error) {
-      console.error('Failed to fetch chats:', error);
+      }
+      setChats(Array.from(byConversation.values()));
+    } catch {
       setChats([]);
     } finally {
       setLoading(false);
@@ -101,479 +78,331 @@ export default function ChatsScreen() {
   };
 
   const getServiceFromRequest = (request: any) => {
-    const partName = request.partName?.toLowerCase() || '';
-    
-    if (partName.includes('ბრეიკ') || partName.includes('ლამპ') || 
-        partName.includes('ფარ') || partName.includes('ძრავ') ||
-        partName.includes('ჰაერ') || partName.includes('ფილტრ')) {
-      return 'parts';
-    } else if (partName.includes('შემოწმებ') || partName.includes('რემონტ') || 
-               partName.includes('დიაგნოსტ')) {
-      return 'mechanic';
-    } else if (partName.includes('ევაკუაცია') || partName.includes('ევაკუატორ')) {
-      return 'tow';
-    } else if (partName.includes('ქირაობა') || partName.includes('rental')) {
-      return 'rental';
-    }
-    
-    return 'parts'; // Default
+    const partName = (request.partName || '').toLowerCase();
+    if (/ბრეიკ|ლამპ|ფარ|ძრავ|ჰაერ|ფილტრ/.test(partName)) return 'parts';
+    if (/შემოწმებ|რემონტ|დიაგნოსტ/.test(partName)) return 'mechanic';
+    if (/ევაკუაცია|ევაკუატორ/.test(partName)) return 'tow';
+    if (/ქირაობა|rental/.test(partName)) return 'rental';
+    return 'parts';
   };
 
   const onRefresh = () => {
     setRefreshing(true);
     fetchChats();
-    setTimeout(() => setRefreshing(false), 1000);
+    setTimeout(() => setRefreshing(false), 800);
   };
 
   const getServiceIcon = (service: string) => {
     switch (service) {
-      case 'parts':
-        return 'construct-outline';
-      case 'mechanic':
-        return 'build-outline';
-      case 'tow':
-        return 'car-outline';
-      case 'rental':
-        return 'car-sport-outline';
-      default:
-        return 'chatbubbles-outline';
+      case 'parts': return 'construct-outline';
+      case 'mechanic': return 'build-outline';
+      case 'tow': return 'car-outline';
+      case 'rental': return 'car-sport-outline';
+      default: return 'chatbubbles-outline';
     }
   };
 
   const getServiceColor = (service: string) => {
     switch (service) {
-      case 'parts':
-        return '#10B981';
-      case 'mechanic':
-        return '#3B82F6';
-      case 'tow':
-        return '#F59E0B';
-      case 'rental':
-        return '#8B5CF6';
-      default:
-        return '#6366F1';
+      case 'parts': return '#10B981';
+      case 'mechanic': return '#3B82F6';
+      case 'tow': return '#F59E0B';
+      case 'rental': return '#8B5CF6';
+      default: return '#111827';
     }
   };
 
   const formatTime = (timestamp: number) => {
-    const now = Date.now();
-    const diff = now - timestamp;
-    
+    const diff = Date.now() - timestamp;
     if (diff < 60000) return 'ახლა';
     if (diff < 3600000) return `${Math.floor(diff / 60000)} წუთი`;
-    if (diff < 86400000) return `${Math.floor(diff / 3600000)} საათი`;
+    if (diff < 86400000) return `${Math.floor(diff / 3600000)} სთ`;
     return `${Math.floor(diff / 86400000)} დღე`;
   };
 
-  const handleChatPress = (chat: Chat) => {
-    router.push(`/chat/${chat.id}`);
+  const handleChatPress = (chat: Chat & { requestId: string; partnerId: string }) => {
+    router.push(`/chat/${chat.requestId}/${chat.partnerId}` as any);
   };
 
   return (
     <>
       <Stack.Screen options={{ headerShown: false }} />
-      <SafeAreaView style={styles.safeArea}>
-        <StatusBar barStyle="light-content" backgroundColor="transparent" translucent />
-      
-      <LinearGradient
-        colors={['rgba(255, 255, 255, 0.05)', 'rgba(255, 255, 255, 0.02)', 'rgba(255, 255, 255, 0.05)']}
-        style={styles.backgroundGradient}
-      >
-        <View style={styles.container}>
-          {/* Header */}
-          <Animated.View 
-            style={[
-              styles.header,
-              {
-                opacity: fadeAnim,
-                transform: [{ translateY: slideAnim }]
-              }
-            ]}
-          >
-            <Pressable
-              style={styles.backButton}
-              onPress={() => router.back()}
-            >
-              <Ionicons name="arrow-back" size={24} color="#FFFFFF" />
-            </Pressable>
-            
-            <Text style={styles.headerTitle}>ჩატები</Text>
-            
-            <Pressable style={styles.searchButton}>
-              <Ionicons name="search" size={20} color="#FFFFFF" />
-            </Pressable>
-          </Animated.View>
+      <View style={styles.container}>
+        <StatusBar barStyle="dark-content" backgroundColor="#FFFFFF" translucent />
 
-          {/* Chats List */}
-          <ScrollView
-            style={styles.chatsContainer}
-            contentContainerStyle={styles.chatsContent}
-            showsVerticalScrollIndicator={false}
-            refreshControl={
-              <RefreshControl
-                refreshing={refreshing}
-                onRefresh={onRefresh}
-                tintColor="#6366F1"
-                colors={['#6366F1']}
-              />
-            }
-          >
-            {chats.map((chat, index) => (
-              <Animated.View
-                key={chat.id}
-                style={[
-                  styles.chatWrapper,
-                  {
-                    opacity: fadeAnim,
-                    transform: [
-                      { 
-                        translateY: slideAnim.interpolate({
-                          inputRange: [0, 50],
-                          outputRange: [0, 20 + (index * 10)],
-                          extrapolate: 'clamp',
-                        })
-                      }
-                    ]
-                  }
-                ]}
+        {/* Top Bar */}
+        <View style={styles.topBar}>
+          <SafeAreaView edges={['top']}>
+            <View style={styles.topBarContent}>
+              <TouchableOpacity
+                style={styles.topBarButton}
+                onPress={() => router.back()}
+                activeOpacity={0.7}
               >
-                <Pressable
-                  style={styles.chatCard}
-                  onPress={() => handleChatPress(chat)}
-                >
-                  <LinearGradient
-                    colors={['rgba(59, 130, 246, 0.2)', 'rgba(29, 78, 216, 0.2)']}
-                    style={styles.chatGradient}
+                <Ionicons name="arrow-back" size={24} color="#111827" />
+              </TouchableOpacity>
+              <Text style={styles.topBarTitle}>ჩატები</Text>
+              <View style={styles.topBarButton} />
+            </View>
+          </SafeAreaView>
+        </View>
+
+        <ScrollView
+          style={styles.scrollView}
+          contentContainerStyle={styles.scrollContent}
+          showsVerticalScrollIndicator={false}
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={onRefresh}
+              tintColor="#111827"
+              colors={['#111827']}
+            />
+          }
+        >
+          {loading && chats.length === 0 ? (
+            <View style={styles.loadingState}>
+              <ActivityIndicator size="large" color="#111827" />
+              <Text style={styles.loadingText}>ჩატების ჩატვირთვა...</Text>
+            </View>
+          ) : chats.length === 0 ? (
+            <View style={styles.emptyState}>
+              <View style={styles.emptyIconWrap}>
+                <Ionicons name="chatbubbles-outline" size={56} color="#6B7280" />
+              </View>
+              <Text style={styles.emptyTitle}>ჩატები ჯერ არ არის</Text>
+              <Text style={styles.emptySubtitle}>
+                როცა შეთავაზებებს მიიღებთ, ჩატები აქ გამოჩნდება
+              </Text>
+            </View>
+          ) : (
+            <View style={styles.listWrap}>
+              {chats.map((chat) => {
+                const serviceColor = getServiceColor(chat.service);
+                const hasUnread = chat.unreadCount > 0;
+                const isNow = Date.now() - chat.timestamp < 60000;
+                // lastMessage ფორმატი: "შეთავაზება: 50₾ | 30 წუთი" – ფასი ფერად გამოვაჩინოთ
+                const msgMatch = chat.lastMessage.match(/^შეთავაზება:\s*([\d.]+)₾\s*\|\s*(.+)$/);
+                return (
+                  <TouchableOpacity
+                    key={chat.id}
+                    style={[
+                      styles.chatCard,
+                      { borderLeftWidth: 4, borderLeftColor: serviceColor },
+                      hasUnread && styles.chatCardUnread,
+                    ]}
+                    onPress={() => handleChatPress(chat)}
+                    activeOpacity={0.7}
                   >
-                    <View style={styles.chatContent}>
-                      {/* Avatar */}
-                      <View style={styles.avatarContainer}>
-                        <View style={[styles.avatar, { backgroundColor: `${getServiceColor(chat.service)}20` }]}>
-                          <Ionicons 
-                            name={getServiceIcon(chat.service) as any} 
-                            size={24} 
-                            color={getServiceColor(chat.service)} 
-                          />
-                        </View>
-                        {chat.isOnline && <View style={styles.onlineIndicator} />}
+                    <View style={[styles.avatarWrap, { backgroundColor: `${serviceColor}22` }]}>
+                      <Ionicons
+                        name={getServiceIcon(chat.service) as any}
+                        size={26}
+                        color={serviceColor}
+                      />
+                    </View>
+                    <View style={styles.chatInfo}>
+                      <View style={styles.chatRow}>
+                        <Text style={styles.chatName} numberOfLines={1}>{chat.name}</Text>
+                        <Text style={[styles.chatTime, isNow && { color: serviceColor, fontWeight: '700' }]}>
+                          {formatTime(chat.timestamp)}
+                        </Text>
                       </View>
-
-                      {/* Chat Info */}
-                      <View style={styles.chatInfo}>
-                        <View style={styles.chatHeader}>
-                          <Text style={styles.chatName}>{chat.name}</Text>
-                          <Text style={styles.chatTime}>{formatTime(chat.timestamp)}</Text>
-                        </View>
-                        
-                        <View style={styles.chatFooter}>
+                      <View style={styles.chatRow}>
+                        {msgMatch ? (
                           <Text style={styles.lastMessage} numberOfLines={1}>
-                            {chat.lastMessage}
+                            <Text style={styles.lastMessageLabel}>შეთავაზება: </Text>
+                            <Text style={[styles.lastMessagePrice, { color: serviceColor }]}>{msgMatch[1]}₾</Text>
+                            <Text style={styles.lastMessageLabel}> | {msgMatch[2]}</Text>
                           </Text>
-                          {chat.unreadCount > 0 && (
-                            <View style={styles.unreadBadge}>
-                              <Text style={styles.unreadText}>{chat.unreadCount}</Text>
-                            </View>
-                          )}
-                        </View>
-                      </View>
-
-                      {/* Arrow */}
-                      <View style={styles.arrowContainer}>
-                        <Ionicons name="chevron-forward" size={20} color="rgba(255, 255, 255, 0.4)" />
+                        ) : (
+                          <Text style={styles.lastMessage} numberOfLines={1}>{chat.lastMessage}</Text>
+                        )}
+                        {hasUnread && (
+                          <View style={styles.unreadBadge}>
+                            <Text style={styles.unreadText}>{chat.unreadCount > 99 ? '99+' : chat.unreadCount}</Text>
+                          </View>
+                        )}
                       </View>
                     </View>
-                  </LinearGradient>
-                </Pressable>
-              </Animated.View>
-            ))}
-            
-            {loading && (
-              <Animated.View 
-                style={[
-                  styles.loadingState,
-                  {
-                    opacity: fadeAnim,
-                    transform: [{ translateY: slideAnim }]
-                  }
-                ]}
-              >
-                <View style={styles.loadingIconContainer}>
-                  <Ionicons name="hourglass-outline" size={32} color="#6366F1" />
-                </View>
-                <Text style={styles.loadingText}>ჩატების ჩატვირთვა...</Text>
-              </Animated.View>
-            )}
-            
-            {chats.length === 0 && !loading && (
-              <Animated.View 
-                style={[
-                  styles.emptyState,
-                  {
-                    opacity: fadeAnim,
-                    transform: [{ translateY: slideAnim }]
-                  }
-                ]}
-              >
-                <View style={styles.emptyIconContainer}>
-                  <Ionicons name="chatbubbles-outline" size={48} color="#6366F1" />
-                </View>
-                <Text style={styles.emptyTitle}>ჩატები ჯერ არ არის</Text>
-                <Text style={styles.emptySubtitle}>
-                  როცა შეთავაზებებს მიიღებთ, ჩატები აქ გამოჩნდება
-                </Text>
-              </Animated.View>
-            )}
-          </ScrollView>
-
-          {/* New Chat Button */}
-          <Animated.View 
-            style={[
-              styles.newChatButton,
-              {
-                opacity: fadeAnim,
-                transform: [{ translateY: slideAnim }]
-              }
-            ]}
-          >
-            <Pressable
-              style={styles.newChatPressable}
-              onPress={() => router.push('/ai-chat')}
-            >
-              <LinearGradient
-                colors={['#3B82F6', '#2563EB']}
-                style={styles.newChatGradient}
-              >
-                <Ionicons name="add" size={24} color="#FFFFFF" />
-              </LinearGradient>
-            </Pressable>
-          </Animated.View>
-        </View>
-      </LinearGradient>
-    </SafeAreaView>
+                    <Ionicons name="chevron-forward" size={22} color={serviceColor} />
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+          )}
+          <View style={{ height: 40 }} />
+        </ScrollView>
+      </View>
     </>
   );
 }
 
 const styles = StyleSheet.create({
-  safeArea: {
-    flex: 1,
-    backgroundColor: '#0A0A0A',
-  },
-  backgroundGradient: {
-    flex: 1,
-  },
   container: {
     flex: 1,
+    backgroundColor: '#FFFFFF',
   },
-
-  // Header
-  header: {
+  topBar: {
+    backgroundColor: '#FFFFFF',
+    paddingBottom: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#E5E7EB',
+  },
+  topBarContent: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: 20,
-    paddingVertical: 16,
-    backgroundColor: 'rgba(59, 130, 246, 0.1)',
-    borderBottomWidth: 1,
-    borderBottomColor: 'rgba(59, 130, 246, 0.2)',
+    paddingTop: 8,
   },
-  backButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: 'rgba(59, 130, 246, 0.2)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  headerTitle: {
-    fontSize: 20,
-    color: '#FFFFFF',
+  topBarTitle: {
+    fontSize: 18,
+    fontFamily: 'HelveticaMedium',
+    textTransform: 'uppercase',
     fontWeight: '700',
+    color: '#111827',
+    flex: 1,
+    textAlign: 'center',
   },
-  searchButton: {
+  topBarButton: {
     width: 40,
     height: 40,
     borderRadius: 20,
-    backgroundColor: 'rgba(59, 130, 246, 0.2)',
+    backgroundColor: '#F3F4F6',
     alignItems: 'center',
     justifyContent: 'center',
   },
-
-  // Chats
-  chatsContainer: {
+  scrollView: {
     flex: 1,
   },
-  chatsContent: {
-    paddingVertical: 20,
+  scrollContent: {
+    paddingHorizontal: 20,
+    paddingTop: 16,
+  },
+  listWrap: {
     gap: 12,
   },
-  chatWrapper: {
-    paddingHorizontal: 20,
-  },
   chatCard: {
-    borderRadius: 16,
-    overflow: 'hidden',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 12,
-    elevation: 6,
-  },
-  chatGradient: {
-    padding: 16,
-  },
-  chatContent: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 16,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 12,
+    padding: 14,
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    borderLeftWidth: 4,
+    borderLeftColor: '#E5E7EB',
+    gap: 12,
   },
-  avatarContainer: {
-    position: 'relative',
+  chatCardUnread: {
+    backgroundColor: '#FFFBEB',
+    borderColor: '#FDE68A',
   },
-  avatar: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
+  avatarWrap: {
+    width: 52,
+    height: 52,
+    borderRadius: 26,
     alignItems: 'center',
     justifyContent: 'center',
-    borderWidth: 2,
-    borderColor: 'rgba(255, 255, 255, 0.1)',
-  },
-  onlineIndicator: {
-    position: 'absolute',
-    bottom: 2,
-    right: 2,
-    width: 16,
-    height: 16,
-    borderRadius: 8,
-    backgroundColor: '#10B981',
-    borderWidth: 2,
-    borderColor: '#0A0A0A',
   },
   chatInfo: {
     flex: 1,
-    gap: 6,
+    minWidth: 0,
+    gap: 4,
   },
-  chatHeader: {
+  chatRow: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 8,
   },
   chatName: {
-    fontSize: 16,
-    color: '#FFFFFF',
-    fontWeight: '600',
+    fontSize: 15,
+    fontFamily: 'HelveticaMedium',
+    textTransform: 'uppercase',
+    fontWeight: '700',
+    color: '#111827',
     flex: 1,
   },
   chatTime: {
     fontSize: 12,
-    color: 'rgba(255, 255, 255, 0.5)',
+    fontFamily: 'HelveticaMedium',
+    textTransform: 'uppercase',
+    color: '#6B7280',
     fontWeight: '500',
   },
-  chatFooter: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
   lastMessage: {
-    fontSize: 14,
-    color: 'rgba(255, 255, 255, 0.7)',
-    fontWeight: '400',
+    fontSize: 13,
+    fontFamily: 'HelveticaMedium',
+    color: '#6B7280',
+    fontWeight: '500',
     flex: 1,
+  },
+  lastMessageLabel: {
+    color: '#6B7280',
+    fontWeight: '500',
+  },
+  lastMessagePrice: {
+    fontWeight: '700',
   },
   unreadBadge: {
     backgroundColor: '#EF4444',
-    borderRadius: 12,
-    minWidth: 24,
-    height: 24,
+    borderRadius: 10,
+    minWidth: 20,
+    height: 20,
     alignItems: 'center',
     justifyContent: 'center',
-    paddingHorizontal: 8,
+    paddingHorizontal: 6,
   },
   unreadText: {
-    fontSize: 12,
+    fontSize: 11,
+    fontFamily: 'HelveticaMedium',
+    fontWeight: '700',
     color: '#FFFFFF',
-    fontWeight: '600',
   },
-  arrowContainer: {
-    width: 32,
-    height: 32,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-
-  // New Chat Button
-  newChatButton: {
-    position: 'absolute',
-    bottom: 30,
-    right: 20,
-  },
-  newChatPressable: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    overflow: 'hidden',
-    shadowColor: '#3B82F6',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.4,
-    shadowRadius: 12,
-    elevation: 8,
-  },
-  newChatGradient: {
-    width: '100%',
-    height: '100%',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-
-  // Empty State
   emptyState: {
     alignItems: 'center',
     justifyContent: 'center',
     paddingVertical: 60,
-    gap: 16,
+    paddingHorizontal: 32,
   },
-  emptyIconContainer: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
-    backgroundColor: 'rgba(99, 102, 241, 0.2)',
+  emptyIconWrap: {
+    width: 88,
+    height: 88,
+    borderRadius: 44,
+    backgroundColor: '#E5E7EB',
     alignItems: 'center',
     justifyContent: 'center',
+    marginBottom: 20,
   },
   emptyTitle: {
-    fontSize: 20,
-    color: '#FFFFFF',
-    textAlign: 'center',
+    fontSize: 18,
+    fontFamily: 'HelveticaMedium',
+    textTransform: 'uppercase',
     fontWeight: '700',
+    color: '#111827',
+    textAlign: 'center',
+    marginBottom: 8,
   },
   emptySubtitle: {
     fontSize: 14,
-    color: '#9CA3AF',
+    fontFamily: 'HelveticaMedium',
+    color: '#6B7280',
     textAlign: 'center',
     lineHeight: 20,
-    fontWeight: '500',
   },
-
-  // Loading State
   loadingState: {
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 40,
+    paddingVertical: 48,
     gap: 12,
   },
-  loadingIconContainer: {
-    width: 60,
-    height: 60,
-    borderRadius: 30,
-    backgroundColor: 'rgba(99, 102, 241, 0.2)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
   loadingText: {
-    fontSize: 16,
-    color: '#6366F1',
-    textAlign: 'center',
-    fontWeight: '600',
+    fontSize: 14,
+    fontFamily: 'HelveticaMedium',
+    textTransform: 'uppercase',
+    color: '#6B7280',
+    fontWeight: '500',
   },
 });

@@ -396,7 +396,7 @@ export default function MechanicManagementScreen() {
             </Text>
             <TouchableOpacity
               style={styles.addButton}
-              onPress={() => router.push('/mechanics' as any)}
+              onPress={() => router.push('/mechanics-new' as any)}
             >
               <Ionicons name="add-circle" size={20} color="#FFFFFF" />
               <Text style={styles.addButtonText}>განცხადების დამატება</Text>

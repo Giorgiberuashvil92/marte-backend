@@ -538,7 +538,7 @@ const styles = StyleSheet.create({
     fontSize: 24,
     fontWeight: '700',
     color: '#111827',
-    fontFamily: 'FiraGO-Bold',
+    fontFamily: 'NotoSansGeorgian-Bold',
     textAlign: 'center',
   },
   scrollView: {
@@ -548,7 +548,7 @@ const styles = StyleSheet.create({
   description: {
     fontSize: 14,
     color: '#475569',
-    fontFamily: 'FiraGO-Regular',
+    fontFamily: 'NotoSansGeorgian-Regular',
     lineHeight: 22,
     marginBottom: 16,
   },
@@ -562,7 +562,7 @@ const styles = StyleSheet.create({
   readMoreText: {
     fontSize: 14,
     color: '#6366F1',
-    fontFamily: 'FiraGO-Medium',
+    fontFamily: 'NotoSansGeorgian-SemiBold',
     fontWeight: '600',
   },
   buttonContainer: {
@@ -585,7 +585,7 @@ const styles = StyleSheet.create({
   rejectButtonText: {
     fontSize: 14,
     color: '#64748B',
-    fontFamily: 'FiraGO-Medium',
+    fontFamily: 'NotoSansGeorgian-SemiBold',
     fontWeight: '600',
   },
   customizeButton: {
@@ -594,7 +594,7 @@ const styles = StyleSheet.create({
   customizeButtonText: {
     fontSize: 14,
     color: '#6366F1',
-    fontFamily: 'FiraGO-Medium',
+    fontFamily: 'NotoSansGeorgian-SemiBold',
     fontWeight: '600',
   },
   acceptButton: {
@@ -609,7 +609,7 @@ const styles = StyleSheet.create({
   acceptButtonText: {
     fontSize: 14,
     color: '#FFFFFF',
-    fontFamily: 'FiraGO-Bold',
+    fontFamily: 'NotoSansGeorgian-Bold',
     fontWeight: '700',
   },
   fullTextHeader: {
@@ -632,7 +632,7 @@ const styles = StyleSheet.create({
     fontSize: 20,
     fontWeight: '700',
     color: '#111827',
-    fontFamily: 'FiraGO-Bold',
+    fontFamily: 'NotoSansGeorgian-Bold',
     flex: 1,
     textAlign: 'center',
   },
@@ -653,7 +653,7 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: '700',
     color: '#111827',
-    fontFamily: 'FiraGO-Bold',
+    fontFamily: 'NotoSansGeorgian-Bold',
     marginTop: 8,
     marginBottom: 8,
   },
@@ -661,14 +661,14 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
     color: '#1E293B',
-    fontFamily: 'FiraGO-SemiBold',
+    fontFamily: 'NotoSansGeorgian-SemiBold',
     marginTop: 12,
     marginBottom: 8,
   },
   sectionText: {
     fontSize: 14,
     color: '#475569',
-    fontFamily: 'FiraGO-Regular',
+    fontFamily: 'NotoSansGeorgian-Regular',
     lineHeight: 22,
     marginBottom: 12,
   },
@@ -678,7 +678,7 @@ const styles = StyleSheet.create({
   backToBannerText: {
     fontSize: 14,
     color: '#FFFFFF',
-    fontFamily: 'FiraGO-Medium',
+    fontFamily: 'NotoSansGeorgian-SemiBold',
     fontWeight: '600',
   },
   preferencesContent: {
@@ -702,13 +702,13 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
     color: '#111827',
-    fontFamily: 'FiraGO-SemiBold',
+    fontFamily: 'NotoSansGeorgian-SemiBold',
     flex: 1,
   },
   preferenceDescription: {
     fontSize: 13,
     color: '#64748B',
-    fontFamily: 'FiraGO-Regular',
+    fontFamily: 'NotoSansGeorgian-Regular',
     lineHeight: 20,
   },
   toggle: {

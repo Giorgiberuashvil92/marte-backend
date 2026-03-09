@@ -3,6 +3,8 @@ import {
   View,
   Text,
   Modal,
+  KeyboardAvoidingView,
+  Keyboard,
   TouchableOpacity,
   ScrollView,
   TextInput,
@@ -11,7 +13,9 @@ import {
   StyleSheet,
   Alert,
   ActivityIndicator,
+  Platform,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { subscribeToLocation } from '../../utils/LocationBus';
 import { Ionicons } from '@expo/vector-icons';
@@ -35,6 +39,7 @@ export interface AddModalProps {
   onClose: () => void;
   onSave: (type: AddModalType, data: any) => void;
   defaultType?: AddModalType;
+  defaultFormData?: Record<string, any>;
 }
 
 interface AddModalStep {
@@ -42,7 +47,7 @@ interface AddModalStep {
   selectedType?: AddModalType;
 }
 
-const AddModal: React.FC<AddModalProps> = ({ visible, onClose, onSave, defaultType }) => {
+const AddModal: React.FC<AddModalProps> = ({ visible, onClose, onSave, defaultType, defaultFormData }) => {
   const { user } = useUser();
   const [currentStep, setCurrentStep] = useState<AddModalStep>({ 
     step: defaultType ? 'form' : 'type-selection',
@@ -56,6 +61,7 @@ const AddModal: React.FC<AddModalProps> = ({ visible, onClose, onSave, defaultTy
   const [hideModal, setHideModal] = useState(false);
   const [saving, setSaving] = useState(false);
   const [uploadProgress, setUploadProgress] = useState('');
+  const [keyboardHeight, setKeyboardHeight] = useState(0);
   const { updateUserRole, addToOwnedCarwashes } = useUser();
   
   // Car brands and models state
@@ -86,10 +92,10 @@ const AddModal: React.FC<AddModalProps> = ({ visible, onClose, onSave, defaultTy
       step: defaultType ? 'form' : 'type-selection',
       selectedType: defaultType
     });
-    setFormData({});
+    setFormData(defaultType ? (defaultFormData ?? {}) : {});
     setDismantlerTier('regular');
     setStoreTier('regular');
-  }, [defaultType]);
+  }, [defaultType, defaultFormData]);
   
   useEffect(() => {
     if (defaultType) {
@@ -97,13 +103,15 @@ const AddModal: React.FC<AddModalProps> = ({ visible, onClose, onSave, defaultTy
         step: 'form', 
         selectedType: defaultType 
       });
+      setFormData(defaultFormData ?? {});
     } else {
       setCurrentStep({ 
         step: 'type-selection',
         selectedType: undefined
       });
+      setFormData({});
     }
-  }, [defaultType]);
+  }, [defaultType, defaultFormData]);
   
   // Reset form when modal opens
   useEffect(() => {
@@ -111,6 +119,24 @@ const AddModal: React.FC<AddModalProps> = ({ visible, onClose, onSave, defaultTy
       resetModal();
     }
   }, [visible, resetModal]);
+
+  useEffect(() => {
+    const showEvent = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
+    const hideEvent = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
+
+    const showSub = Keyboard.addListener(showEvent as any, (e: any) => {
+      const h = e?.endCoordinates?.height ?? 0;
+      setKeyboardHeight(h);
+    });
+    const hideSub = Keyboard.addListener(hideEvent as any, () => {
+      setKeyboardHeight(0);
+    });
+
+    return () => {
+      showSub.remove();
+      hideSub.remove();
+    };
+  }, []);
   
   useEffect(() => {
     const unsub = subscribeToLocation((e) => {
@@ -166,8 +192,8 @@ const AddModal: React.FC<AddModalProps> = ({ visible, onClose, onSave, defaultTy
         return;
       }
 
-      // დაშლილების განცხადებისთვის გადახდა
-      const dismantlerPrice = dismantlerTier === 'vip' ? 20 : 5; // VIP: 20₾, ჩვეულებრივი: 5₾
+      
+      const dismantlerPrice = dismantlerTier === 'vip' ? 20 : 5; // VIP: 20₾,
       const orderId = `dismantler_${user?.id || 'guest'}_${Date.now()}`;
       
       router.push({
@@ -177,6 +203,7 @@ const AddModal: React.FC<AddModalProps> = ({ visible, onClose, onSave, defaultTy
           description: dismantlerTier === 'vip' ? 'VIP დაშლილების განცხადების დამატება' : 'დაშლილების განცხადების დამატება',
           context: 'dismantler',
           orderId: orderId,
+          isSubscription: 'false', // ეს არ არის subscription payment
           metadata: JSON.stringify({
             formData: formData,
             type: 'dismantler',
@@ -203,6 +230,7 @@ const AddModal: React.FC<AddModalProps> = ({ visible, onClose, onSave, defaultTy
           description: storeTier === 'vip' ? 'VIP მაღაზიის განცხადების დამატება' : 'მაღაზიის განცხადების დამატება',
           context: 'store',
           orderId: orderId,
+          isSubscription: 'false', // ეს არ არის subscription payment
           metadata: JSON.stringify({
             formData: formData,
             type: 'store',
@@ -218,8 +246,8 @@ const AddModal: React.FC<AddModalProps> = ({ visible, onClose, onSave, defaultTy
     }
 
     if (currentStep.selectedType === 'service') {
-      // ავტოსერვისის განცხადებისთვის გადახდა (20₾)
-      const servicePrice = 20;
+      // ავტოსერვისის განცხადებისთვის გადახდა (5₾)
+      const servicePrice = 5;
       const orderId = `service_${user?.id || 'guest'}_${Date.now()}`;
       
       router.push({
@@ -229,6 +257,7 @@ const AddModal: React.FC<AddModalProps> = ({ visible, onClose, onSave, defaultTy
           description: 'ავტოსერვისის განცხადების დამატება',
           context: 'service',
           orderId: orderId,
+          isSubscription: 'false', // ეს არ არის subscription payment
           metadata: JSON.stringify({
             formData: formData,
             type: 'service',
@@ -243,7 +272,7 @@ const AddModal: React.FC<AddModalProps> = ({ visible, onClose, onSave, defaultTy
     }
 
     if (currentStep.selectedType === 'mechanic') {
-      const mechanicPrice = 20;
+      const mechanicPrice = 5;
       const orderId = `mechanic_${user?.id || 'guest'}_${Date.now()}`;
       
       router.push({
@@ -253,6 +282,7 @@ const AddModal: React.FC<AddModalProps> = ({ visible, onClose, onSave, defaultTy
           description: 'ხელოსნის განცხადების დამატება',
           context: 'mechanic',
           orderId: orderId,
+          isSubscription: 'false', // ეს არ არის subscription payment
           metadata: JSON.stringify({
             formData: formData,
             type: 'mechanic',
@@ -554,19 +584,27 @@ const AddModal: React.FC<AddModalProps> = ({ visible, onClose, onSave, defaultTy
   const renderTypeSelection = () => (
     <>
       <View style={styles.header}>
-        <View style={styles.headerLeft}>
-        
-          <View>
-            <Text style={styles.headerTitle}>ახალი დამატება</Text>
-            <Text style={styles.headerSubtitle}>აირჩიეთ რას ამატებთ</Text>
+        <SafeAreaView edges={['top']}>
+          <View style={styles.headerContent}>
+            <View style={styles.headerLeft}>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.headerTitle}>ახალი დამატება</Text>
+                <Text style={styles.headerSubtitle}>აირჩიეთ რას ამატებთ</Text>
+              </View>
+            </View>
+            <TouchableOpacity style={styles.closeBtn} onPress={handleClose}>
+              <Ionicons name="close" size={24} color="#111827" />
+            </TouchableOpacity>
           </View>
-        </View>
-        <TouchableOpacity style={styles.closeBtn} onPress={handleClose}>
-          <Ionicons name="close" size={24} color="#6B7280" />
-        </TouchableOpacity>
+        </SafeAreaView>
       </View>
 
-      <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
+      <ScrollView
+        style={styles.content}
+        showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
+        contentContainerStyle={styles.contentContainer}
+      >
         <View style={styles.typeGrid}>
           <TouchableOpacity 
             style={styles.typeCard} 
@@ -580,7 +618,7 @@ const AddModal: React.FC<AddModalProps> = ({ visible, onClose, onSave, defaultTy
               <Text style={styles.typeTitle}>დაშლილების განცხადება</Text>
               <Text style={styles.typeDescription}>ავტომობილის დაშლა და ნაწილების გაყიდვა</Text>
             </View>
-            <Ionicons name="chevron-forward" size={20} color="#6B7280" />
+            <Ionicons name="chevron-forward" size={20} color="#9CA3AF" />
           </TouchableOpacity>
 
           <TouchableOpacity 
@@ -595,7 +633,7 @@ const AddModal: React.FC<AddModalProps> = ({ visible, onClose, onSave, defaultTy
               <Text style={styles.typeTitle}>ნაწილი</Text>
               <Text style={styles.typeDescription}>ავტონაწილის გაყიდვა ან შეძენა</Text>
             </View>
-            <Ionicons name="chevron-forward" size={20} color="#6B7280" />
+            <Ionicons name="chevron-forward" size={20} color="#9CA3AF" />
           </TouchableOpacity>
 
           <TouchableOpacity 
@@ -610,7 +648,7 @@ const AddModal: React.FC<AddModalProps> = ({ visible, onClose, onSave, defaultTy
               <Text style={styles.typeTitle}>მაღაზია</Text>
               <Text style={styles.typeDescription}>ავტონაწილების მაღაზიის რეგისტრაცია</Text>
             </View>
-            <Ionicons name="chevron-forward" size={20} color="#6B7280" />
+            <Ionicons name="chevron-forward" size={20} color="#9CA3AF" />
           </TouchableOpacity>
 
           <TouchableOpacity 
@@ -625,7 +663,7 @@ const AddModal: React.FC<AddModalProps> = ({ visible, onClose, onSave, defaultTy
               <Text style={styles.typeTitle}>სამრეცხაო</Text>
               <Text style={styles.typeDescription}>სამრეცხაოს ლოკაციის დამატება</Text>
             </View>
-            <Ionicons name="chevron-forward" size={20} color="#6B7280" />
+            <Ionicons name="chevron-forward" size={20} color="#9CA3AF" />
           </TouchableOpacity>
 
           <TouchableOpacity 
@@ -640,7 +678,7 @@ const AddModal: React.FC<AddModalProps> = ({ visible, onClose, onSave, defaultTy
               <Text style={styles.typeTitle}>ხელოსანი</Text>
               <Text style={styles.typeDescription}>მექანიკოსის ან ხელოსნის რეგისტრაცია</Text>
             </View>
-            <Ionicons name="chevron-forward" size={20} color="#6B7280" />
+            <Ionicons name="chevron-forward" size={20} color="#9CA3AF" />
           </TouchableOpacity>
         </View>
       </ScrollView>
@@ -665,7 +703,7 @@ const AddModal: React.FC<AddModalProps> = ({ visible, onClose, onSave, defaultTy
             { key: 'photos', label: 'ფოტოები', type: 'photo', required: false },
             { key: 'description', label: 'აღწერა', type: 'textarea', required: true, placeholder: 'მანქანის მდგომარეობა, რა ნაწილები გაყიდვაშია...' },
             { key: 'location', label: 'ქალაქი', type: 'select', required: true, options: ['თბილისი', 'ბათუმი', 'ქუთაისი', 'რუსთავი', 'გორი', 'ზუგდიდი', 'ფოთი', 'ახალქალაქი', 'ოზურგეთი', 'ტყიბული', 'სხვა'] },
-            { key: 'address', label: 'ზუსტი მისამართი', type: 'location', required: true},
+            { key: 'address', label: 'რუკა არჩნს', type: 'location', required: false},
             { key: 'phone', label: 'ტელეფონის ნომერი', type: 'phone', required: true, placeholder: '+995 XXX XXX XXX' },
           ]
         };
@@ -685,7 +723,7 @@ const AddModal: React.FC<AddModalProps> = ({ visible, onClose, onSave, defaultTy
             { key: 'price', label: 'ფასი (ლარი)', type: 'text', required: true, placeholder: 'მაგ. 150' },
             { key: 'images', label: 'ფოტოები', type: 'photo', required: false },
             { key: 'location', label: 'ქალაქი', type: 'select', required: true, options: ['თბილისი', 'ბათუმი', 'ქუთაისი', 'რუსთავი', 'გორი', 'ზუგდიდი', 'ფოთი', 'ახალქალაქი', 'ოზურგეთი', 'ტყიბული', 'სხვა'] },
-            { key: 'address', label: 'ზუსტი მისამართი (რუკიდან)', type: 'location', required: true, placeholder: 'დააჭირეთ "რუკა"-ს კოორდინატების დასამატებლად' },
+            { key: 'address', label: 'მისამართი', type: 'location', required: true, placeholder: 'დააჭირეთ "რუკა"-ს კოორდინატების დასამატებლად' },
             { key: 'description', label: 'აღწერა', type: 'textarea', required: true, placeholder: 'ნაწილის დეტალური აღწერა, მდგომარეობა, ფასდაკლების შესაძლებლობა...' },
           ]
         };
@@ -697,10 +735,10 @@ const AddModal: React.FC<AddModalProps> = ({ visible, onClose, onSave, defaultTy
             { key: 'name', label: 'კონტაქტი (სახელი)', type: 'text', required: true, placeholder: 'მაგ. ნიკა მელაძე' },
             { key: 'phone', label: 'ტელეფონის ნომერი', type: 'phone', required: true, placeholder: '+995 XXX XXX XXX' },
             { key: 'title', label: 'მაღაზიის სახელი', type: 'text', required: true, placeholder: 'მაგ. AutoParts.ge' },
-            { key: 'type', label: 'მაღაზიის ტიპი', type: 'select', required: true, options: ['ავტონაწილები', 'სამართ-დასახურებელი', 'რემონტი', 'სხვა'] },
+            { key: 'type', label: 'მაღაზიის ტიპი', type: 'select', required: true, options: ['დეტეილინგი', 'ავტონაწილები', 'სამრეცხაო', 'ავტოსერვისი', 'სხვა'] },
             { key: 'images', label: 'ფოტოები', type: 'photo', required: false },
             { key: 'location', label: 'ქალაქი', type: 'select', required: true, options: ['თბილისი', 'ბათუმი', 'ქუთაისი', 'რუსთავი', 'გორი', 'ზუგდიდი', 'ფოთი', 'ახალქალაქი', 'ოზურგეთი', 'ტყიბული', 'სხვა'] },
-            { key: 'address', label: 'ზუსტი მისამართი (რუკიდან)', type: 'location', required: true, placeholder: 'დააჭირეთ "რუკა"-ს კოორდინატების დასამატებლად' },
+            { key: 'address', label: 'მისამართი', type: 'location', required: false, placeholder: 'დააჭირეთ "რუკა"-ს კოორდინატების დასამატებლად' },
             { key: 'description', label: 'აღწერა', type: 'textarea', required: true, placeholder: 'მაღაზიის აღწერა, მიწოდებული პროდუქტები, სერვისები...' },
             { key: 'workingHours', label: 'სამუშაო საათები', type: 'text', required: false, placeholder: 'მაგ. 09:00-19:00 (ორშ-პარ)' },
           ]
@@ -714,7 +752,7 @@ const AddModal: React.FC<AddModalProps> = ({ visible, onClose, onSave, defaultTy
             { key: 'phone', label: 'ტელეფონის ნომერი', type: 'phone', required: true, placeholder: '+995 XXX XXX XXX' },
             { key: 'category', label: 'კატეგორია', type: 'select', required: true, options: ['Premium', 'Express', 'Luxury', 'Standard', 'Professional'] },
             { key: 'location', label: 'ქალაქი', type: 'select', required: true, options: ['თბილისი', 'ბათუმი', 'ქუთაისი', 'რუსთავი', 'გორი', 'ზუგდიდი', 'ფოთი', 'ახალქალაქი', 'ოზურგეთი', 'ტყიბული', 'სხვა'] },
-            { key: 'address', label: 'ზუსტი მისამართი (რუკიდან)', type: 'location', required: true, placeholder: 'დააჭირეთ "რუკა"-ს კოორდინატების დასამატებლად' },
+            { key: 'address', label: 'რუკა არჩნს', type: 'location', required: false, placeholder: 'დააჭირეთ "რუკა"-ს კოორდინატების დასამატებლად' },
             { key: 'price', label: 'ფასი (ლარი)', type: 'text', required: true, placeholder: 'მაგ. 25' },
             { key: 'rating', label: 'რეიტინგი', type: 'select', required: true, options: ['4.5', '4.6', '4.7', '4.8', '4.9', '5.0'] },
             { key: 'reviews', label: 'რევიუების რაოდენობა', type: 'text', required: true, placeholder: 'მაგ. 150' },
@@ -737,7 +775,7 @@ const AddModal: React.FC<AddModalProps> = ({ visible, onClose, onSave, defaultTy
             { key: 'phone', label: 'ტელეფონის ნომერი', type: 'phone', required: true, placeholder: '+995 XXX XXX XXX' },
             { key: 'specialty', label: 'სპეციალობა', type: 'select', required: true, options: ['ძრავი', 'შემუშავება', 'ელექტრო', 'გადაცემა', 'დიაგნოსტიკა', 'ზოგადი'] },
             { key: 'location', label: 'ქალაქი', type: 'select', required: true, options: ['თბილისი', 'ბათუმი', 'ქუთაისი', 'რუსთავი', 'გორი', 'ზუგდიდი', 'ფოთი', 'ახალქალაქი', 'ოზურგეთი', 'ტყიბული', 'სხვა'] },
-            { key: 'address', label: 'ზუსტი მისამართი (რუკიდან)', type: 'location', required: true, placeholder: 'დააჭირეთ "რუკა"-ს კოორდინატების დასამატებლად' },
+            { key: 'address', label: 'მისამართი', type: 'location', required: false, placeholder: 'დააჭირეთ "რუკა"-ს კოორდინატების დასამატებლად' },
             { key: 'experience', label: 'გამოცდილება', type: 'text', required: true, placeholder: 'მაგ. 5 წელი' },
             { key: 'services', label: 'სერვისები', type: 'textarea', required: true, placeholder: 'ძრავის შეკეთება, დიაგნოსტიკა, ელექტრო სისტემა...' },
             { key: 'avatar', label: 'ფოტო', type: 'photo', required: false },
@@ -750,10 +788,10 @@ const AddModal: React.FC<AddModalProps> = ({ visible, onClose, onSave, defaultTy
           icon: 'build',
           fields: [
             { key: 'name', label: 'სერვისის სახელი', type: 'text', required: true, placeholder: 'მაგ. ავტოსერვისი "პრემიუმ"' },
-            { key: 'category', label: 'კატეგორია', type: 'select', required: true, options: ['ავტოსერვისი', 'სამრეცხაო', 'დიაგნოსტიკა', 'შეკეთება', 'სხვა'] },
+            { key: 'category', label: 'კატეგორია', type: 'select', required: true, options: ['ევაკუატორი', 'ავტოსერვისი', 'სამრეცხაო', 'დიაგნოსტიკა', 'შეკეთება', 'სხვა'] },
             { key: 'phone', label: 'ტელეფონის ნომერი', type: 'phone', required: true, placeholder: '+995 XXX XXX XXX' },
             { key: 'location', label: 'ქალაქი', type: 'select', required: true, options: ['თბილისი', 'ბათუმი', 'ქუთაისი', 'რუსთავი', 'გორი', 'ზუგდიდი', 'ფოთი', 'ახალქალაქი', 'ოზურგეთი', 'ტყიბული', 'სხვა'] },
-            { key: 'address', label: 'ზუსტი მისამართი (რუკიდან)', type: 'location', required: true, placeholder: 'დააჭირეთ "რუკა"-ს კოორდინატების დასამატებლად' },
+            { key: 'address', label: 'მისამართი', type: 'location', required: false, placeholder: 'დააჭირეთ "რუკა"-ს კოორდინატების დასამატებლად' },
             { key: 'images', label: 'სურათები', type: 'photo', required: false },
             { key: 'services', label: 'სერვისების სია', type: 'textarea', required: true, placeholder: 'ძრავის შეკეთება, დიაგნოსტიკა, ელექტრო სისტემა...' },
             { key: 'workingHours', label: 'სამუშაო საათები', type: 'text', required: false, placeholder: 'მაგ. 09:00 - 18:00' },
@@ -771,26 +809,35 @@ const AddModal: React.FC<AddModalProps> = ({ visible, onClose, onSave, defaultTy
     return (
       <>
         <View style={styles.header}>
-          <View style={styles.headerLeft}>
-            {!defaultType && (
-              <TouchableOpacity style={styles.backBtn} onPress={handleBack}>
-                <Ionicons name="chevron-back" size={24} color="#3B82F6" />
+          <SafeAreaView edges={['top']}>
+            <View style={styles.headerContent}>
+              <View style={styles.headerLeft}>
+                {!defaultType && (
+                  <TouchableOpacity style={styles.backBtn} onPress={handleBack}>
+                    <Ionicons name="arrow-back" size={24} color="#111827" />
+                  </TouchableOpacity>
+                )}
+                <View style={styles.iconBadge}>
+                  <Ionicons name={config.icon as any} size={24} color="#111827" />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.headerTitle}>{config.title}</Text>
+                  <Text style={styles.headerSubtitle}>შეავსეთ ინფორმაცია</Text>
+                </View>
+              </View>
+              <TouchableOpacity style={styles.closeBtn} onPress={handleClose}>
+                <Ionicons name="close" size={24} color="#111827" />
               </TouchableOpacity>
-            )}
-            <View style={styles.iconBadge}>
-              <Ionicons name={config.icon as any} size={24} color="#3B82F6" />
             </View>
-            <View>
-              <Text style={styles.headerTitle}>{config.title}</Text>
-              <Text style={styles.headerSubtitle}>შეავსეთ ინფორმაცია</Text>
-            </View>
-          </View>
-          <TouchableOpacity style={styles.closeBtn} onPress={handleClose}>
-            <Ionicons name="close" size={24} color="#6B7280" />
-          </TouchableOpacity>
+          </SafeAreaView>
         </View>
 
-        <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
+        <ScrollView
+          style={styles.content}
+          showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
+          contentContainerStyle={styles.contentContainer}
+        >
           
           <View style={styles.formContainer}>
             {/* Dismantler Tier Selection - პირველ რიგში */}
@@ -811,7 +858,7 @@ const AddModal: React.FC<AddModalProps> = ({ visible, onClose, onSave, defaultTy
                   >
                     {dismantlerTier === 'regular' && (
                       <View style={styles.tierCheckmark}>
-                        <Ionicons name="checkmark-circle" size={20} color="#3B82F6" />
+                        <Ionicons name="checkmark-circle" size={20} color="#111827" />
                       </View>
                     )}
                     <View style={styles.tierContentHorizontal}>
@@ -913,7 +960,7 @@ const AddModal: React.FC<AddModalProps> = ({ visible, onClose, onSave, defaultTy
                   >
                     {storeTier === 'regular' && (
                       <View style={styles.tierCheckmark}>
-                        <Ionicons name="checkmark-circle" size={20} color="#3B82F6" />
+                        <Ionicons name="checkmark-circle" size={20} color="#111827" />
                       </View>
                     )}
                     <View style={styles.tierContentHorizontal}>
@@ -1027,7 +1074,7 @@ const AddModal: React.FC<AddModalProps> = ({ visible, onClose, onSave, defaultTy
                     <Ionicons 
                       name="chevron-down" 
                       size={20} 
-                      color={field.disabled ? "#D1D5DB" : "#6B7280"} 
+                      color={field.disabled ? "#D1D5DB" : "#9CA3AF"} 
                     />
                   </TouchableOpacity>
                 ) : field.type === 'photo' ? (
@@ -1083,7 +1130,7 @@ const AddModal: React.FC<AddModalProps> = ({ visible, onClose, onSave, defaultTy
                     {(formData.latitude && formData.longitude) && (
                       <View style={styles.coordinatesContainer}>
                         <View style={styles.coordinatesRow}>
-                          <Ionicons name="map" size={16} color="#10B981" />
+                          <Ionicons name="map" size={16} color="#111827" />
                           <Text style={styles.coordinatesLabel}>კოორდინატები:</Text>
                         </View>
                         <Text style={styles.coordinatesText}>
@@ -1131,7 +1178,8 @@ const AddModal: React.FC<AddModalProps> = ({ visible, onClose, onSave, defaultTy
           </View>
         </ScrollView>
 
-        <View style={styles.bottomActions}>
+        <View style={[styles.bottomActionsWrap, { bottom: keyboardHeight }]}>
+          <SafeAreaView edges={['bottom']} style={styles.bottomActions}>
           {currentStep.selectedType === 'dismantler' ? (
             <TouchableOpacity 
               style={styles.paymentBtn} 
@@ -1149,7 +1197,7 @@ const AddModal: React.FC<AddModalProps> = ({ visible, onClose, onSave, defaultTy
             >
               <Ionicons name="card" size={20} color="#FFFFFF" />
               <Text style={styles.paymentBtnText}>
-                გადახდა (20₾)
+                გადახდა (5₾)
               </Text>
             </TouchableOpacity>
           ) : currentStep.selectedType === 'mechanic' ? (
@@ -1159,7 +1207,7 @@ const AddModal: React.FC<AddModalProps> = ({ visible, onClose, onSave, defaultTy
             >
               <Ionicons name="card" size={20} color="#FFFFFF" />
               <Text style={styles.paymentBtnText}>
-                გადახდა (20₾/თვეში)
+                გადახდა (5₾/თვეში)
               </Text>
             </TouchableOpacity>
           ) : currentStep.selectedType === 'store' ? (
@@ -1191,6 +1239,7 @@ const AddModal: React.FC<AddModalProps> = ({ visible, onClose, onSave, defaultTy
               )}
             </TouchableOpacity>
           )}
+          </SafeAreaView>
         </View>
 
         {/* Dropdown Modal */}
@@ -1210,10 +1259,14 @@ const AddModal: React.FC<AddModalProps> = ({ visible, onClose, onSave, defaultTy
                   <View style={styles.dropdownHeader}>
                     <Text style={styles.dropdownTitle}>აირჩიეთ {field.label}</Text>
                     <TouchableOpacity onPress={() => setShowDropdown(null)}>
-                      <Ionicons name="close" size={24} color="#6B7280" />
+                      <Ionicons name="close" size={24} color="#111827" />
                     </TouchableOpacity>
                   </View>
-                  <ScrollView style={styles.dropdownList} showsVerticalScrollIndicator={false}>
+                  <ScrollView
+                    style={styles.dropdownList}
+                    showsVerticalScrollIndicator={false}
+                    keyboardShouldPersistTaps="handled"
+                  >
                     {field.options.map((option: any, index: number) => (
                       <TouchableOpacity
                         key={index}
@@ -1238,7 +1291,7 @@ const AddModal: React.FC<AddModalProps> = ({ visible, onClose, onSave, defaultTy
                           {option}
                         </Text>
                         {formData[field.key] === option && (
-                          <Ionicons name="checkmark" size={20} color="#3B82F6" />
+                          <Ionicons name="checkmark" size={20} color="#111827" />
                         )}
                       </TouchableOpacity>
                     ))}
@@ -1257,21 +1310,24 @@ const AddModal: React.FC<AddModalProps> = ({ visible, onClose, onSave, defaultTy
 
   return (
     <Modal visible={visible && !hideModal} animationType="slide" presentationStyle="pageSheet">
-      <View style={styles.container}>
+      <KeyboardAvoidingView
+        style={styles.container}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      >
         {currentStep.step === 'type-selection' ? renderTypeSelection() : renderForm()}
         
         {/* Upload Progress Overlay */}
         {saving && (
           <View style={styles.uploadOverlay}>
             <View style={styles.uploadModal}>
-              <ActivityIndicator size="large" color="#3B82F6" />
+              <ActivityIndicator size="large" color="#111827" />
               <Text style={styles.uploadTitle}>ინფორმაციის შენახვა</Text>
               <Text style={styles.uploadProgress}>{uploadProgress}</Text>
               <Text style={styles.uploadNote}>გთხოვთ მოითმინოთ...</Text>
             </View>
           </View>
         )}
-      </View>
+      </KeyboardAvoidingView>
     </Modal>
   );
 };
@@ -1279,17 +1335,20 @@ const AddModal: React.FC<AddModalProps> = ({ visible, onClose, onSave, defaultTy
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#F9FAFB',
+    backgroundColor: '#FFFFFF',
   },
   header: {
+    backgroundColor: '#FFFFFF',
+    paddingBottom: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#E5E7EB',
+  },
+  headerContent: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: 20,
-    paddingVertical: 16,
-    backgroundColor: '#FFFFFF',
-    borderBottomWidth: 1,
-    borderBottomColor: '#E5E7EB',
+    paddingTop: 8,
   },
   headerLeft: {
     flexDirection: 'row',
@@ -1306,22 +1365,27 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   iconBadge: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    backgroundColor: 'rgba(59, 130, 246, 0.1)',
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: '#F3F4F6',
     alignItems: 'center',
     justifyContent: 'center',
   },
   headerTitle: {
     fontSize: 18,
+    fontFamily: 'HelveticaMedium',
+    textTransform: 'uppercase',
     fontWeight: '700',
     color: '#111827',
   },
   headerSubtitle: {
-    fontSize: 14,
+    fontSize: 12,
+    fontFamily: 'HelveticaMedium',
+    textTransform: 'uppercase',
     color: '#6B7280',
     marginTop: 2,
+    fontWeight: '500',
   },
   closeBtn: {
     width: 40,
@@ -1334,61 +1398,72 @@ const styles = StyleSheet.create({
   content: {
     flex: 1,
     paddingHorizontal: 20,
+    backgroundColor: '#FFFFFF',
+  },
+  contentContainer: {
+    paddingBottom: 140,
   },
   
   // Type Selection
   typeGrid: {
     paddingVertical: 20,
-    gap: 16,
+    gap: 12,
   },
   typeCard: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: '#FFFFFF',
-    padding: 20,
-    borderRadius: 16,
+    padding: 12,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.05,
     shadowRadius: 8,
-    elevation: 3,
-    borderWidth: 1,
-    borderColor: '#F3F4F6',
+    elevation: 2,
   },
   typeIconContainer: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    backgroundColor: 'rgba(59, 130, 246, 0.1)',
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: '#F3F4F6',
     alignItems: 'center',
     justifyContent: 'center',
-    marginRight: 16,
+    marginRight: 12,
   },
   typeContent: {
     flex: 1,
   },
   typeTitle: {
-    fontSize: 16,
+    fontSize: 15,
+    fontFamily: 'HelveticaMedium',
+    textTransform: 'uppercase',
     fontWeight: '600',
     color: '#111827',
     marginBottom: 4,
   },
   typeDescription: {
-    fontSize: 14,
+    fontSize: 13,
+    fontFamily: 'HelveticaMedium',
+    textTransform: 'uppercase',
     color: '#6B7280',
-    lineHeight: 20,
+    fontWeight: '500',
+    lineHeight: 18,
   },
 
   // Form
   formContainer: {
     paddingVertical: 20,
-    gap: 20,
+    gap: 16,
   },
   fieldContainer: {
     gap: 8,
   },
   fieldLabel: {
     fontSize: 14,
+    fontFamily: 'HelveticaMedium',
+    textTransform: 'uppercase',
     fontWeight: '600',
     color: '#111827',
   },
@@ -1402,11 +1477,14 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     paddingHorizontal: 16,
     paddingVertical: 12,
-    fontSize: 16,
+    fontSize: 15,
+    fontFamily: 'HelveticaMedium',
+    textTransform: 'uppercase',
     color: '#111827',
+    fontWeight: '500',
   },
   textArea: {
-    height: 80,
+    height: 100,
     textAlignVertical: 'top',
   },
   selectInput: {
@@ -1421,13 +1499,16 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
   },
   selectInputDisabled: {
-    backgroundColor: '#F9FAFB',
+    backgroundColor: '#F3F4F6',
     borderColor: '#E5E7EB',
     opacity: 0.6,
   },
   selectText: {
-    fontSize: 16,
+    fontSize: 15,
+    fontFamily: 'HelveticaMedium',
+    textTransform: 'uppercase',
     color: '#111827',
+    fontWeight: '500',
     flex: 1,
   },
   selectTextDisabled: {
@@ -1482,10 +1563,10 @@ const styles = StyleSheet.create({
   coordinatesContainer: {
     marginTop: 8,
     padding: 12,
-    backgroundColor: '#F0FDF4',
+    backgroundColor: '#F3F4F6',
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: '#BBF7D0',
+    borderColor: '#E5E7EB',
   },
   coordinatesRow: {
     flexDirection: 'row',
@@ -1495,13 +1576,15 @@ const styles = StyleSheet.create({
   },
   coordinatesLabel: {
     fontSize: 13,
+    fontFamily: 'HelveticaMedium',
+    textTransform: 'uppercase',
     fontWeight: '600',
-    color: '#166534',
+    color: '#111827',
   },
   coordinatesText: {
     fontSize: 12,
     fontFamily: 'monospace',
-    color: '#15803D',
+    color: '#111827',
     marginBottom: 8,
   },
   clearLocationBtn: {
@@ -1514,6 +1597,8 @@ const styles = StyleSheet.create({
   },
   clearLocationText: {
     fontSize: 12,
+    fontFamily: 'HelveticaMedium',
+    textTransform: 'uppercase',
     fontWeight: '500',
     color: '#EF4444',
   },
@@ -1548,7 +1633,9 @@ const styles = StyleSheet.create({
   },
   dropdownTitle: {
     fontSize: 18,
-    fontWeight: '600',
+    fontFamily: 'HelveticaMedium',
+    textTransform: 'uppercase',
+    fontWeight: '700',
     color: '#111827',
   },
   dropdownList: {
@@ -1561,19 +1648,22 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     paddingVertical: 16,
     borderBottomWidth: 1,
-    borderBottomColor: '#F3F4F6',
+    borderBottomColor: '#E5E7EB',
   },
   dropdownOptionSelected: {
-    backgroundColor: '#F0F9FF',
+    backgroundColor: '#F3F4F6',
   },
   dropdownOptionText: {
-    fontSize: 16,
-    color: '#374151',
+    fontSize: 15,
+    fontFamily: 'HelveticaMedium',
+    textTransform: 'uppercase',
+    color: '#111827',
+    fontWeight: '500',
     flex: 1,
   },
   dropdownOptionTextSelected: {
-    color: '#3B82F6',
-    fontWeight: '600',
+    color: '#111827',
+    fontWeight: '700',
   },
 
   // Map Modal
@@ -1665,12 +1755,19 @@ const styles = StyleSheet.create({
   },
 
   // Bottom Actions
+  bottomActionsWrap: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: '#FFFFFF',
+    borderTopWidth: 1,
+    borderTopColor: '#E5E7EB',
+  },
   bottomActions: {
     backgroundColor: '#FFFFFF',
     paddingHorizontal: 20,
     paddingVertical: 16,
-    borderTopWidth: 1,
-    borderTopColor: '#E5E7EB',
   },
   saveBtn: {
     flexDirection: 'row',
@@ -1678,18 +1775,20 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     backgroundColor: '#111827',
     paddingVertical: 16,
-    borderRadius: 16,
+    borderRadius: 12,
     gap: 8,
-    shadowColor: '#111827',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.15,
-    shadowRadius: 12,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.3,
+    shadowRadius: 16,
     elevation: 8,
   },
   saveBtnText: {
     color: '#FFFFFF',
     fontSize: 16,
-    fontWeight: '600',
+    fontFamily: 'HelveticaMedium',
+    textTransform: 'uppercase',
+    fontWeight: '700',
   },
   saveBtnDisabled: {
     opacity: 0.7,
@@ -1700,18 +1799,20 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     backgroundColor: '#111827',
     paddingVertical: 16,
-    borderRadius: 16,
+    borderRadius: 12,
     gap: 8,
-    shadowColor: '#111827',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.15,
-    shadowRadius: 12,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.3,
+    shadowRadius: 16,
     elevation: 8,
   },
   paymentBtnText: {
     color: '#FFFFFF',
     fontSize: 16,
-    fontWeight: '600',
+    fontFamily: 'HelveticaMedium',
+    textTransform: 'uppercase',
+    fontWeight: '700',
   },
   
   // Tier Selection - Horizontal Layout
@@ -1737,26 +1838,26 @@ const styles = StyleSheet.create({
     elevation: 3,
   },
   tierOptionVipHorizontal: {
-    borderColor: '#F59E0B',
-    backgroundColor: '#FFFBEB',
+    borderColor: '#E5E7EB',
+    backgroundColor: '#FFFFFF',
   },
   tierOptionSelectedHorizontal: {
-    borderColor: '#3B82F6',
-    backgroundColor: '#EFF6FF',
-    borderWidth: 3,
-    shadowColor: '#3B82F6',
-    shadowOpacity: 0.2,
-    shadowRadius: 12,
-    elevation: 6,
+    borderColor: '#111827',
+    backgroundColor: '#F3F4F6',
+    borderWidth: 2,
+    shadowColor: '#111827',
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    elevation: 4,
   },
   tierOptionSelectedVipHorizontal: {
-    borderColor: '#F59E0B',
-    backgroundColor: '#FEF3C7',
-    borderWidth: 3,
-    shadowColor: '#F59E0B',
-    shadowOpacity: 0.3,
-    shadowRadius: 12,
-    elevation: 6,
+    borderColor: '#111827',
+    backgroundColor: '#F3F4F6',
+    borderWidth: 2,
+    shadowColor: '#111827',
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    elevation: 4,
   },
   tierCheckmark: {
     position: 'absolute',
@@ -1786,16 +1887,18 @@ const styles = StyleSheet.create({
   },
   tierTitleHorizontal: {
     fontSize: 15,
+    fontFamily: 'HelveticaMedium',
+    textTransform: 'uppercase',
     fontWeight: '700',
     color: '#111827',
     marginBottom: 6,
     textAlign: 'center',
   },
   tierTitleSelectedHorizontal: {
-    color: '#3B82F6',
+    color: '#111827',
   },
   tierTitleSelectedVipHorizontal: {
-    color: '#F59E0B',
+    color: '#111827',
   },
   tierPriceContainer: {
     alignItems: 'center',
@@ -1803,39 +1906,45 @@ const styles = StyleSheet.create({
   },
   tierPriceHorizontal: {
     fontSize: 24,
+    fontFamily: 'HelveticaMedium',
+    textTransform: 'uppercase',
     fontWeight: '800',
     color: '#111827',
     textAlign: 'center',
   },
   tierPriceSelectedHorizontal: {
-    color: '#3B82F6',
+    color: '#111827',
   },
   tierPriceSelectedVipHorizontal: {
-    color: '#F59E0B',
+    color: '#111827',
   },
   tierPricePeriod: {
     fontSize: 11,
+    fontFamily: 'HelveticaMedium',
+    textTransform: 'uppercase',
     color: '#6B7280',
     fontWeight: '500',
     marginTop: 2,
   },
   tierPricePeriodSelected: {
-    color: '#3B82F6',
+    color: '#6B7280',
   },
   tierPricePeriodSelectedVip: {
-    color: '#F59E0B',
+    color: '#6B7280',
   },
   tierDescriptionHorizontal: {
     fontSize: 12,
+    fontFamily: 'HelveticaMedium',
+    textTransform: 'uppercase',
     color: '#6B7280',
     textAlign: 'center',
     fontWeight: '500',
   },
   tierDescriptionSelectedHorizontal: {
-    color: '#3B82F6',
+    color: '#6B7280',
   },
   tierDescriptionSelectedVipHorizontal: {
-    color: '#F59E0B',
+    color: '#6B7280',
   },
   
   // Upload Progress Overlay
@@ -1864,6 +1973,8 @@ const styles = StyleSheet.create({
   },
   uploadTitle: {
     fontSize: 20,
+    fontFamily: 'HelveticaMedium',
+    textTransform: 'uppercase',
     fontWeight: '700',
     color: '#111827',
     marginTop: 16,
@@ -1872,14 +1983,19 @@ const styles = StyleSheet.create({
   },
   uploadProgress: {
     fontSize: 16,
+    fontFamily: 'HelveticaMedium',
+    textTransform: 'uppercase',
     fontWeight: '500',
-    color: '#3B82F6',
+    color: '#111827',
     marginBottom: 8,
     textAlign: 'center',
   },
   uploadNote: {
     fontSize: 14,
+    fontFamily: 'HelveticaMedium',
+    textTransform: 'uppercase',
     color: '#6B7280',
+    fontWeight: '500',
     textAlign: 'center',
     marginTop: 4,
   },

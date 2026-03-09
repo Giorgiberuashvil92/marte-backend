@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Linking, View, Text, ActivityIndicator, StyleSheet } from 'react-native';
-import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
+import { Stack, useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import DetailView, { DetailViewProps } from '@/components/DetailView';
 import API_BASE_URL from '@/config/api';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -21,9 +21,19 @@ export default function DetailsScreen() {
   const eta = (params.waitTime as string) || '';
   const phoneParam = (params.phone as string) || '';
   const requestId = (params.requestId as string) || (params.id as string) || '';
+  const itemId = (params.id as string) || requestId;
 
   const [loading, setLoading] = useState<boolean>(false);
   const [detail, setDetail] = useState<any | null>(null);
+
+  useFocusEffect(
+    React.useCallback(() => {
+      analyticsService.logScreenViewWithBackend('დეტალები', 'DetailsScreen', user?.id);
+      if (itemId) {
+        analyticsService.logSalesItemView(itemId, title, serviceType, 'დეტალები', user?.id);
+      }
+    }, [itemId, serviceType, title, user?.id])
+  );
 
   useEffect(() => {
     const load = async () => {
@@ -143,6 +153,12 @@ export default function DetailsScreen() {
       },
       actions: {
         onBook: () => {
+          const currentId = d?.id || requestId || itemId;
+          analyticsService.logButtonClick('დაჯავშნა', 'დეტალები', {
+            item_id: currentId,
+            item_type: serviceType,
+          }, user?.id);
+
           // მხოლოდ carwash-ისთვის გადავიდეთ booking-ზე
           if (serviceType === 'carwash') {
             const loc = {
@@ -170,13 +186,23 @@ export default function DetailsScreen() {
           } else {
             // სხვა ტიპებისთვის უბრალოდ დარეკვა
             if (phone) {
+              analyticsService.logButtonClick('დარეკვა', 'დეტალები', {
+                item_id: currentId,
+                item_type: serviceType,
+                source_action: 'onBook_fallback',
+              }, user?.id);
               analyticsService.logCallInitiated(phone, serviceType);
               Linking.openURL(`tel:${phone}`);
             }
           }
         },
         onCall: () => { 
+          const currentId = d?.id || requestId || itemId;
           if (phone) {
+            analyticsService.logButtonClick('დარეკვა', 'დეტალები', {
+              item_id: currentId,
+              item_type: serviceType,
+            }, user?.id);
             analyticsService.logCallInitiated(phone, serviceType);
             // Track dismantler call
             if (serviceType === 'dismantler' && user?.id && (d?.id || requestId)) {
@@ -190,8 +216,14 @@ export default function DetailsScreen() {
           }
         },
         onFinance: (amount) => {
+          const currentId = d?.id || requestId || itemId;
           const fallback = basePrice ? parseInt(String(basePrice).replace(/[^0-9]/g, '')) : 0;
           const a = amount || fallback || 0;
+          analyticsService.logButtonClick('ფინანსირება', 'დეტალები', {
+            item_id: currentId,
+            item_type: serviceType,
+            amount: a,
+          }, user?.id);
           router.push(`/financing-request?requestId=${encodeURIComponent(d?.id || requestId)}&amount=${encodeURIComponent(String(a))}`);
         },
         onShare: () => {},

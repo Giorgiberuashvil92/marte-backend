@@ -1,869 +1,584 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
   StyleSheet,
-  ScrollView,
-  Pressable,
   Modal,
+  TouchableOpacity,
+  ScrollView,
   TextInput,
-  Animated,
-  Dimensions,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { LinearGradient } from 'expo-linear-gradient';
-import { carBrandsApi } from '@/services/carBrandsApi';
+import { carBrandsApi } from '../../services/carBrandsApi';
 
-const { height: SCREEN_HEIGHT } = Dimensions.get('window');
+const LOCATIONS = ['Tbilisi', 'Batumi', 'Kutaisi', 'Rustavi', 'Gori', 'Zugdidi', 'Poti', 'Other'];
 const YEARS = Array.from({ length: 30 }, (_, i) => (2024 - i).toString());
+const PART_CATEGORIES = ['Engine', 'Transmission', 'Body', 'Interior', 'Exterior', 'Electrical', 'Suspension', 'Brakes', 'Wheels', 'Other'];
 
-interface FilterModalProps {
+export type DismantlerFilters = {
+  brand: string;
+  model: string;
+  yearFrom: string;
+  yearTo: string;
+  location: string;
+};
+
+export type PartsFilters = {
+  brand: string;
+  category: string;
+  priceMin: string;
+  priceMax: string;
+  location: string;
+};
+
+type FilterModalProps = {
   visible: boolean;
+  activeTab: 'დაშლილები' | 'ნაწილები';
+  dismantlerFilters: DismantlerFilters;
+  partsFilters: PartsFilters;
   onClose: () => void;
-  filterMake: string;
-  filterModel: string;
-  filterYear: string;
-  onFilterChange: (filters: { 
-    make: string; 
-    model: string; 
-    year: string;
-    urgency?: string;
-    status?: string;
-    minBudget?: number;
-    maxBudget?: number;
-  }) => void;
-}
+  onApply: (dismantlerFilters: DismantlerFilters, partsFilters: PartsFilters) => void;
+  onReset: () => void;
+};
 
 export default function FilterModal({
   visible,
+  activeTab,
+  dismantlerFilters,
+  partsFilters,
   onClose,
-  filterMake,
-  filterModel,
-  filterYear,
-  onFilterChange,
+  onApply,
+  onReset,
 }: FilterModalProps) {
-  const [availableModels, setAvailableModels] = useState<string[]>([]);
-  const [searchMake, setSearchMake] = useState('');
-  const [searchModel, setSearchModel] = useState('');
-  const [filterUrgency, setFilterUrgency] = useState<string>('');
-  const [filterStatus, setFilterStatus] = useState<string>('');
-  const [minBudget, setMinBudget] = useState('');
-  const [maxBudget, setMaxBudget] = useState('');
-  const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({
-    make: true,
-    model: false,
-    year: false,
-    urgency: false,
-    status: false,
-    budget: false,
-  });
-  
-  // Car brands and models from API
+  const [openDropdown, setOpenDropdown] = useState<string | null>(null);
   const [carBrands, setCarBrands] = useState<string[]>([]);
-  const [carModels, setCarModels] = useState<{ [key: string]: string[] }>({});
+  const [carModels, setCarModels] = useState<string[]>([]);
+  const [brandSearchQuery, setBrandSearchQuery] = useState('');
+  const [partsCategories, setPartsCategories] = useState<string[]>([]);
+  const [localDismantlerFilters, setLocalDismantlerFilters] = useState<DismantlerFilters>(dismantlerFilters);
+  const [localPartsFilters, setLocalPartsFilters] = useState<PartsFilters>(partsFilters);
 
-  const slideAnim = useState(new Animated.Value(0))[0];
-
+  // Load car brands and categories
   useEffect(() => {
-    if (visible) {
-      Animated.spring(slideAnim, {
-        toValue: 1,
-        useNativeDriver: true,
-        tension: 50,
-        friction: 7,
-      }).start();
-    } else {
-      slideAnim.setValue(0);
-    }
-  }, [visible]);
-
-  useEffect(() => {
-    const loadCarBrands = async () => {
+    const loadCarData = async () => {
       try {
         const brandsList = await carBrandsApi.getBrandsList();
-        const brands = brandsList.map(b => b.name);
-        const modelsMap: { [key: string]: string[] } = {};
-        brandsList.forEach(brand => {
-          modelsMap[brand.name] = brand.models || [];
-        });
-        setCarBrands(brands);
-        setCarModels(modelsMap);
-      } catch (err) {
-        console.error('Error loading car brands:', err);
+        setCarBrands(brandsList.map(b => b.name) || []);
+        setPartsCategories(PART_CATEGORIES);
+      } catch (error) {
+        console.error('Error loading car data:', error);
+        setCarBrands([]);
+        setPartsCategories(PART_CATEGORIES);
       }
     };
-    loadCarBrands();
-  }, []);
+    if (visible) {
+      loadCarData();
+      setLocalDismantlerFilters(dismantlerFilters);
+      setLocalPartsFilters(partsFilters);
+    }
+  }, [visible, dismantlerFilters, partsFilters]);
 
-  // Update available models when make changes
+  // Get models for selected brand
   useEffect(() => {
-    if (filterMake && carModels[filterMake]) {
-      setAvailableModels(carModels[filterMake]);
-      if (!expandedSections.model) {
-        setExpandedSections(prev => ({ ...prev, model: true }));
+    const loadModels = async () => {
+      if (localDismantlerFilters.brand) {
+        try {
+          const models = await carBrandsApi.getModelsByBrand(localDismantlerFilters.brand);
+          setCarModels(models || []);
+        } catch (error) {
+          console.error('Error loading models:', error);
+          setCarModels([]);
+        }
+      } else {
+        setCarModels([]);
       }
+    };
+    loadModels();
+  }, [localDismantlerFilters.brand]);
+
+  // Get filtered brands based on search
+  const filteredBrands = carBrands.filter(brand =>
+    brand.toLowerCase().includes(brandSearchQuery.toLowerCase())
+  );
+
+  // Render dropdown
+  const renderDropdown = (
+    id: string,
+    value: string,
+    placeholder: string,
+    options: string[],
+    onSelect: (value: string) => void
+  ) => {
+    const isOpen = openDropdown === id;
+    return (
+      <View>
+        <TouchableOpacity
+          style={styles.dropdownButton}
+          onPress={() => setOpenDropdown(isOpen ? null : id)}
+        >
+          <Text style={[styles.dropdownText, !value && styles.dropdownPlaceholder]}>
+            {value || placeholder}
+          </Text>
+          <Ionicons
+            name={isOpen ? "chevron-up" : "chevron-down"}
+            size={16}
+            color="#6B7280"
+          />
+        </TouchableOpacity>
+        {isOpen && (
+          <View style={styles.dropdownOptions}>
+            <ScrollView style={styles.dropdownScroll} nestedScrollEnabled>
+              <TouchableOpacity
+                style={styles.dropdownItem}
+                onPress={() => {
+                  onSelect('');
+                  setOpenDropdown(null);
+                }}
+              >
+                <Text style={[styles.dropdownItemText, !value && styles.dropdownItemTextSelected]}>
+                  ყველა
+                </Text>
+                {!value && <Ionicons name="checkmark" size={20} color="#3B82F6" />}
+              </TouchableOpacity>
+              {options.map((option, index) => (
+                <TouchableOpacity
+                  key={index}
+                  style={styles.dropdownItem}
+                  onPress={() => {
+                    onSelect(option);
+                    setOpenDropdown(null);
+                  }}
+                >
+                  <Text style={[styles.dropdownItemText, value === option && styles.dropdownItemTextSelected]}>
+                    {option}
+                  </Text>
+                  {value === option && <Ionicons name="checkmark" size={20} color="#3B82F6" />}
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+          </View>
+        )}
+      </View>
+    );
+  };
+
+  // Render brand dropdown with search
+  const renderBrandDropdown = (
+    id: string,
+    value: string,
+    placeholder: string,
+    onSelect: (value: string) => void
+  ) => {
+    const isOpen = openDropdown === id;
+    return (
+      <View>
+        <TouchableOpacity
+          style={styles.dropdownButton}
+          onPress={() => setOpenDropdown(isOpen ? null : id)}
+        >
+          <Text style={[styles.dropdownText, !value && styles.dropdownPlaceholder]}>
+            {value || placeholder}
+          </Text>
+          <Ionicons
+            name={isOpen ? "chevron-up" : "chevron-down"}
+            size={16}
+            color="#6B7280"
+          />
+        </TouchableOpacity>
+        {isOpen && (
+          <View style={styles.dropdownOptions}>
+            <View style={styles.searchSection}>
+              <Ionicons name="search" size={18} color="#9CA3AF" style={styles.searchIcon} />
+              <TextInput
+                style={styles.searchInput}
+                placeholder="ძებნა ბრენდებში..."
+                value={brandSearchQuery}
+                onChangeText={setBrandSearchQuery}
+                placeholderTextColor="#9CA3AF"
+              />
+            </View>
+            <ScrollView style={styles.dropdownScroll} nestedScrollEnabled>
+              <TouchableOpacity
+                style={styles.dropdownItem}
+                onPress={() => {
+                  onSelect('');
+                  setOpenDropdown(null);
+                  setBrandSearchQuery('');
+                }}
+              >
+                <Text style={[styles.dropdownItemText, !value && styles.dropdownItemTextSelected]}>
+                  ყველა
+                </Text>
+                {!value && <Ionicons name="checkmark" size={20} color="#3B82F6" />}
+              </TouchableOpacity>
+              {filteredBrands.map((brand, index) => (
+                <TouchableOpacity
+                  key={index}
+                  style={styles.dropdownItem}
+                  onPress={() => {
+                    onSelect(brand);
+                    setOpenDropdown(null);
+                    setBrandSearchQuery('');
+                  }}
+                >
+                  <Text style={[styles.dropdownItemText, value === brand && styles.dropdownItemTextSelected]}>
+                    {brand}
+                  </Text>
+                  {value === brand && <Ionicons name="checkmark" size={20} color="#3B82F6" />}
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+          </View>
+        )}
+      </View>
+    );
+  };
+
+  const handleApply = () => {
+    onApply(localDismantlerFilters, localPartsFilters);
+    onClose();
+  };
+
+  const handleReset = () => {
+    onReset();
+    setLocalDismantlerFilters({
+      brand: '',
+      model: '',
+      yearFrom: '',
+      yearTo: '',
+      location: '',
+    });
+    setLocalPartsFilters({
+      brand: '',
+      category: '',
+      priceMin: '',
+      priceMax: '',
+      location: '',
+    });
+  };
+
+  const getActiveFiltersCount = () => {
+    if (activeTab === 'დაშლილები') {
+      return Object.values(localDismantlerFilters).filter(v => v).length;
     } else {
-      setAvailableModels([]);
-      if (filterModel) {
-        onFilterChange({ 
-          make: filterMake, 
-          model: '', 
-          year: filterYear,
-          urgency: filterUrgency || undefined,
-          status: filterStatus || undefined,
-          minBudget: minBudget ? parseFloat(minBudget) : undefined,
-          maxBudget: maxBudget ? parseFloat(maxBudget) : undefined,
-        });
-      }
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filterMake, carModels]);
-
-  const hasActiveFilters = filterMake || filterModel || filterYear || filterUrgency || filterStatus || minBudget || maxBudget;
-
-  const activeFiltersCount = [
-    filterMake,
-    filterModel,
-    filterYear,
-    filterUrgency,
-    filterStatus,
-    minBudget || maxBudget,
-  ].filter(Boolean).length;
-
-  // Filtered brands and models based on search
-  const filteredBrands = useMemo(() => {
-    if (!searchMake.trim()) return carBrands;
-    const query = searchMake.toLowerCase();
-    return carBrands.filter(brand => brand.toLowerCase().includes(query));
-  }, [searchMake, carBrands]);
-
-  const filteredModels = useMemo(() => {
-    if (!searchModel.trim()) return availableModels;
-    const query = searchModel.toLowerCase();
-    return availableModels.filter(model => model.toLowerCase().includes(query));
-  }, [searchModel, availableModels]);
-
-  const handleClearFilters = () => {
-    setFilterUrgency('');
-    setFilterStatus('');
-    setMinBudget('');
-    setMaxBudget('');
-    onFilterChange({ make: '', model: '', year: '' });
-  };
-
-  const handleMakeChange = (make: string) => {
-    onFilterChange({ 
-      make, 
-      model: '', 
-      year: filterYear,
-      urgency: filterUrgency,
-      status: filterStatus,
-      minBudget: minBudget ? parseFloat(minBudget) : undefined,
-      maxBudget: maxBudget ? parseFloat(maxBudget) : undefined,
-    });
-  };
-
-  const handleModelChange = (model: string) => {
-    onFilterChange({ 
-      make: filterMake, 
-      model, 
-      year: filterYear,
-      urgency: filterUrgency,
-      status: filterStatus,
-      minBudget: minBudget ? parseFloat(minBudget) : undefined,
-      maxBudget: maxBudget ? parseFloat(maxBudget) : undefined,
-    });
-  };
-
-  const handleYearChange = (year: string) => {
-    onFilterChange({ 
-      make: filterMake, 
-      model: filterModel, 
-      year,
-      urgency: filterUrgency,
-      status: filterStatus,
-      minBudget: minBudget ? parseFloat(minBudget) : undefined,
-      maxBudget: maxBudget ? parseFloat(maxBudget) : undefined,
-    });
-  };
-
-  const handleUrgencyChange = (urgency: string) => {
-    setFilterUrgency(urgency);
-    onFilterChange({ 
-      make: filterMake, 
-      model: filterModel, 
-      year: filterYear,
-      urgency,
-      status: filterStatus,
-      minBudget: minBudget ? parseFloat(minBudget) : undefined,
-      maxBudget: maxBudget ? parseFloat(maxBudget) : undefined,
-    });
-  };
-
-  const handleStatusChange = (status: string) => {
-    setFilterStatus(status);
-    onFilterChange({ 
-      make: filterMake, 
-      model: filterModel, 
-      year: filterYear,
-      urgency: filterUrgency,
-      status,
-      minBudget: minBudget ? parseFloat(minBudget) : undefined,
-      maxBudget: maxBudget ? parseFloat(maxBudget) : undefined,
-    });
-  };
-
-  const handleBudgetChange = () => {
-    onFilterChange({ 
-      make: filterMake, 
-      model: filterModel, 
-      year: filterYear,
-      urgency: filterUrgency,
-      status: filterStatus,
-      minBudget: minBudget ? parseFloat(minBudget) : undefined,
-      maxBudget: maxBudget ? parseFloat(maxBudget) : undefined,
-    });
-  };
-
-  const toggleSection = (section: string) => {
-    setExpandedSections(prev => ({
-      ...prev,
-      [section]: !prev[section],
-    }));
-  };
-
-  const getUrgencyColor = (urgency: string) => {
-    switch (urgency) {
-      case 'high': return '#EF4444';
-      case 'medium': return '#F59E0B';
-      case 'low': return '#10B981';
-      default: return '#6B7280';
+      return Object.values(localPartsFilters).filter(v => v).length;
     }
   };
-
-  const getUrgencyText = (urgency: string) => {
-    switch (urgency) {
-      case 'high': return 'სასწრაფო';
-      case 'medium': return 'ნორმალური';
-      case 'low': return 'დაბალი';
-      default: return '';
-    }
-  };
-
-  const translateY = slideAnim.interpolate({
-    inputRange: [0, 1],
-    outputRange: [SCREEN_HEIGHT * 0.8, 0],
-  });
 
   return (
     <Modal
       visible={visible}
-      animationType="none"
-      transparent={true}
+      animationType="slide"
+      presentationStyle="pageSheet"
       onRequestClose={onClose}
     >
-      <Pressable style={styles.modalOverlay} onPress={onClose}>
-        <Animated.View
-          style={[
-            styles.modalContent,
-            {
-              transform: [{ translateY }],
-            },
-          ]}
-        >
-          <View style={styles.modalInner}>
-            {/* Header */}
-            <LinearGradient
-              colors={['#F8FAFC', '#FFFFFF']}
-              style={styles.modalHeader}
-            >
-              <View style={styles.headerContent}>
-                <View style={styles.headerLeft}>
-                  <View style={styles.iconContainer}>
-                    <Ionicons name="filter" size={20} color="#6366F1" />
-                  </View>
-                  <View>
-                    <Text style={styles.modalTitle}>ფილტრი</Text>
-                    {activeFiltersCount > 0 && (
-                      <Text style={styles.activeFiltersText}>
-                        {activeFiltersCount} აქტიური ფილტრი
-                      </Text>
-                    )}
-                  </View>
-                </View>
-                <View style={styles.headerRight}>
-                  {hasActiveFilters && (
-                    <Pressable
-                      style={styles.clearButton}
-                      onPress={handleClearFilters}
-                    >
-                      <Ionicons name="refresh" size={16} color="#6B7280" />
-                      <Text style={styles.clearButtonText}>გასუფთავება</Text>
-                    </Pressable>
-                  )}
-                  <Pressable
-                    onPress={onClose}
-                    style={styles.closeButton}
-                  >
-                    <Ionicons name="close" size={22} color="#6B7280" />
-                  </Pressable>
-                </View>
-              </View>
-            </LinearGradient>
-
-            <ScrollView 
-              style={styles.modalBody} 
-              showsVerticalScrollIndicator={false}
-              contentContainerStyle={styles.scrollContent}
-            >
-              {/* Make Filter */}
-              <View style={styles.filterSection}>
-                <Pressable
-                  style={styles.sectionHeader}
-                  onPress={() => toggleSection('make')}
-                >
-                  <View style={styles.sectionHeaderLeft}>
-                    <Ionicons name="car-sport" size={20} color="#6366F1" />
-                    <Text style={styles.sectionTitle}>მარკა</Text>
-                    {filterMake && (
-                      <View style={styles.activeBadge}>
-                        <Text style={styles.activeBadgeText}>1</Text>
-                      </View>
-                    )}
-                  </View>
-                  <Ionicons
-                    name={expandedSections.make ? 'chevron-up' : 'chevron-down'}
-                    size={20}
-                    color="#6B7280"
-                  />
-                </Pressable>
-
-                {expandedSections.make && (
-                  <View style={styles.sectionContent}>
-                    <View style={styles.searchContainer}>
-                      <Ionicons name="search" size={18} color="#9CA3AF" style={styles.searchIcon} />
-                      <TextInput
-                        style={styles.searchInput}
-                        placeholder="ძიება მარკებში..."
-                        placeholderTextColor="#9CA3AF"
-                        value={searchMake}
-                        onChangeText={setSearchMake}
-                      />
-                      {searchMake.length > 0 && (
-                        <Pressable onPress={() => setSearchMake('')}>
-                          <Ionicons name="close-circle" size={18} color="#9CA3AF" />
-                        </Pressable>
-                      )}
-                    </View>
-                    <ScrollView 
-                      horizontal 
-                      showsHorizontalScrollIndicator={false}
-                      style={styles.chipsScrollView}
-                      contentContainerStyle={styles.chipsContainer}
-                    >
-                      <Pressable
-                        style={[styles.filterChip, !filterMake && styles.filterChipActive]}
-                        onPress={() => handleMakeChange('')}
-                      >
-                        <Ionicons 
-                          name={!filterMake ? 'checkmark-circle' : 'ellipse-outline'} 
-                          size={16} 
-                          color={!filterMake ? '#FFFFFF' : '#6B7280'} 
-                        />
-                        <Text style={[styles.filterChipText, !filterMake && styles.filterChipTextActive]}>
-                          ყველა
-                        </Text>
-                      </Pressable>
-                      {filteredBrands.slice(0, 30).map((brand) => (
-                        <Pressable
-                          key={brand}
-                          style={[styles.filterChip, filterMake === brand && styles.filterChipActive]}
-                          onPress={() => handleMakeChange(brand)}
-                        >
-                          <Ionicons 
-                            name={filterMake === brand ? 'checkmark-circle' : 'ellipse-outline'} 
-                            size={16} 
-                            color={filterMake === brand ? '#FFFFFF' : '#6B7280'} 
-                          />
-                          <Text style={[styles.filterChipText, filterMake === brand && styles.filterChipTextActive]}>
-                            {brand}
-                          </Text>
-                        </Pressable>
-                      ))}
-                    </ScrollView>
-                  </View>
-                )}
-              </View>
-
-              {/* Model Filter */}
-              {filterMake && availableModels.length > 0 && (
-                <View style={styles.filterSection}>
-                  <Pressable
-                    style={styles.sectionHeader}
-                    onPress={() => toggleSection('model')}
-                  >
-                    <View style={styles.sectionHeaderLeft}>
-                      <Ionicons name="car" size={20} color="#6366F1" />
-                      <Text style={styles.sectionTitle}>მოდელი</Text>
-                      {filterModel && (
-                        <View style={styles.activeBadge}>
-                          <Text style={styles.activeBadgeText}>1</Text>
-                        </View>
-                      )}
-                    </View>
-                    <Ionicons
-                      name={expandedSections.model ? 'chevron-up' : 'chevron-down'}
-                      size={20}
-                      color="#6B7280"
-                    />
-                  </Pressable>
-
-                  {expandedSections.model && (
-                    <View style={styles.sectionContent}>
-                      <View style={styles.searchContainer}>
-                        <Ionicons name="search" size={18} color="#9CA3AF" style={styles.searchIcon} />
-                        <TextInput
-                          style={styles.searchInput}
-                          placeholder="ძიება მოდელებში..."
-                          placeholderTextColor="#9CA3AF"
-                          value={searchModel}
-                          onChangeText={setSearchModel}
-                        />
-                        {searchModel.length > 0 && (
-                          <Pressable onPress={() => setSearchModel('')}>
-                            <Ionicons name="close-circle" size={18} color="#9CA3AF" />
-                          </Pressable>
-                        )}
-                      </View>
-                      <ScrollView 
-                        horizontal 
-                        showsHorizontalScrollIndicator={false}
-                        style={styles.chipsScrollView}
-                        contentContainerStyle={styles.chipsContainer}
-                      >
-                        <Pressable
-                          style={[styles.filterChip, !filterModel && styles.filterChipActive]}
-                          onPress={() => handleModelChange('')}
-                        >
-                          <Ionicons 
-                            name={!filterModel ? 'checkmark-circle' : 'ellipse-outline'} 
-                            size={16} 
-                            color={!filterModel ? '#FFFFFF' : '#6B7280'} 
-                          />
-                          <Text style={[styles.filterChipText, !filterModel && styles.filterChipTextActive]}>
-                            ყველა
-                          </Text>
-                        </Pressable>
-                        {filteredModels.slice(0, 40).map((model) => (
-                          <Pressable
-                            key={model}
-                            style={[styles.filterChip, filterModel === model && styles.filterChipActive]}
-                            onPress={() => handleModelChange(model)}
-                          >
-                            <Ionicons 
-                              name={filterModel === model ? 'checkmark-circle' : 'ellipse-outline'} 
-                              size={16} 
-                              color={filterModel === model ? '#FFFFFF' : '#6B7280'} 
-                            />
-                            <Text style={[styles.filterChipText, filterModel === model && styles.filterChipTextActive]}>
-                              {model}
-                            </Text>
-                          </Pressable>
-                        ))}
-                      </ScrollView>
-                    </View>
-                  )}
-                </View>
-              )}
-
-              {/* Year Filter */}
-              <View style={styles.filterSection}>
-                <Pressable
-                  style={styles.sectionHeader}
-                  onPress={() => toggleSection('year')}
-                >
-                  <View style={styles.sectionHeaderLeft}>
-                    <Ionicons name="calendar" size={20} color="#6366F1" />
-                    <Text style={styles.sectionTitle}>წელი</Text>
-                    {filterYear && (
-                      <View style={styles.activeBadge}>
-                        <Text style={styles.activeBadgeText}>1</Text>
-                      </View>
-                    )}
-                  </View>
-                  <Ionicons
-                    name={expandedSections.year ? 'chevron-up' : 'chevron-down'}
-                    size={20}
-                    color="#6B7280"
-                  />
-                </Pressable>
-
-                {expandedSections.year && (
-                  <View style={styles.sectionContent}>
-                    <ScrollView 
-                      horizontal 
-                      showsHorizontalScrollIndicator={false}
-                      style={styles.chipsScrollView}
-                      contentContainerStyle={styles.chipsContainer}
-                    >
-                      <Pressable
-                        style={[styles.filterChip, !filterYear && styles.filterChipActive]}
-                        onPress={() => handleYearChange('')}
-                      >
-                        <Ionicons 
-                          name={!filterYear ? 'checkmark-circle' : 'ellipse-outline'} 
-                          size={16} 
-                          color={!filterYear ? '#FFFFFF' : '#6B7280'} 
-                        />
-                        <Text style={[styles.filterChipText, !filterYear && styles.filterChipTextActive]}>
-                          ყველა
-                        </Text>
-                      </Pressable>
-                      {YEARS.map((year) => (
-                        <Pressable
-                          key={year}
-                          style={[styles.filterChip, filterYear === year && styles.filterChipActive]}
-                          onPress={() => handleYearChange(year)}
-                        >
-                          <Ionicons 
-                            name={filterYear === year ? 'checkmark-circle' : 'ellipse-outline'} 
-                            size={16} 
-                            color={filterYear === year ? '#FFFFFF' : '#6B7280'} 
-                          />
-                          <Text style={[styles.filterChipText, filterYear === year && styles.filterChipTextActive]}>
-                            {year}
-                          </Text>
-                        </Pressable>
-                      ))}
-                    </ScrollView>
-                  </View>
-                )}
-              </View>
-
-              {/* Urgency Filter */}
-              <View style={styles.filterSection}>
-                <Pressable
-                  style={styles.sectionHeader}
-                  onPress={() => toggleSection('urgency')}
-                >
-                  <View style={styles.sectionHeaderLeft}>
-                    <Ionicons name="flash" size={20} color="#6366F1" />
-                    <Text style={styles.sectionTitle}>სასწრაფო</Text>
-                    {filterUrgency && (
-                      <View style={styles.activeBadge}>
-                        <Text style={styles.activeBadgeText}>1</Text>
-                      </View>
-                    )}
-                  </View>
-                  <Ionicons
-                    name={expandedSections.urgency ? 'chevron-up' : 'chevron-down'}
-                    size={20}
-                    color="#6B7280"
-                  />
-                </Pressable>
-
-                {expandedSections.urgency && (
-                  <View style={styles.sectionContent}>
-                    <View style={styles.urgencyContainer}>
-                      {(['low', 'medium', 'high'] as const).map((urgency) => (
-                        <Pressable
-                          key={urgency}
-                          style={[
-                            styles.urgencyOption,
-                            filterUrgency === urgency && styles.urgencyOptionActive,
-                          ]}
-                          onPress={() => handleUrgencyChange(filterUrgency === urgency ? '' : urgency)}
-                        >
-                          <View
-                            style={[
-                              styles.urgencyDot,
-                              { backgroundColor: getUrgencyColor(urgency) },
-                            ]}
-                          />
-                          <Text style={[
-                            styles.urgencyText,
-                            filterUrgency === urgency && styles.urgencyTextActive,
-                          ]}>
-                            {getUrgencyText(urgency)}
-                          </Text>
-                          {filterUrgency === urgency && (
-                            <Ionicons name="checkmark-circle" size={18} color={getUrgencyColor(urgency)} />
-                          )}
-                        </Pressable>
-                      ))}
-                    </View>
-                  </View>
-                )}
-              </View>
-
-              {/* Status Filter */}
-              <View style={styles.filterSection}>
-                <Pressable
-                  style={styles.sectionHeader}
-                  onPress={() => toggleSection('status')}
-                >
-                  <View style={styles.sectionHeaderLeft}>
-                    <Ionicons name="checkmark-done-circle" size={20} color="#6366F1" />
-                    <Text style={styles.sectionTitle}>სტატუსი</Text>
-                    {filterStatus && (
-                      <View style={styles.activeBadge}>
-                        <Text style={styles.activeBadgeText}>1</Text>
-                      </View>
-                    )}
-                  </View>
-                  <Ionicons
-                    name={expandedSections.status ? 'chevron-up' : 'chevron-down'}
-                    size={20}
-                    color="#6B7280"
-                  />
-                </Pressable>
-
-                {expandedSections.status && (
-                  <View style={styles.sectionContent}>
-                    <View style={styles.statusContainer}>
-                      {[
-                        { value: 'active', label: 'აქტიური', color: '#10B981' },
-                        { value: 'fulfilled', label: 'დასრულებული', color: '#6366F1' },
-                        { value: 'cancelled', label: 'გაუქმებული', color: '#EF4444' },
-                      ].map((status) => (
-                        <Pressable
-                          key={status.value}
-                          style={[
-                            styles.statusOption,
-                            filterStatus === status.value && { borderColor: status.color },
-                          ]}
-                          onPress={() => handleStatusChange(filterStatus === status.value ? '' : status.value)}
-                        >
-                          <View style={[styles.statusDot, { backgroundColor: status.color }]} />
-                          <Text style={[
-                            styles.statusText,
-                            filterStatus === status.value && { color: status.color, fontWeight: '600' },
-                          ]}>
-                            {status.label}
-                          </Text>
-                          {filterStatus === status.value && (
-                            <Ionicons name="checkmark-circle" size={18} color={status.color} />
-                          )}
-                        </Pressable>
-                      ))}
-                    </View>
-                  </View>
-                )}
-              </View>
-
-              {/* Budget Filter */}
-              <View style={styles.filterSection}>
-                <Pressable
-                  style={styles.sectionHeader}
-                  onPress={() => toggleSection('budget')}
-                >
-                  <View style={styles.sectionHeaderLeft}>
-                    <Ionicons name="cash" size={20} color="#6366F1" />
-                    <Text style={styles.sectionTitle}>ბიუჯეტი</Text>
-                    {(minBudget || maxBudget) && (
-                      <View style={styles.activeBadge}>
-                        <Text style={styles.activeBadgeText}>1</Text>
-                      </View>
-                    )}
-                  </View>
-                  <Ionicons
-                    name={expandedSections.budget ? 'chevron-up' : 'chevron-down'}
-                    size={20}
-                    color="#6B7280"
-                  />
-                </Pressable>
-
-                {expandedSections.budget && (
-                  <View style={styles.sectionContent}>
-                    <View style={styles.budgetContainer}>
-                      <View style={styles.budgetInputRow}>
-                        <View style={styles.budgetInputContainer}>
-                          <Text style={styles.budgetLabel}>მინიმალური</Text>
-                          <View style={styles.budgetInputWrapper}>
-                            <TextInput
-                              style={styles.budgetInput}
-                              placeholder="0"
-                              placeholderTextColor="#9CA3AF"
-                              value={minBudget}
-                              onChangeText={setMinBudget}
-                              keyboardType="numeric"
-                              onBlur={handleBudgetChange}
-                            />
-                            <Text style={styles.budgetCurrency}>₾</Text>
-                          </View>
-                        </View>
-                        <View style={styles.budgetSeparator}>
-                          <Text style={styles.budgetSeparatorText}>—</Text>
-                        </View>
-                        <View style={styles.budgetInputContainer}>
-                          <Text style={styles.budgetLabel}>მაქსიმალური</Text>
-                          <View style={styles.budgetInputWrapper}>
-                            <TextInput
-                              style={styles.budgetInput}
-                              placeholder="∞"
-                              placeholderTextColor="#9CA3AF"
-                              value={maxBudget}
-                              onChangeText={setMaxBudget}
-                              keyboardType="numeric"
-                              onBlur={handleBudgetChange}
-                            />
-                            <Text style={styles.budgetCurrency}>₾</Text>
-                          </View>
-                        </View>
-                      </View>
-                    </View>
-                  </View>
-                )}
-              </View>
-            </ScrollView>
+      <View style={styles.container}>
+        <SafeAreaView style={styles.content} edges={['top']}>
+          {/* Header */}
+          <View style={styles.header}>
+            <TouchableOpacity style={styles.closeButton} onPress={onClose}>
+              <Ionicons name="close" size={24} color="#111827" />
+            </TouchableOpacity>
+            <Text style={styles.title}>ფილტრები</Text>
+            <TouchableOpacity style={styles.resetButton} onPress={handleReset}>
+              <Text style={styles.resetText}>გასუფთავება</Text>
+            </TouchableOpacity>
           </View>
-        </Animated.View>
-      </Pressable>
+
+          <ScrollView style={styles.scroll} showsVerticalScrollIndicator={false}>
+            {/* Dismantler Filters */}
+            {activeTab === 'დაშლილები' && (
+              <>
+                <View style={styles.filterSection}>
+                  <Text style={styles.sectionTitle}>ბრენდი</Text>
+                  {renderBrandDropdown(
+                    'dismantler-brand',
+                    localDismantlerFilters.brand,
+                    'აირჩიეთ ბრენდი',
+                    (value) => setLocalDismantlerFilters(prev => ({ ...prev, brand: value, model: '' }))
+                  )}
+                </View>
+
+                <View style={styles.filterSection}>
+                  <Text style={styles.sectionTitle}>მოდელი</Text>
+                  <View style={[styles.dropdownContainer, !localDismantlerFilters.brand && styles.dropdownDisabled]}>
+                    {renderDropdown(
+                      'dismantler-model',
+                      localDismantlerFilters.model,
+                      localDismantlerFilters.brand ? 'აირჩიეთ მოდელი' : 'ჯერ აირჩიეთ ბრენდი',
+                      carModels,
+                      (value) => setLocalDismantlerFilters(prev => ({ ...prev, model: value }))
+                    )}
+                  </View>
+                </View>
+
+                <View style={styles.filterSection}>
+                  <Text style={styles.sectionTitle}>წელი</Text>
+                  <View style={styles.yearRangeContainer}>
+                    <View style={styles.yearInputWrapper}>
+                      <Text style={styles.yearLabel}>წლიდან</Text>
+                      {renderDropdown(
+                        'dismantler-year-from',
+                        localDismantlerFilters.yearFrom,
+                        'წელი',
+                        YEARS,
+                        (value) => setLocalDismantlerFilters(prev => ({ ...prev, yearFrom: value }))
+                      )}
+                    </View>
+                    <View style={styles.yearInputWrapper}>
+                      <Text style={styles.yearLabel}>წლამდე</Text>
+                      {renderDropdown(
+                        'dismantler-year-to',
+                        localDismantlerFilters.yearTo,
+                        'წელი',
+                        YEARS,
+                        (value) => setLocalDismantlerFilters(prev => ({ ...prev, yearTo: value }))
+                      )}
+                    </View>
+                  </View>
+                </View>
+
+                <View style={styles.filterSection}>
+                  <Text style={styles.sectionTitle}>მდებარეობა</Text>
+                  {renderDropdown(
+                    'dismantler-location',
+                    localDismantlerFilters.location,
+                    'აირჩიეთ ქალაქი',
+                    LOCATIONS,
+                    (value) => setLocalDismantlerFilters(prev => ({ ...prev, location: value }))
+                  )}
+                </View>
+              </>
+            )}
+
+            {/* Parts Filters */}
+            {activeTab === 'ნაწილები' && (
+              <>
+                <View style={styles.filterSection}>
+                  <Text style={styles.sectionTitle}>კატეგორია</Text>
+                  {renderDropdown(
+                    'parts-category',
+                    localPartsFilters.category,
+                    'აირჩიეთ კატეგორია',
+                    partsCategories,
+                    (value) => setLocalPartsFilters(prev => ({ ...prev, category: value }))
+                  )}
+                </View>
+
+                <View style={styles.filterSection}>
+                  <Text style={styles.sectionTitle}>ბრენდი</Text>
+                  {renderBrandDropdown(
+                    'parts-brand',
+                    localPartsFilters.brand,
+                    'აირჩიეთ ბრენდი',
+                    (value) => setLocalPartsFilters(prev => ({ ...prev, brand: value }))
+                  )}
+                </View>
+
+                <View style={styles.filterSection}>
+                  <Text style={styles.sectionTitle}>ფასი (₾)</Text>
+                  <View style={styles.priceInputsContainer}>
+                    <View style={styles.priceInputWrapper}>
+                      <Text style={styles.priceInputLabel}>დან</Text>
+                      <TextInput
+                        style={styles.priceInput}
+                        value={localPartsFilters.priceMin}
+                        onChangeText={(text) => setLocalPartsFilters(prev => ({ ...prev, priceMin: text }))}
+                        placeholder="0"
+                        keyboardType="numeric"
+                        placeholderTextColor="#9CA3AF"
+                      />
+                    </View>
+                    <View style={styles.priceSeparator} />
+                    <View style={styles.priceInputWrapper}>
+                      <Text style={styles.priceInputLabel}>მდე</Text>
+                      <TextInput
+                        style={styles.priceInput}
+                        value={localPartsFilters.priceMax}
+                        onChangeText={(text) => setLocalPartsFilters(prev => ({ ...prev, priceMax: text }))}
+                        placeholder="9999"
+                        keyboardType="numeric"
+                        placeholderTextColor="#9CA3AF"
+                      />
+                    </View>
+                  </View>
+                </View>
+
+                <View style={styles.filterSection}>
+                  <Text style={styles.sectionTitle}>მდებარეობა</Text>
+                  {renderDropdown(
+                    'parts-location',
+                    localPartsFilters.location,
+                    'აირჩიეთ ქალაქი',
+                    LOCATIONS,
+                    (value) => setLocalPartsFilters(prev => ({ ...prev, location: value }))
+                  )}
+                </View>
+              </>
+            )}
+
+            <View style={{ height: 100 }} />
+          </ScrollView>
+
+          {/* Apply Button */}
+          <View style={styles.footer}>
+            <TouchableOpacity style={styles.applyButton} onPress={handleApply} activeOpacity={0.8}>
+              <Text style={styles.applyButtonText}>
+                {getActiveFiltersCount() > 0
+                  ? `გამოყენება (${getActiveFiltersCount()})`
+                  : 'გამოყენება'}
+              </Text>
+            </TouchableOpacity>
+          </View>
+        </SafeAreaView>
+      </View>
     </Modal>
   );
 }
 
 const styles = StyleSheet.create({
-  modalOverlay: {
+  container: {
     flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.6)',
-    justifyContent: 'flex-end',
-  },
-  modalContent: {
     backgroundColor: '#FFFFFF',
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-    height: '80%',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: -4 },
-    shadowOpacity: 0.1,
-    shadowRadius: 12,
-    elevation: 10,
-    overflow: 'hidden',
   },
-  modalInner: {
+  content: {
     flex: 1,
   },
-  modalHeader: {
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-    paddingTop: 16,
-    paddingBottom: 12,
-    paddingHorizontal: 16,
+  // Header
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 20,
+    paddingVertical: 16,
     borderBottomWidth: 1,
     borderBottomColor: '#E5E7EB',
   },
-  headerContent: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  headerLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    flex: 1,
-  },
-  iconContainer: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
+  closeButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
     backgroundColor: '#F3F4F6',
     alignItems: 'center',
     justifyContent: 'center',
   },
-  modalTitle: {
+  title: {
     fontSize: 18,
+    fontFamily: 'HelveticaMedium',
+    textTransform: 'uppercase',
     fontWeight: '700',
     color: '#111827',
-  },
-  activeFiltersText: {
-    fontSize: 11,
-    color: '#6B7280',
-    marginTop: 2,
-  },
-  headerRight: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  clearButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 8,
-    backgroundColor: '#F3F4F6',
-  },
-  clearButtonText: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: '#6B7280',
-  },
-  closeButton: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    backgroundColor: '#F3F4F6',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  modalBody: {
     flex: 1,
-    backgroundColor: '#FFFFFF',
+    textAlign: 'center',
   },
-  scrollContent: {
-    paddingBottom: 20,
-    flexGrow: 1,
+  resetButton: {
+    paddingHorizontal: 12,
+    paddingVertical: 8,
   },
+  resetText: {
+    fontSize: 14,
+    fontFamily: 'HelveticaMedium',
+    textTransform: 'uppercase',
+    fontWeight: '600',
+    color: '#3B82F6',
+  },
+  // Scroll
+  scroll: {
+    flex: 1,
+    paddingHorizontal: 20,
+  },
+  // Filter Section
   filterSection: {
+    marginTop: 24,
+  },
+  sectionTitle: {
+    fontSize: 14,
+    fontFamily: 'HelveticaMedium',
+    textTransform: 'uppercase',
+    fontWeight: '600',
+    color: '#111827',
+    marginBottom: 12,
+  },
+  // Dropdown
+  dropdownContainer: {
+    position: 'relative',
+  },
+  dropdownDisabled: {
+    opacity: 0.5,
+  },
+  dropdownButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: '#F9FAFB',
+    borderRadius: 12,
+    paddingVertical: 14,
+    paddingHorizontal: 16,
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+  },
+  dropdownText: {
+    fontSize: 15,
+    fontFamily: 'HelveticaMedium',
+    textTransform: 'uppercase',
+    fontWeight: '500',
+    color: '#111827',
+    flex: 1,
+  },
+  dropdownPlaceholder: {
+    color: '#9CA3AF',
+  },
+  dropdownOptions: {
+    position: 'absolute',
+    top: '100%',
+    left: 0,
+    right: 0,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    marginTop: 8,
+    maxHeight: 300,
+    zIndex: 1000,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.1,
+    shadowRadius: 12,
+    elevation: 8,
+  },
+  dropdownScroll: {
+    maxHeight: 300,
+  },
+  dropdownItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 14,
+    paddingHorizontal: 16,
     borderBottomWidth: 1,
     borderBottomColor: '#F3F4F6',
   },
-  sectionHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingHorizontal: 16,
-    paddingVertical: 14,
-  },
-  sectionHeaderLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
+  dropdownItemText: {
+    fontSize: 15,
+    fontFamily: 'HelveticaMedium',
+    textTransform: 'uppercase',
+    fontWeight: '500',
+    color: '#111827',
     flex: 1,
   },
-  sectionTitle: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#111827',
-  },
-  activeBadge: {
-    backgroundColor: '#6366F1',
-    borderRadius: 10,
-    minWidth: 20,
-    height: 20,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 6,
-  },
-  activeBadgeText: {
-    color: '#FFFFFF',
-    fontSize: 11,
+  dropdownItemTextSelected: {
+    color: '#3B82F6',
     fontWeight: '700',
   },
-  sectionContent: {
-    paddingHorizontal: 16,
-    paddingBottom: 16,
-  },
-  searchContainer: {
+  // Search
+  searchSection: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: '#F9FAFB',
     borderRadius: 12,
-    paddingHorizontal: 12,
-    marginBottom: 12,
+    paddingHorizontal: 16,
+    margin: 12,
     borderWidth: 1,
     borderColor: '#E5E7EB',
   },
@@ -872,143 +587,86 @@ const styles = StyleSheet.create({
   },
   searchInput: {
     flex: 1,
-    fontSize: 14,
+    fontSize: 15,
+    fontFamily: 'HelveticaMedium',
+    textTransform: 'uppercase',
+    fontWeight: '500',
     color: '#111827',
     paddingVertical: 12,
   },
-  chipsScrollView: {
-    marginHorizontal: -16,
-    paddingHorizontal: 16,
-  },
-  chipsContainer: {
+  // Year Range
+  yearRangeContainer: {
     flexDirection: 'row',
-    gap: 8,
-    paddingRight: 16,
-  },
-  filterChip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-    borderRadius: 20,
-    backgroundColor: '#F3F4F6',
-    borderWidth: 1.5,
-    borderColor: '#E5E7EB',
-  },
-  filterChipActive: {
-    backgroundColor: '#6366F1',
-    borderColor: '#4F46E5',
-  },
-  filterChipText: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: '#6B7280',
-  },
-  filterChipTextActive: {
-    color: '#FFFFFF',
-  },
-  urgencyContainer: {
-    gap: 10,
-  },
-  urgencyOption: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    padding: 14,
-    borderRadius: 12,
-    backgroundColor: '#F9FAFB',
-    borderWidth: 2,
-    borderColor: 'transparent',
-  },
-  urgencyOptionActive: {
-    backgroundColor: '#EEF2FF',
-    borderColor: '#6366F1',
-  },
-  urgencyDot: {
-    width: 12,
-    height: 12,
-    borderRadius: 6,
-  },
-  urgencyText: {
-    flex: 1,
-    fontSize: 14,
-    fontWeight: '500',
-    color: '#374151',
-  },
-  urgencyTextActive: {
-    color: '#6366F1',
-    fontWeight: '600',
-  },
-  statusContainer: {
-    gap: 10,
-  },
-  statusOption: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    padding: 14,
-    borderRadius: 12,
-    backgroundColor: '#F9FAFB',
-    borderWidth: 2,
-    borderColor: 'transparent',
-  },
-  statusDot: {
-    width: 12,
-    height: 12,
-    borderRadius: 6,
-  },
-  statusText: {
-    flex: 1,
-    fontSize: 14,
-    fontWeight: '500',
-    color: '#374151',
-  },
-  budgetContainer: {
     gap: 12,
   },
-  budgetInputRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-end',
-    gap: 12,
-  },
-  budgetInputContainer: {
+  yearInputWrapper: {
     flex: 1,
   },
-  budgetLabel: {
+  yearLabel: {
     fontSize: 12,
-    fontWeight: '600',
+    fontFamily: 'HelveticaMedium',
+    textTransform: 'uppercase',
+    fontWeight: '500',
     color: '#6B7280',
     marginBottom: 8,
   },
-  budgetInputWrapper: {
+  // Price Inputs
+  priceInputsContainer: {
     flexDirection: 'row',
     alignItems: 'center',
+    gap: 12,
+  },
+  priceInputWrapper: {
+    flex: 1,
+  },
+  priceInputLabel: {
+    fontSize: 12,
+    fontFamily: 'HelveticaMedium',
+    textTransform: 'uppercase',
+    fontWeight: '500',
+    color: '#6B7280',
+    marginBottom: 8,
+  },
+  priceInput: {
     backgroundColor: '#F9FAFB',
     borderRadius: 12,
+    paddingVertical: 14,
+    paddingHorizontal: 16,
     borderWidth: 1,
     borderColor: '#E5E7EB',
-    paddingHorizontal: 14,
-  },
-  budgetInput: {
-    flex: 1,
-    fontSize: 16,
-    fontWeight: '600',
+    fontSize: 15,
+    fontFamily: 'HelveticaMedium',
+    textTransform: 'uppercase',
+    fontWeight: '500',
     color: '#111827',
-    paddingVertical: 12,
   },
-  budgetCurrency: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#6366F1',
-    marginLeft: 8,
+  priceSeparator: {
+    width: 1,
+    height: 40,
+    backgroundColor: '#E5E7EB',
+    marginTop: 24,
   },
-  budgetSeparator: {
-    paddingBottom: 12,
+  // Footer
+  footer: {
+    paddingHorizontal: 20,
+    paddingTop: 16,
+    paddingBottom: 20,
+    borderTopWidth: 1,
+    borderTopColor: '#E5E7EB',
+    backgroundColor: '#FFFFFF',
   },
-  budgetSeparatorText: {
-    fontSize: 18,
-    color: '#9CA3AF',
-    fontWeight: '300',
+  applyButton: {
+    backgroundColor: '#111827',
+    borderRadius: 12,
+    paddingVertical: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  applyButtonText: {
+    fontSize: 16,
+    fontFamily: 'HelveticaMedium',
+    textTransform: 'uppercase',
+    fontWeight: '700',
+    color: '#FFFFFF',
   },
 });

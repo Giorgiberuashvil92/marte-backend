@@ -3,6 +3,7 @@ import { AppState, AppStateStatus } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import API_BASE_URL from '../config/api';
 import { useUser } from './UserContext';
+import { setSubscriptionRefreshCallback } from '../services/subscriptionRefresh';
 
 export interface Subscription {
   id: string;
@@ -18,6 +19,7 @@ export interface Subscription {
   planName?: string; // Backend planName
   planPeriod?: string; // monthly, yearly, etc.
   userId?: string; // User ID რომელსაც ეკუთვნის ეს საბსქრიფშენი
+  maxFinesCars?: number; // პრემიუმ: მაქსიმუმ რამდენი მანქანის ჯარიმების მონიტორინგი (default: 1)
 }
 
 interface SubscriptionContextType {
@@ -95,6 +97,7 @@ export function SubscriptionProvider({ children }: SubscriptionProviderProps) {
             planName: subscriptionData.planName,
             planPeriod: subscriptionData.period,
             userId: user.id,
+            maxFinesCars: subscriptionData.maxFinesCars || 1, // default: 1 მანქანა პრემიუმში
           };
           
           setSubscription(backendSubscription);
@@ -180,6 +183,12 @@ export function SubscriptionProvider({ children }: SubscriptionProviderProps) {
       clearInterval(interval);
     };
   }, [user?.id, loadSubscription]);
+
+  // Push "subscription_updated" – UserContext იძახებს triggerSubscriptionRefresh()-ს
+  useEffect(() => {
+    setSubscriptionRefreshCallback(() => loadSubscription());
+    return () => setSubscriptionRefreshCallback(null);
+  }, [loadSubscription]);
 
   const updateSubscription = async (newSubscription: Subscription) => {
     try {

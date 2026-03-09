@@ -8,6 +8,8 @@ import {
   ScrollView,
   TextInput,
   Dimensions,
+  KeyboardAvoidingView,
+  Platform,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -23,8 +25,12 @@ interface ReminderData {
   carId: string;
   reminderDate: string;
   reminderTime: string;
+  reminderTime2?: string; // მეორე დრო "ყოველდღე"-სთვის
+  startDate?: string; // დაწყების თარიღი recurring-ისთვის
+  endDate?: string; // დასრულების თარიღი recurring-ისთვის
   type: string;
   priority: string;
+  recurringInterval?: string; // 'none' | 'daily' | 'weekly' | 'monthly' | 'yearly'
 }
 
 interface AddReminderModalProps {
@@ -32,6 +38,7 @@ interface AddReminderModalProps {
   onClose: () => void;
   onAddReminder: (reminderData: ReminderData) => void;
   cars: Array<{ id: string; make: string; model: string; plateNumber: string }>;
+  defaultCarId?: string;
 }
 
 const REMINDER_TYPES = [
@@ -53,12 +60,22 @@ const PRIORITY_LEVELS = [
   { id: 'high', name: 'მაღალი', color: '#EF4444', icon: 'arrow-up' },
 ];
 
-export default function AddReminderModal({ visible, onClose, onAddReminder, cars }: AddReminderModalProps) {
+const RECURRING_INTERVALS = [
+  { id: 'none', name: 'ერთხელ', icon: 'close-circle-outline', description: 'მხოლოდ ერთხელ' },
+  { id: 'daily', name: 'ყოველდღე', icon: 'calendar-outline', description: 'დღეში 2 ჯერ' },
+  { id: 'weekly', name: 'ყოველ კვირაში', icon: 'calendar-outline', description: 'ყოველ კვირას' },
+  { id: 'monthly', name: 'ყოველ თვეში', icon: 'calendar-outline', description: 'ყოველ თვეს' },
+  { id: 'yearly', name: 'ყოველ წელს', icon: 'calendar-outline', description: 'ყოველ წელს' },
+];
+
+export default function AddReminderModal({ visible, onClose, onAddReminder, cars, defaultCarId }: AddReminderModalProps) {
   const insets = useSafeAreaInsets();
   const { error: globalError } = useToast();
 
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [showTimePicker, setShowTimePicker] = useState(false);
+  const [timePickerType, setTimePickerType] = useState<'first' | 'second'>('first'); // რომელი დრო აირჩევა
+  const [datePickerType, setDatePickerType] = useState<'start' | 'end'>('start'); // რომელი თარიღი აირჩევა
   const [tempDate, setTempDate] = useState(new Date());
   const [tempTime, setTempTime] = useState(new Date());
   const [localToast, setLocalToast] = useState<{ id: string; title: string; message?: string } | null>(null);
@@ -104,29 +121,48 @@ export default function AddReminderModal({ visible, onClose, onAddReminder, cars
   const [reminderData, setReminderData] = useState<ReminderData>({
     title: '',
     description: '',
-    carId: '',
+    carId: defaultCarId || '',
     reminderDate: formatDate(new Date()),
     reminderTime: formatTime(new Date()),
+    reminderTime2: undefined,
+    startDate: formatDate(new Date()),
+    endDate: undefined,
     type: 'maintenance',
     priority: 'medium',
+    recurringInterval: 'none',
   });
+
+  useEffect(() => {
+    if (visible && defaultCarId) {
+      setReminderData(prev => ({
+        ...prev,
+        carId: defaultCarId,
+      }));
+    }
+  }, [visible, defaultCarId]);
 
   useEffect(() => {
     if (!visible) {
       setReminderData({
         title: '',
         description: '',
-        carId: '',
+        carId: defaultCarId || '',
         reminderDate: formatDate(new Date()),
         reminderTime: formatTime(new Date()),
+        reminderTime2: undefined,
+        startDate: formatDate(new Date()),
+        endDate: undefined,
         type: 'maintenance',
         priority: 'medium',
+        recurringInterval: 'none',
       });
       setTempDate(new Date());
       setTempTime(new Date());
       setLocalToast(null);
+      setTimePickerType('first');
+      setDatePickerType('start');
     }
-  }, [visible]);
+  }, [visible, defaultCarId]);
 
   const showLocalError = useCallback((title: string, message?: string) => {
     const id = Math.random().toString(36).substr(2, 9);
@@ -137,8 +173,18 @@ export default function AddReminderModal({ visible, onClose, onAddReminder, cars
   }, []);
 
   const handleSubmit = () => {
-    if (!reminderData.carId || !reminderData.reminderDate || !reminderData.title) {
-      showLocalError('აუცილებელია მანქანა, თარიღი და სათაური');
+    if (!reminderData.carId || !reminderData.title) {
+      showLocalError('აუცილებელია მანქანა და სათაური');
+      return;
+    }
+    // თუ recurringInterval არის 'none', მაშინ თარიღი და დრო საჭიროა
+    if (reminderData.recurringInterval === 'none' && (!reminderData.reminderDate || !reminderData.reminderTime)) {
+      showLocalError('ერთჯერადი შეხსენებისთვის საჭიროა თარიღი და დრო');
+      return;
+    }
+    // თუ recurringInterval არის 'daily', მაშინ ორივე დრო საჭიროა
+    if (reminderData.recurringInterval === 'daily' && (!reminderData.reminderTime || !reminderData.reminderTime2)) {
+      showLocalError('ყოველდღე შეხსენებისთვის საჭიროა ორივე დრო');
       return;
     }
     onAddReminder(reminderData);
@@ -154,6 +200,11 @@ export default function AddReminderModal({ visible, onClose, onAddReminder, cars
       onRequestClose={() => {}}
     >
       <View style={styles.backdrop} />
+      <KeyboardAvoidingView
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        style={{ flex: 1, justifyContent: 'flex-end' }}
+        keyboardVerticalOffset={0}
+      >
       <View style={[styles.sheet, { paddingBottom: insets.bottom + 12 }]}>
         <View style={styles.handle} />
         <View style={styles.headerRow}>
@@ -170,6 +221,8 @@ export default function AddReminderModal({ visible, onClose, onAddReminder, cars
           style={styles.body}
           contentContainerStyle={{ paddingBottom: 12 }}
           showsVerticalScrollIndicator={false}
+            keyboardShouldPersistTaps="handled"
+            keyboardDismissMode="on-drag"
         >
           {selectedCar && (
             <View style={styles.selectedCarCard}>
@@ -239,6 +292,44 @@ export default function AddReminderModal({ visible, onClose, onAddReminder, cars
             ))}
           </View>
 
+          <View style={styles.sectionHeader}>
+            <Text style={styles.sectionTitle}>როდის გინდათ რომ შეგახსენოთ?</Text>
+            <Text style={styles.sectionSubtitle}>რამდენ ხანში ერთხელ</Text>
+          </View>
+
+          <View style={styles.chipsRowWrap}>
+            {RECURRING_INTERVALS.map((interval) => (
+              <TouchableOpacity
+                key={interval.id}
+                style={[
+                  styles.recurringCard,
+                  reminderData.recurringInterval === interval.id && styles.recurringCardActive,
+                ]}
+                onPress={() => setReminderData({ ...reminderData, recurringInterval: interval.id })}
+              >
+                <Ionicons 
+                  name={interval.icon as any} 
+                  size={18} 
+                  color={reminderData.recurringInterval === interval.id ? '#2563EB' : '#64748B'} 
+                />
+                <View style={{ flex: 1 }}>
+                  <Text style={[
+                    styles.recurringText,
+                    reminderData.recurringInterval === interval.id && styles.recurringTextActive
+                  ]}>
+                    {interval.name}
+                  </Text>
+                  {interval.description && (
+                    <Text style={styles.recurringDescription}>{interval.description}</Text>
+                  )}
+                </View>
+                {reminderData.recurringInterval === interval.id && (
+                  <Ionicons name="checkmark-circle" size={20} color="#2563EB" />
+                )}
+              </TouchableOpacity>
+            ))}
+          </View>
+
           <View style={styles.row}>
             <View style={{ flex: 1 }}>
               <Text style={styles.label}>თარიღი</Text>
@@ -302,6 +393,7 @@ export default function AddReminderModal({ visible, onClose, onAddReminder, cars
           </TouchableOpacity>
         </View>
       </View>
+      </KeyboardAvoidingView>
 
       {showDatePicker && (
         <View style={styles.pickerOverlay}>
@@ -321,7 +413,11 @@ export default function AddReminderModal({ visible, onClose, onAddReminder, cars
               <TouchableOpacity
                 style={styles.primaryBtn}
                 onPress={() => {
-                  setReminderData(prev => ({ ...prev, reminderDate: formatDate(tempDate) }));
+                  if (datePickerType === 'start') {
+                    setReminderData(prev => ({ ...prev, startDate: formatDate(tempDate) }));
+                  } else {
+                    setReminderData(prev => ({ ...prev, endDate: formatDate(tempDate) }));
+                  }
                   setShowDatePicker(false);
                 }}
               >
@@ -350,7 +446,11 @@ export default function AddReminderModal({ visible, onClose, onAddReminder, cars
               <TouchableOpacity
                 style={styles.primaryBtn}
                 onPress={() => {
+                  if (timePickerType === 'first') {
                   setReminderData(prev => ({ ...prev, reminderTime: formatTime(tempTime) }));
+                  } else {
+                    setReminderData(prev => ({ ...prev, reminderTime2: formatTime(tempTime) }));
+                  }
                   setShowTimePicker(false);
                 }}
               >
@@ -435,6 +535,21 @@ const styles = StyleSheet.create({
   },
   body: {
     maxHeight: '78%',
+  },
+  sectionHeader: {
+    marginTop: 16,
+    marginBottom: 8,
+  },
+  sectionTitle: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: '#0F172A',
+    marginBottom: 4,
+  },
+  sectionSubtitle: {
+    fontSize: 13,
+    fontWeight: '500',
+    color: '#64748B',
   },
   label: {
     fontSize: 13,
@@ -535,6 +650,56 @@ const styles = StyleSheet.create({
   priorityText: {
     fontSize: 12,
     fontWeight: '700',
+  },
+  recurringCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    paddingVertical: 14,
+    paddingHorizontal: 14,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    backgroundColor: '#FFFFFF',
+    width: '100%',
+    marginBottom: 8,
+  },
+  recurringCardActive: {
+    borderColor: '#2563EB',
+    backgroundColor: '#EEF2FF',
+  },
+  recurringText: {
+    fontSize: 14,
+    color: '#0F172A',
+    fontWeight: '600',
+    marginBottom: 2,
+  },
+  recurringTextActive: {
+    color: '#2563EB',
+    fontWeight: '700',
+  },
+  recurringDescription: {
+    fontSize: 12,
+    color: '#64748B',
+    fontWeight: '500',
+  },
+  infoBox: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 10,
+    backgroundColor: '#EEF2FF',
+    borderRadius: 12,
+    padding: 14,
+    borderWidth: 1,
+    borderColor: '#E0EAFF',
+    marginTop: 12,
+  },
+  infoText: {
+    flex: 1,
+    fontSize: 13,
+    color: '#1E40AF',
+    fontWeight: '500',
+    lineHeight: 18,
   },
   row: {
     flexDirection: 'row',

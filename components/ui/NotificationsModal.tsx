@@ -4,6 +4,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import API_BASE_URL from '../../config/api';
 import { useUser } from '../../contexts/UserContext';
+import { triggerSubscriptionRefresh } from '../../services/subscriptionRefresh';
 
 const { width, height } = Dimensions.get('window');
 
@@ -141,6 +142,7 @@ export function NotificationsModal({ visible, onClose }: Props) {
     const offerId = d.offerId as string | undefined;
     const carwashId = d.carwashId as string | undefined;
     const chatId = d.chatId as string | undefined;
+    const partnerId = d.partnerId as string | undefined;
     const target = d.target || {};
     
     // დალოგე notification-ის მონაცემები
@@ -193,6 +195,14 @@ export function NotificationsModal({ visible, onClose }: Props) {
       console.log('🔔 [NOTIFICATIONS] Navigating to home with premium modal');
       router.push('/' as any);
       setShouldOpenPremiumModal(true);
+      return;
+    }
+
+    if (type === 'subscription_updated' || notification.type === 'subscription_updated' || d.type === 'subscription_updated') {
+      onClose();
+      console.log('🔔 [NOTIFICATIONS] subscription_updated – refreshing subscription');
+      triggerSubscriptionRefresh();
+      router.push('/' as any);
       return;
     }
     
@@ -259,8 +269,8 @@ export function NotificationsModal({ visible, onClose }: Props) {
         route = `/offers/${requestId}`;
       } else if (screen === 'Bookings' && carwashId) {
         route = `/bookings/${carwashId}`;
-      } else if (screen === 'Chat' && (chatId || hasValidOfferId)) {
-        route = `/chat/${chatId || offerId}`;
+      } else if (screen === 'Chat') {
+        route = (requestId && partnerId) ? `/chat/${requestId}/${partnerId}` : '/chats';
       } else if (hasValidRequestId) {
         // ყოველთვის requestId-ს ვიყენებთ /offers გვერდისთვის
         route = `/offers/${requestId}`;
@@ -289,90 +299,66 @@ export function NotificationsModal({ visible, onClose }: Props) {
     <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
       <View style={styles.modalOverlay}>
         <TouchableOpacity style={{ flex: 1 }} onPress={onClose} />
-        
-        {/* Glassmorphism Modal Card */}
         <View style={styles.modalCard}>
-          <View style={styles.modalGradient}>
-            {/* Header */}
-            <View style={styles.header}>
-              <View style={styles.headerStrip} />
-              <View style={styles.headerContent}>
-                <View style={styles.titleRow}>
-                  <Text style={styles.title}>შეტყობინებები</Text>
-                  {unreadCount > 0 && (
-                    <View style={styles.unreadBadge}>
-                      <Text style={styles.unreadBadgeText}>{unreadCount}</Text>
-                    </View>
-                  )}
-                </View>
-                <TouchableOpacity onPress={onClose} style={styles.closeButton}>
-                  <Ionicons name="close" size={20} color="#9CA3AF" />
-                </TouchableOpacity>
+          {/* Header */}
+          <View style={styles.header}>
+            <View style={styles.headerStrip} />
+            <View style={styles.headerContent}>
+              <View style={styles.titleRow}>
+                <Text style={styles.title}>შეტყობინებები</Text>
+                {unreadCount > 0 && (
+                  <View style={styles.unreadBadge}>
+                    <Text style={styles.unreadBadgeText}>{unreadCount}</Text>
+                  </View>
+                )}
               </View>
+              <TouchableOpacity onPress={onClose} style={styles.closeButton} activeOpacity={0.7}>
+                <Ionicons name="close" size={20} color="#111827" />
+              </TouchableOpacity>
             </View>
+          </View>
 
-            {/* Content */}
-            <View style={styles.content}>
-              <ScrollView showsVerticalScrollIndicator={false} style={styles.notificationsList}>
-                {notifications.slice(0, 5).map((notification) => (
+          {/* Content */}
+          <View style={styles.content}>
+            <ScrollView showsVerticalScrollIndicator={false} style={styles.notificationsList} contentContainerStyle={styles.listContent}>
+              {notifications.slice(0, 5).map((notification) => {
+                const p = getIconPalette(notification.type);
+                return (
                   <TouchableOpacity
                     key={notification.id}
-                    style={[
-                      styles.notificationCard,
-                      !notification.isRead && styles.unreadCard
-                    ]}
+                    style={[styles.notificationCard, !notification.isRead && styles.unreadCard]}
                     onPress={() => {
                       markAsRead(notification.id);
                       handleNavigation(notification);
                     }}
                     activeOpacity={0.7}
                   >
-                    <View style={styles.notificationContent}>
-                      {(() => { const p = getIconPalette(notification.type); return (
-                        <View style={[
-                          styles.iconContainer,
-                          { backgroundColor: p.bg, borderColor: p.border }
-                        ]}>
-                        <Ionicons 
-                            name={getNotificationIcon(notification.type) as any} 
-                            size={20} 
-                            color={p.color} 
-                          />
-                        </View>
-                      ); })()}
-                      
-                      <View style={styles.notificationText}>
-                        <View style={styles.titleRow}>
-                          <Text style={[
-                            styles.notificationTitle,
-                            !notification.isRead && styles.unreadTitle
-                          ]}>
-                            {notification.title}
-                          </Text>
-                          {!notification.isRead && (
-                            <View style={styles.unreadDot} />
-                          )}
-                        </View>
-                        <Text style={styles.notificationMessage} numberOfLines={2}>
-                          {notification.message}
-                        </Text>
-                        <Text style={styles.timestamp}>
-                          {formatTimeAgo(notification.createdAt)}
-                        </Text>
-                      </View>
+                    <View style={[styles.iconWrap, { backgroundColor: p.bg }]}>
+                      <Ionicons name={getNotificationIcon(notification.type) as any} size={18} color={p.color} />
                     </View>
+                    <View style={styles.notificationText}>
+                      <View style={styles.cardTitleRow}>
+                        <Text style={[styles.notificationTitle, !notification.isRead && styles.unreadTitle]} numberOfLines={1}>
+                          {notification.title}
+                        </Text>
+                        {!notification.isRead && <View style={styles.unreadDot} />}
+                      </View>
+                      <Text style={styles.notificationMessage} numberOfLines={2}>{notification.message}</Text>
+                      <Text style={styles.timestamp}>{formatTimeAgo(notification.createdAt)}</Text>
+                    </View>
+                    <Ionicons name="chevron-forward" size={18} color="#9CA3AF" />
                   </TouchableOpacity>
-                ))}
-              </ScrollView>
-            </View>
+                );
+              })}
+            </ScrollView>
+          </View>
 
-            {/* Footer */}
-            <View style={styles.footer}>
-              <TouchableOpacity style={styles.viewAllButton} onPress={handleViewAll}>
-                <Text style={styles.viewAllButtonText}>ყველა შეტყობინება</Text>
-                <Ionicons name="arrow-forward" size={16} color="#FFFFFF" />
-              </TouchableOpacity>
-            </View>
+          {/* Footer */}
+          <View style={styles.footer}>
+            <TouchableOpacity style={styles.viewAllButton} onPress={handleViewAll} activeOpacity={0.7}>
+              <Text style={styles.viewAllButtonText}>ყველა შეტყობინება</Text>
+              <Ionicons name="arrow-forward" size={16} color="#111827" />
+            </TouchableOpacity>
           </View>
         </View>
       </View>
@@ -383,40 +369,34 @@ export function NotificationsModal({ visible, onClose }: Props) {
 const styles = StyleSheet.create({
   modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.35)',
+    backgroundColor: 'rgba(0, 0, 0, 0.4)',
     justifyContent: 'flex-end',
   },
   modalCard: {
     height: '60%',
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
     overflow: 'hidden',
-    backgroundColor: 'rgba(17, 24, 39, 0.7)',
+    backgroundColor: '#FFFFFF',
     borderWidth: 1,
-    borderColor: 'rgba(148, 163, 184, 0.35)',
-    shadowColor: '#000000',
-    shadowOffset: { width: 0, height: -8 },
-    shadowOpacity: 0.18,
-    shadowRadius: 12,
-    elevation: 12,
+    borderColor: '#E5E7EB',
+    borderBottomWidth: 0,
   },
-  modalGradient: {
-    flex: 1,
-  },
-  
-  // Header
   header: {
-    paddingTop: 8,
+    paddingTop: 10,
     paddingHorizontal: 20,
-    paddingBottom: 16,
+    paddingBottom: 14,
+    backgroundColor: '#FFFFFF',
+    borderBottomWidth: 1,
+    borderBottomColor: '#E5E7EB',
   },
   headerStrip: {
-    width: 40,
+    width: 36,
     height: 4,
-    backgroundColor: 'rgba(156, 163, 175, 0.3)',
+    backgroundColor: '#E5E7EB',
     borderRadius: 2,
     alignSelf: 'center',
-    marginBottom: 16,
+    marginBottom: 12,
   },
   headerContent: {
     flexDirection: 'row',
@@ -429,132 +409,131 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   title: {
-    fontSize: 20,
+    fontSize: 15,
+    fontFamily: 'HelveticaMedium',
+    color: '#111827',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
     fontWeight: '700',
-    color: '#F8FAFC',
-    fontFamily: 'Outfit',
   },
   unreadBadge: {
-    backgroundColor: '#EF4444',
+    backgroundColor: '#111827',
     borderRadius: 10,
     paddingHorizontal: 8,
-    paddingVertical: 2,
-    minWidth: 20,
+    paddingVertical: 4,
+    minWidth: 22,
     alignItems: 'center',
+    justifyContent: 'center',
   },
   unreadBadgeText: {
     fontSize: 12,
+    fontFamily: 'HelveticaMedium',
     fontWeight: '700',
     color: '#FFFFFF',
-    fontFamily: 'Outfit',
   },
   closeButton: {
-    padding: 8,
-    borderRadius: 20,
-    backgroundColor: 'rgba(255, 255, 255, 0.12)',
-    borderWidth: 1,
-    borderColor: 'rgba(148, 163, 184, 0.35)',
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: '#F3F4F6',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  
-  // Content
   content: {
     flex: 1,
-    paddingHorizontal: 20,
+    paddingHorizontal: 16,
+    backgroundColor: '#FFFFFF',
   },
   notificationsList: {
     flex: 1,
   },
+  listContent: {
+    paddingTop: 12,
+    paddingBottom: 16,
+  },
   notificationCard: {
-    backgroundColor: 'rgba(255, 255, 255, 0.12)',
-    borderRadius: 16,
-    marginBottom: 12,
-    shadowColor: '#000000',
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.12,
-    shadowRadius: 12,
-    elevation: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FFFFFF',
+    borderRadius: 12,
+    padding: 12,
+    marginBottom: 10,
     borderWidth: 1,
-    borderColor: 'rgba(148, 163, 184, 0.3)',
+    borderColor: '#E5E7EB',
+    gap: 10,
   },
   unreadCard: {
-    borderColor: '#6366F1',
-    borderWidth: 1.5,
-    backgroundColor: 'rgba(99, 102, 241, 0.12)',
+    backgroundColor: '#F9FAFB',
   },
-  notificationContent: {
-    flexDirection: 'row',
-    padding: 16,
-    alignItems: 'flex-start',
-  },
-  iconContainer: {
+  iconWrap: {
     width: 40,
     height: 40,
     borderRadius: 20,
     alignItems: 'center',
     justifyContent: 'center',
-    marginRight: 12,
-    borderWidth: 1,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.12,
-    shadowRadius: 4,
   },
   notificationText: {
     flex: 1,
+    minWidth: 0,
+  },
+  cardTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 4,
   },
   notificationTitle: {
     fontSize: 14,
+    fontFamily: 'HelveticaMedium',
+    color: '#111827',
     fontWeight: '600',
-    color: '#E5E7EB',
-    fontFamily: 'Outfit',
-    marginBottom: 4,
+    flex: 1,
   },
   unreadTitle: {
-    color: '#F8FAFC',
     fontWeight: '700',
   },
   unreadDot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-    backgroundColor: '#3B82F6',
-    marginLeft: 8,
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: '#111827',
+    marginLeft: 6,
   },
   notificationMessage: {
-    fontSize: 12,
-    color: '#CBD5E1',
-    lineHeight: 16,
-    marginBottom: 6,
-    fontFamily: 'Outfit',
+    fontSize: 13,
+    fontFamily: 'HelveticaMedium',
+    color: '#6B7280',
+    lineHeight: 18,
+    marginBottom: 4,
   },
   timestamp: {
-    fontSize: 10,
-    color: '#A1A1AA',
-    fontFamily: 'Outfit',
+    fontSize: 12,
+    fontFamily: 'HelveticaMedium',
+    color: '#9CA3AF',
   },
-  
-  // Footer
   footer: {
-    padding: 20,
+    padding: 16,
+    paddingBottom: 24,
+    backgroundColor: '#FFFFFF',
     borderTopWidth: 1,
-    borderTopColor: 'rgba(148, 163, 184, 0.25)',
+    borderTopColor: '#E5E7EB',
   },
   viewAllButton: {
-    backgroundColor: 'rgba(255, 255, 255, 0.16)',
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 14,
-    borderRadius: 12,
+    paddingVertical: 12,
+    paddingHorizontal: 20,
+    borderRadius: 14,
+    backgroundColor: '#F3F4F6',
     borderWidth: 1,
-    borderColor: 'rgba(148, 163, 184, 0.35)',
+    borderColor: '#E5E7EB',
     gap: 8,
   },
   viewAllButtonText: {
     fontSize: 14,
+    fontFamily: 'HelveticaMedium',
     fontWeight: '600',
-    color: '#F8FAFC',
-    fontFamily: 'Outfit',
+    color: '#111827',
   },
 });
 

@@ -5,6 +5,8 @@ export interface Car {
   year: number;
   plateNumber: string;
   imageUri?: string;
+  vin?: string;
+  techPassport?: string;
   lastService?: Date;
   nextService?: Date;
 }

@@ -53,9 +53,10 @@ class MessagesApiService {
     }
   }
 
-  async getChatHistory(requestId: string): Promise<ChatMessage[]> {
+  async getChatHistory(requestId: string, partnerId?: string): Promise<ChatMessage[]> {
     try {
-      const response = await fetch(`${this.baseUrl}/chat/${requestId}`, {
+      const params = partnerId ? `?partnerId=${encodeURIComponent(partnerId)}` : '';
+      const response = await fetch(`${this.baseUrl}/chat/${requestId}${params}`, {
         method: 'GET',
         headers: {
           'Content-Type': 'application/json',

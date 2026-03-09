@@ -64,7 +64,7 @@ export default function TabLayout() {
       <Tabs.Screen
         name="ecommerce"
         options={{
-          title: 'მართვა',
+          title: 'მართე',
           tabBarIcon: ({ color }) => <TabBarIcon name="cog" color={color} />,
         }}
       />

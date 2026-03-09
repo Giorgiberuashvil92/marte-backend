@@ -16,7 +16,8 @@ interface SocketService {
   connect: (userId: string, partnerId?: string) => void;
   disconnect: () => void;
   joinChat: (requestId: string, userId: string, partnerId?: string) => void;
-  sendMessage: (requestId: string, message: string, sender: 'user' | 'partner') => void;
+  /** Backend განსაზღვრავს ვინ წერს join-ის მონაცემებიდან – sender ოფციონალურია და იგნორირდება. */
+  sendMessage: (requestId: string, message: string, sender?: 'user' | 'partner') => void;
   onMessage: (callback: (message: ChatMessage) => void) => void;
   onChatHistory: (callback: (history: ChatMessage[]) => void) => void;
   onTypingStart: (callback: (data: any) => void) => void;
@@ -32,7 +33,10 @@ class SocketServiceClass implements SocketService {
   private socket: Socket | null = null;
   private isConnected = false;
   private pendingJoins: Array<{ requestId: string; userId: string; partnerId?: string }> = [];
-  private pendingMessages: Array<{ requestId: string; message: string; sender: 'user' | 'partner' }> = [];
+  private pendingMessages: Array<{ requestId: string; message: string }> = [];
+  /** Re-join this room on reconnect so message:new keeps working */
+  private lastJoinChat: { requestId: string; userId: string; partnerId?: string } | null = null;
+  private hadConnection = false;
 
   connect(userId: string, partnerId?: string) {
     if (this.isConnected) return;
@@ -54,14 +58,19 @@ class SocketServiceClass implements SocketService {
     this.socket.on('connect', () => {
       console.log('🔌 Chat socket connected:', this.socket?.id);
       this.isConnected = true;
-      // Flush pending joins
+      // Flush pending joins (e.g. join was called before socket was ready)
       this.pendingJoins.forEach(({ requestId, userId, partnerId }) => {
-        this.joinChat(requestId, userId, partnerId);
+        this.emitJoinChat(requestId, userId, partnerId);
       });
       this.pendingJoins = [];
+      // Re-join last room only after a reconnect (so message:new is received again)
+      if (this.hadConnection && this.lastJoinChat) {
+        this.emitJoinChat(this.lastJoinChat.requestId, this.lastJoinChat.userId, this.lastJoinChat.partnerId);
+      }
+      this.hadConnection = true;
       // Flush pending messages
-      this.pendingMessages.forEach(({ requestId, message, sender }) => {
-        this.sendMessage(requestId, message, sender);
+      this.pendingMessages.forEach(({ requestId, message }) => {
+        this.sendMessage(requestId, message);
       });
       this.pendingMessages = [];
     });
@@ -69,6 +78,7 @@ class SocketServiceClass implements SocketService {
     this.socket.on('disconnect', () => {
       console.log('🔌 Chat socket disconnected');
       this.isConnected = false;
+      // hadConnection stays true so next connect is treated as reconnect
     });
 
     this.socket.on('connect_error', (error) => {
@@ -81,7 +91,15 @@ class SocketServiceClass implements SocketService {
       this.socket.disconnect();
       this.socket = null;
       this.isConnected = false;
+      this.lastJoinChat = null;
+      this.hadConnection = false;
     }
+  }
+
+  private emitJoinChat(requestId: string, userId: string, partnerId?: string) {
+    if (!this.socket || !this.isConnected) return;
+    this.lastJoinChat = { requestId, userId, partnerId };
+    this.socket.emit('join_chat', { requestId, userId, partnerId });
   }
 
   joinChat(requestId: string, userId: string, partnerId?: string) {
@@ -90,18 +108,16 @@ class SocketServiceClass implements SocketService {
       this.pendingJoins.push({ requestId, userId, partnerId });
       return;
     }
-
-    this.socket.emit('join_chat', { requestId, userId, partnerId });
+    this.emitJoinChat(requestId, userId, partnerId);
   }
 
-  sendMessage(requestId: string, message: string, sender: 'user' | 'partner') {
+  sendMessage(requestId: string, message: string, _sender?: 'user' | 'partner') {
     if (!this.socket || !this.isConnected) {
       console.warn('⚠️ Socket not connected, queue message');
-      this.pendingMessages.push({ requestId, message, sender });
+      this.pendingMessages.push({ requestId, message });
       return;
     }
-
-    this.socket.emit('send_message', { requestId, message, sender });
+    this.socket.emit('send_message', { requestId, message });
   }
 
   onMessage(callback: (message: ChatMessage) => void) {

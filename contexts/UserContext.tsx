@@ -11,6 +11,7 @@ import { Platform, Alert } from 'react-native';
 import * as Device from 'expo-device';
 import Constants from 'expo-constants';
 import { analyticsService } from '../services/analytics';
+import { triggerSubscriptionRefresh } from '../services/subscriptionRefresh';
 
 interface User {
   id: string;
@@ -190,6 +191,13 @@ export function UserProvider({ children }: { children: ReactNode }) {
         setShouldOpenPremiumModal(true);
         return;
       }
+
+      // 1.1 საბსქრიფშენი განახლებულია – მხოლოდ რეფრეში, ნავიგაცია არა
+      if (type === 'subscription_updated') {
+        console.log('📱 [PUSH NOTIFICATION] ✅ subscription_updated – refreshing subscription');
+        triggerSubscriptionRefresh();
+        return;
+      }
       
       // 1.5. Review notifications
       if (type === 'review' || type === 'review_us' || screen === 'Review' || screen === 'ReviewUs' || title?.toLowerCase().includes('review') || title?.toLowerCase().includes('შეფასება')) {
@@ -205,14 +213,15 @@ export function UserProvider({ children }: { children: ReactNode }) {
         return;
       }
       
-      // 3. Chat messages
+      // 3. Chat messages — ჩატი ცალცალკეა requestId+partnerId-ზე; პუშში partnerId არ გვაქვს, therefore ჩატების სიაზე
       if (type === 'chat_message' || type === 'message') {
-        const chatId = data.chatId || data.offerId;
-        if (chatId) {
-          console.log(`📱 [PUSH NOTIFICATION] ✅ Navigating to /chat/${chatId} (chat_message)`);
-          router.push(`/chat/${chatId}` as any);
+        const reqId = data.requestId;
+        const partId = data.partnerId;
+        if (reqId && partId) {
+          console.log(`📱 [PUSH NOTIFICATION] ✅ Navigating to /chat/${reqId}/${partId} (chat_message)`);
+          router.push(`/chat/${reqId}/${partId}` as any);
         } else {
-          console.log('📱 [PUSH NOTIFICATION] ⚠️ Chat message but no chatId/offerId, navigating to /chats');
+          console.log('📱 [PUSH NOTIFICATION] Navigating to /chats (chat_message, no requestId+partnerId)');
           router.push('/chats' as any);
         }
         return;
@@ -290,9 +299,14 @@ export function UserProvider({ children }: { children: ReactNode }) {
           router.push(`/bookings/${data.carwashId}` as any);
           return;
         }
-        if (screen === 'Chat' && (data.chatId || data.offerId)) {
-          console.log(`📱 [PUSH NOTIFICATION] ✅ Navigating to /chat/${data.chatId || data.offerId} (Chat)`);
-          router.push(`/chat/${data.chatId || data.offerId}` as any);
+        if (screen === 'Chat') {
+          if (data.requestId && data.partnerId) {
+            console.log(`📱 [PUSH NOTIFICATION] ✅ Navigating to /chat/${data.requestId}/${data.partnerId} (Chat)`);
+            router.push(`/chat/${data.requestId}/${data.partnerId}` as any);
+          } else {
+            console.log('📱 [PUSH NOTIFICATION] ✅ Navigating to /chats (Chat, no requestId+partnerId)');
+            router.push('/chats' as any);
+          }
           return;
         }
       }

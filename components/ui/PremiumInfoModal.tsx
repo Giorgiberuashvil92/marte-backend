@@ -6,12 +6,9 @@ import {
   TouchableOpacity,
   StyleSheet,
   ScrollView,
-  Dimensions,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useSubscription } from '../../contexts/SubscriptionContext';
-
-const { height } = Dimensions.get('window');
 
 interface PremiumInfoModalProps {
   visible: boolean;
@@ -50,126 +47,101 @@ export default function PremiumInfoModal({
   const price = subscription.price || 0;
   const currency = subscription.currency || '₾';
 
+  const features = [
+    { icon: 'checkmark-circle' as const, text: 'ყველა ძირითადი ფუნქცია' },
+    { icon: 'checkmark-circle' as const, text: 'CarFAX მოხსენებები' },
+    { icon: 'checkmark-circle' as const, text: 'უსაზღვრო AI რეკომენდაციები' },
+    { icon: 'checkmark-circle' as const, text: 'ჯარიმების მონიტორინგი' },
+    { icon: 'checkmark-circle' as const, text: 'პრიორიტეტული მხარდაჭერა' },
+  ];
+
   return (
     <Modal
       visible={visible}
-      animationType="slide"
+      animationType="fade"
       transparent={true}
       onRequestClose={onClose}
     >
-      <View style={styles.overlay}>
+      <View style={styles.modalOverlay}>
         <View style={styles.modalContainer}>
-          {/* Header */}
-          <View style={styles.header}>
-            <TouchableOpacity onPress={onClose} style={styles.backButton}>
-              <Ionicons name="arrow-back" size={20} color="#0B1220" />
-            </TouchableOpacity>
-            <Text style={styles.headerTitle}>პრემიუმი</Text>
-            <View style={{ width: 40 }} />
-          </View>
-
-          {/* Main Content */}
           <ScrollView
-            style={styles.content}
-            contentContainerStyle={styles.scrollContent}
             showsVerticalScrollIndicator={false}
+            contentContainerStyle={styles.scrollContent}
           >
-            <View style={styles.iconContainer}>
-              <Ionicons name="diamond" size={48} color="#F59E0B" />
+            {/* Icon */}
+            <View style={styles.iconCircle}>
+              <Ionicons name="diamond" size={36} color="#F59E0B" />
             </View>
-           
-            <Text style={styles.mainSubtitle}>
-              თქვენ გაქვთ პრემიუმ გამოწერა
+
+            {/* Title */}
+            <Text style={styles.modalTitle}>პრემიუმ გამოწერა</Text>
+            <Text style={styles.modalSubtitle}>
+              თქვენ გაქვთ აქტიური პრემიუმ პაკეტი
             </Text>
 
-            {/* Info Cards */}
-            <View style={styles.infoContainer}>
-              {/* Renewal Date */}
-              <View style={styles.infoCard}>
-                <View style={styles.infoRow}>
-                  <Ionicons name="calendar-outline" size={20} color="#0B1220" />
-                  <View style={styles.infoTextContainer}>
-                    <Text style={styles.infoLabel}>განახლება</Text>
-                    <Text style={styles.infoValue}>{renewalDate}</Text>
-                  </View>
+            {/* Info Card */}
+            <View style={styles.statusCard}>
+              <View style={styles.statusRow}>
+                <View style={styles.statusLeft}>
+                  <Ionicons name="calendar-outline" size={18} color="#6B7280" />
+                  <Text style={styles.statusLabel}>განახლება</Text>
                 </View>
+                <Text style={styles.statusValue}>{renewalDate}</Text>
               </View>
-
-              {/* Price Info */}
-              <View style={styles.infoCard}>
-                <View style={styles.infoRow}>
-                  <Ionicons name="card-outline" size={20} color="#0B1220" />
-                  <View style={styles.infoTextContainer}>
-                    <Text style={styles.infoLabel}>გადახდილი თანხა</Text>
-                    <Text style={styles.infoValue}>
-                      {price.toFixed(2)} {currency}
+              <View style={styles.statusDivider} />
+              <View style={styles.statusRow}>
+                <View style={styles.statusLeft}>
+                  <Ionicons name="card-outline" size={18} color="#6B7280" />
+                  <Text style={styles.statusLabel}>გადახდილი</Text>
+                </View>
+                <Text style={styles.statusValue}>
+                  {price.toFixed(2)} {currency}
+                </Text>
+              </View>
+              {subscription.planPeriod && (
+                <>
+                  <View style={styles.statusDivider} />
+                  <View style={styles.statusRow}>
+                    <View style={styles.statusLeft}>
+                      <Ionicons name="time-outline" size={18} color="#6B7280" />
+                      <Text style={styles.statusLabel}>პერიოდი</Text>
+                    </View>
+                    <Text style={styles.statusValue}>
+                      {subscription.planPeriod === 'monthly' ||
+                      subscription.planPeriod === 'თვეში'
+                        ? 'თვიური'
+                        : subscription.planPeriod === 'yearly' ||
+                          subscription.planPeriod === 'წლიური'
+                        ? 'წლიური'
+                        : subscription.planPeriod}
                     </Text>
                   </View>
-                </View>
-              </View>
-
-              {/* Plan Period */}
-              {subscription.planPeriod && (
-                <View style={styles.infoCard}>
-                  <View style={styles.infoRow}>
-                    <Ionicons name="time-outline" size={20} color="#0B1220" />
-                    <View style={styles.infoTextContainer}>
-                      <Text style={styles.infoLabel}>პერიოდი</Text>
-                      <Text style={styles.infoValue}>
-                        {subscription.planPeriod === 'monthly' ||
-                        subscription.planPeriod === 'თვეში'
-                          ? 'თვიური'
-                          : subscription.planPeriod === 'yearly' ||
-                            subscription.planPeriod === 'წლიური'
-                          ? 'წლიური'
-                          : subscription.planPeriod}
-                      </Text>
-                    </View>
-                  </View>
-                </View>
+                </>
               )}
             </View>
 
-            {/* Features List */}
+            {/* Features */}
             <View style={styles.featuresCard}>
-              <Text style={styles.featuresTitle}>პრემიუმ ფუნქციები:</Text>
-              <View style={styles.featuresList}>
-                <View style={styles.featureItem}>
-                  <Ionicons name="checkmark-circle" size={18} color="#10B981" />
-                  <Text style={styles.featureText}>
-                    ყველა ძირითადი ფუნქცია
-                  </Text>
+              <Text style={styles.featuresTitle}>პრემიუმ ფუნქციები</Text>
+              {features.map((feature, index) => (
+                <View key={index} style={styles.featureRow}>
+                  <View style={styles.featureIconCircle}>
+                    <Ionicons name={feature.icon} size={16} color="#22C55E" />
+                  </View>
+                  <Text style={styles.featureText}>{feature.text}</Text>
                 </View>
-                <View style={styles.featureItem}>
-                  <Ionicons name="checkmark-circle" size={18} color="#10B981" />
-                  <Text style={styles.featureText}>CarFAX მოხსენებები</Text>
-                </View>
-                <View style={styles.featureItem}>
-                  <Ionicons name="checkmark-circle" size={18} color="#10B981" />
-                  <Text style={styles.featureText}>
-                    უსაზღვრო AI რეკომენდაციები
-                  </Text>
-                </View>
-                <View style={styles.featureItem}>
-                  <Ionicons name="checkmark-circle" size={18} color="#10B981" />
-                  <Text style={styles.featureText}>
-                    პრიორიტეტული მხარდაჭერა
-                  </Text>
-                </View>
-              </View>
+              ))}
             </View>
           </ScrollView>
 
-          {/* Footer */}
-          <View style={styles.footer}>
-            <TouchableOpacity
-              style={styles.closeButton}
-              onPress={onClose}
-              activeOpacity={0.9}
-            >
-              <Text style={styles.closeButtonText}>დახურვა</Text>
-            </TouchableOpacity>
-          </View>
+          {/* Close Button */}
+          <TouchableOpacity
+            style={styles.closeBtn}
+            onPress={onClose}
+            activeOpacity={0.8}
+          >
+            <Text style={styles.closeBtnText}>დახურვა</Text>
+          </TouchableOpacity>
         </View>
       </View>
     </Modal>
@@ -177,155 +149,136 @@ export default function PremiumInfoModal({
 }
 
 const styles = StyleSheet.create({
-  overlay: {
+  modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    backgroundColor: 'rgba(0, 0, 0, 0.6)',
     justifyContent: 'center',
     alignItems: 'center',
-    padding: 20,
-    paddingTop: 60,
+    padding: 24,
   },
   modalContainer: {
     backgroundColor: '#FFFFFF',
     borderRadius: 24,
+    padding: 28,
     width: '100%',
-    maxWidth: 500,
-    height: height * 0.80,
-    overflow: 'hidden',
-    position: 'relative',
+    maxWidth: 380,
+    alignItems: 'center',
+    maxHeight: '85%',
   },
-  header: {
+  scrollContent: {
+    alignItems: 'center',
+    paddingBottom: 4,
+  },
+  iconCircle: {
+    width: 72,
+    height: 72,
+    borderRadius: 36,
+    backgroundColor: '#FEF3C7',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 16,
+  },
+  modalTitle: {
+    fontSize: 20,
+    fontWeight: '800',
+    color: '#111827',
+    fontFamily: 'HelveticaMedium',
+    textTransform: 'uppercase',
+    textAlign: 'center',
+    marginBottom: 6,
+  },
+  modalSubtitle: {
+    fontSize: 14,
+    color: '#6B7280',
+    fontFamily: 'HelveticaMedium',
+    textAlign: 'center',
+    marginBottom: 20,
+  },
+  statusCard: {
+    backgroundColor: '#F9FAFB',
+    borderRadius: 14,
+    padding: 16,
+    width: '100%',
+    marginBottom: 16,
+  },
+  statusRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingHorizontal: 20,
-    paddingTop: 16,
-    paddingBottom: 12,
+    paddingVertical: 6,
   },
-  backButton: {
-    width: 40,
-    height: 40,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  headerTitle: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#0B1220',
-    fontFamily: 'System',
-  },
-  content: {
-    flex: 1,
-    minHeight: 0,
-  },
-  scrollContent: {
-    paddingHorizontal: 20,
-    paddingVertical: 16,
-    flexGrow: 1,
-  },
-  iconContainer: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
-    backgroundColor: '#FEF3C7',
-    justifyContent: 'center',
-    alignItems: 'center',
-    alignSelf: 'center',
-    marginBottom: 16,
-  },
-  mainTitle: {
-    fontSize: 20,
-    fontWeight: '700',
-    color: '#0B1220',
-    marginBottom: 8,
-    textAlign: 'center',
-    fontFamily: 'System',
-  },
-  mainSubtitle: {
-    fontSize: 16,
-    color: '#0B1220',
-    textAlign: 'center',
-    marginBottom: 24,
-    fontFamily: 'System',
-    fontWeight: '600',
-  },
-  infoContainer: {
-    gap: 12,
-    marginBottom: 24,
-  },
-  infoCard: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 12,
-    borderWidth: 1.5,
-    borderColor: '#E5E7EB',
-    padding: 20,
-  },
-  infoRow: {
+  statusLeft: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 12,
+    gap: 8,
   },
-  infoTextContainer: {
-    flex: 1,
-  },
-  infoLabel: {
-    fontSize: 12,
+  statusLabel: {
+    fontSize: 13,
     color: '#6B7280',
-    marginBottom: 4,
-    fontFamily: 'System',
+    fontFamily: 'HelveticaMedium',
   },
-  infoValue: {
-    fontSize: 15,
-    fontWeight: '600',
-    color: '#0B1220',
-    fontFamily: 'System',
+  statusValue: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#111827',
+    fontFamily: 'HelveticaMedium',
+  },
+  statusDivider: {
+    height: 1,
+    backgroundColor: '#E5E7EB',
+    marginVertical: 4,
   },
   featuresCard: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 12,
-    borderWidth: 1.5,
-    borderColor: '#E5E7EB',
-    padding: 20,
+    backgroundColor: '#F0FDF4',
+    borderRadius: 14,
+    padding: 16,
+    width: '100%',
+    marginBottom: 8,
   },
   featuresTitle: {
-    fontSize: 15,
-    fontWeight: '600',
-    color: '#0B1220',
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#111827',
+    fontFamily: 'HelveticaMedium',
+    textTransform: 'uppercase',
     marginBottom: 12,
-    fontFamily: 'System',
   },
-  featuresList: {
-    gap: 12,
-  },
-  featureItem: {
+  featureRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 10,
+    marginBottom: 10,
   },
-  featureText: {
-    fontSize: 13,
-    color: '#0B1220',
-    fontFamily: 'System',
-  },
-  footer: {
-    paddingHorizontal: 20,
-    paddingTop: 16,
-    paddingBottom: 32,
-    borderTopWidth: 1,
-    borderTopColor: '#E5E7EB',
-  },
-  closeButton: {
-    backgroundColor: '#0B1220',
-    borderRadius: 12,
-    paddingVertical: 16,
+  featureIconCircle: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: '#DCFCE7',
     alignItems: 'center',
     justifyContent: 'center',
   },
-  closeButtonText: {
+  featureText: {
+    fontSize: 13,
+    color: '#111827',
+    fontFamily: 'HelveticaMedium',
+    fontWeight: '500',
+    flex: 1,
+  },
+  closeBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#111827',
+    borderRadius: 14,
+    paddingVertical: 16,
+    width: '100%',
+    marginTop: 12,
+  },
+  closeBtnText: {
+    fontSize: 16,
+    fontWeight: '700',
     color: '#FFFFFF',
-    fontSize: 15,
-    fontWeight: '600',
-    fontFamily: 'System',
+    fontFamily: 'HelveticaMedium',
+    textTransform: 'uppercase',
   },
 });
-

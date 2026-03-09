@@ -7,21 +7,19 @@ import {
   TextInput,
   TouchableOpacity,
   Alert,
+  StatusBar,
+  KeyboardAvoidingView,
   Platform,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
-import Colors from '../constants/Colors';
-import { useColorScheme } from '../components/useColorScheme';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { useUser } from '../contexts/UserContext';
 
 export const options = { headerShown: false };
 
 export default function PersonalInfoScreen() {
   const router = useRouter();
-  const colorScheme = useColorScheme();
-  const colors = Colors[colorScheme ?? 'light'];
-  const isDark = colorScheme === 'dark';
   const { user, updateProfile } = useUser();
 
   const [fullName, setFullName] = useState(user?.name ?? '');
@@ -94,39 +92,39 @@ export default function PersonalInfoScreen() {
     fallback?: string
   ) => (
     <View style={styles.infoItem}>
-      <View style={[styles.infoIcon, { backgroundColor: colors.primary + '15' }]}>
-        <Ionicons name={icon as any} size={18} color={colors.primary} />
+      <View style={styles.infoIcon}>
+        <Ionicons name={icon as any} size={18} color="#111827" />
       </View>
       <View style={styles.infoContent}>
-        <Text style={[styles.infoLabel, { color: colors.secondary }]}>{label}</Text>
-        <Text style={[styles.infoValue, { color: colors.text }]}>{value || fallback || '—'}</Text>
+        <Text style={styles.infoLabel}>{label}</Text>
+        <Text style={styles.infoValue}>{value || fallback || '—'}</Text>
       </View>
     </View>
   );
 
   return (
-    <View style={[styles.container, { backgroundColor: colors.surface }]}>
-      <View style={styles.header}>
-        <TouchableOpacity
-          style={[
-            styles.headerButton,
-            {
-              backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.04)',
-              borderColor: isDark ? 'rgba(255,255,255,0.12)' : 'rgba(0,0,0,0.08)',
-            },
-          ]}
-          onPress={() => router.back()}
-          activeOpacity={0.7}
-        >
-          <Ionicons name="arrow-back" size={22} color={colors.text} />
-        </TouchableOpacity>
-        <Text style={[styles.headerTitle, { color: colors.text }]}>პირადი ინფორმაცია</Text>
-        <View style={styles.headerPlaceholder} />
+    <View style={styles.container}>
+      <StatusBar barStyle="dark-content" backgroundColor="#FFFFFF" translucent />
+
+      <View style={styles.topBar}>
+        <SafeAreaView edges={['top']}>
+          <View style={styles.topBarContent}>
+            <TouchableOpacity
+              style={styles.topBarButton}
+              onPress={() => router.back()}
+              activeOpacity={0.7}
+            >
+              <Ionicons name="arrow-back" size={22} color="#111827" />
+            </TouchableOpacity>
+            <Text style={styles.topBarTitle}>პირადი ინფორმაცია</Text>
+            <View style={styles.topBarRight} />
+          </View>
+        </SafeAreaView>
       </View>
 
       {!user ? (
         <View style={styles.emptyState}>
-          <Ionicons name="person-circle-outline" size={52} color={colors.secondary} />
+          <Ionicons name="person-circle-outline" size={52} color="#6B7280" />
           <Text style={styles.emptyTitle}>არ ხართ ავტორიზებული</Text>
           <Text style={styles.emptySubtitle}>
             ავტორიზაციის შემდეგ შეძლებთ პირადი მონაცემების ნახვას და განახლებას.
@@ -140,31 +138,37 @@ export default function PersonalInfoScreen() {
           </TouchableOpacity>
         </View>
       ) : (
-        <ScrollView
-          style={styles.content}
-          showsVerticalScrollIndicator={false}
-          contentContainerStyle={{ paddingBottom: 32 }}
+        <KeyboardAvoidingView
+          style={styles.keyboardWrap}
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          keyboardVerticalOffset={72}
         >
-          <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
-            <View style={styles.cardHeader}>
-              <View>
-                <Text style={styles.cardTitle}>{fullName || 'მომხმარებელი'}</Text>
-                <Text style={styles.cardSubtitle}>{email || 'ელ-ფოსტა არ არის მითითებული'}</Text>
-              </View>
-              {user.role ? (
-                <View style={[styles.rolePill, { backgroundColor: colors.primary + '15' }]}>
-                  <Ionicons name="shield-checkmark" size={16} color={colors.primary} />
-                  <Text style={[styles.roleText, { color: colors.primary }]}>
-                    {user.role}
-                  </Text>
+          <ScrollView
+            style={styles.content}
+            showsVerticalScrollIndicator={false}
+            keyboardShouldPersistTaps="handled"
+            contentContainerStyle={{ paddingBottom: 40 }}
+          >
+            <View style={styles.card}>
+              <View style={styles.cardHeader}>
+                <View>
+                  <Text style={styles.cardTitle}>{fullName || 'მომხმარებელი'}</Text>
+                  <Text style={styles.cardSubtitle}>{email || 'ელ-ფოსტა არ არის მითითებული'}</Text>
                 </View>
-              ) : null}
+                {user.role ? (
+                  <View style={styles.rolePill}>
+                    <Ionicons name="shield-checkmark" size={16} color="#111827" />
+                    <Text style={styles.roleText}>
+                      {user.role}
+                    </Text>
+                  </View>
+                ) : null}
+              </View>
+              {renderReadonlyField('id-card-outline', 'მომხმარებლის ID', user.id)}
+              {renderReadonlyField('time-outline', 'ანგარიში შექმნილია', '—', '—')}
             </View>
-            {renderReadonlyField('id-card-outline', 'მომხმარებლის ID', user.id)}
-            {renderReadonlyField('time-outline', 'ანგარიში შექმნილია', '—', '—')}
-          </View>
 
-          <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
+          <View style={styles.card}>
             <Text style={styles.sectionTitle}>განახლება</Text>
 
             <View style={styles.field}>
@@ -173,15 +177,8 @@ export default function PersonalInfoScreen() {
                 value={fullName}
                 onChangeText={setFullName}
                 placeholder="მაგ: გიორგი მაისურაძე"
-                placeholderTextColor={colors.placeholder}
-                style={[
-                  styles.input,
-                  {
-                    color: colors.text,
-                    borderColor: colors.border,
-                    backgroundColor: colorScheme === 'dark' ? colors.surface : '#FFFFFF',
-                  },
-                ]}
+                placeholderTextColor="#9CA3AF"
+                style={styles.input}
               />
             </View>
 
@@ -193,18 +190,11 @@ export default function PersonalInfoScreen() {
                 placeholder="user@example.com"
                 keyboardType="email-address"
                 autoCapitalize="none"
-                placeholderTextColor={colors.placeholder}
-                style={[
-                  styles.input,
-                  {
-                    color: colors.text,
-                    borderColor: emailInvalid ? colors.error : colors.border,
-                    backgroundColor: colorScheme === 'dark' ? colors.surface : '#FFFFFF',
-                  },
-                ]}
+                placeholderTextColor="#9CA3AF"
+                style={[styles.input, emailInvalid && styles.inputError]}
               />
               {emailInvalid && (
-                <Text style={[styles.helperText, { color: colors.error }]}>
+                <Text style={styles.helperText}>
                   ელ-ფოსტის ფორმატი არასწორია
                 </Text>
               )}
@@ -217,15 +207,8 @@ export default function PersonalInfoScreen() {
                 onChangeText={setPhone}
                 placeholder="+995 5XX XXX XXX"
                 keyboardType="phone-pad"
-                placeholderTextColor={colors.placeholder}
-                style={[
-                  styles.input,
-                  {
-                    color: colors.text,
-                    borderColor: colors.border,
-                    backgroundColor: colorScheme === 'dark' ? colors.surface : '#FFFFFF',
-                  },
-                ]}
+                placeholderTextColor="#9CA3AF"
+                style={styles.input}
               />
             </View>
 
@@ -253,12 +236,18 @@ export default function PersonalInfoScreen() {
               activeOpacity={0.8}
               disabled={!hasChanges || saving}
             >
-              <Text style={[styles.secondaryButtonText, { color: colors.secondary }]}>
+              <Text
+                style={[
+                  styles.secondaryButtonText,
+                  (!hasChanges || saving) && styles.secondaryButtonTextDisabled,
+                ]}
+              >
                 ცვლილებების გაუქმება
               </Text>
             </TouchableOpacity>
           </View>
-        </ScrollView>
+          </ScrollView>
+        </KeyboardAvoidingView>
       )}
     </View>
   );
@@ -267,41 +256,60 @@ export default function PersonalInfoScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+    backgroundColor: '#FFFFFF',
   },
-  header: {
-    paddingTop: Platform.OS === 'ios' ? 54 : 24,
+  topBar: {
+    backgroundColor: '#FFFFFF',
+    paddingBottom: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#E5E7EB',
+  },
+  topBarContent: {
     paddingHorizontal: 20,
-    paddingBottom: 16,
+    paddingTop: 8,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
   },
-  headerButton: {
-    width: 44,
-    height: 44,
-    borderRadius: 14,
+  topBarButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: 'rgba(0,0,0,0.04)',
+    backgroundColor: '#F3F4F6',
     borderWidth: 1,
+    borderColor: '#E5E7EB',
   },
-  headerPlaceholder: {
-    width: 44,
-  },
-  headerTitle: {
-    fontSize: 22,
-    fontFamily: 'Poppins_700Bold',
+  topBarTitle: {
+    fontSize: 18,
+    fontFamily: 'HelveticaMedium',
+    textTransform: 'uppercase',
+    fontWeight: '700',
     color: '#111827',
+    flex: 1,
+    textAlign: 'center',
+  },
+  topBarRight: { width: 40, height: 40 },
+  keyboardWrap: {
+    flex: 1,
   },
   content: {
     flex: 1,
     paddingHorizontal: 20,
   },
   card: {
-    borderRadius: 18,
-    padding: 18,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 12,
+    padding: 16,
     marginBottom: 16,
     borderWidth: 1,
+    borderColor: '#E5E7EB',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.06,
+    shadowRadius: 10,
+    elevation: 2,
   },
   cardHeader: {
     flexDirection: 'row',
@@ -311,12 +319,15 @@ const styles = StyleSheet.create({
   },
   cardTitle: {
     fontSize: 18,
-    fontFamily: 'Poppins_700Bold',
+    fontFamily: 'HelveticaMedium',
+    textTransform: 'uppercase',
     color: '#111827',
   },
   cardSubtitle: {
     fontSize: 13,
-    fontFamily: 'Poppins_400Regular',
+    fontFamily: 'HelveticaMedium',
+    textTransform: 'uppercase',
+    fontWeight: '500',
     color: '#6B7280',
     marginTop: 2,
   },
@@ -327,15 +338,22 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
     paddingVertical: 6,
     borderRadius: 20,
+    backgroundColor: '#F3F4F6',
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
   },
   roleText: {
     fontSize: 12,
-    fontFamily: 'Poppins_600SemiBold',
-    textTransform: 'capitalize',
+    fontFamily: 'HelveticaMedium',
+    textTransform: 'uppercase',
+    fontWeight: '700',
+    color: '#111827',
   },
   sectionTitle: {
-    fontSize: 16,
-    fontFamily: 'Poppins_600SemiBold',
+    fontSize: 18,
+    fontFamily: 'HelveticaMedium',
+    textTransform: 'uppercase',
+    fontWeight: '700',
     color: '#111827',
     marginBottom: 12,
   },
@@ -343,28 +361,39 @@ const styles = StyleSheet.create({
     marginBottom: 14,
   },
   fieldLabel: {
-    fontSize: 14,
-    fontFamily: 'Poppins_500Medium',
+    fontSize: 12,
+    fontFamily: 'HelveticaMedium',
+    textTransform: 'uppercase',
+    fontWeight: '700',
     color: '#111827',
     marginBottom: 6,
   },
   input: {
     borderWidth: 1,
-    borderRadius: 14,
+    borderColor: '#E5E7EB',
+    backgroundColor: '#F3F4F6',
+    borderRadius: 12,
     paddingHorizontal: 14,
     paddingVertical: 12,
     fontSize: 15,
-    fontFamily: 'Poppins_500Medium',
+    fontFamily: 'HelveticaMedium',
+    color: '#111827',
+  },
+  inputError: {
+    borderColor: '#EF4444',
   },
   helperText: {
     marginTop: 6,
     fontSize: 12,
-    fontFamily: 'Poppins_500Medium',
+    fontFamily: 'HelveticaMedium',
+    textTransform: 'uppercase',
+    fontWeight: '700',
+    color: '#EF4444',
   },
   primaryButton: {
-    backgroundColor: '#3B82F6',
+    backgroundColor: '#111827',
     paddingVertical: 14,
-    borderRadius: 14,
+    borderRadius: 12,
     alignItems: 'center',
     marginTop: 4,
   },
@@ -374,17 +403,25 @@ const styles = StyleSheet.create({
   primaryButtonText: {
     color: '#FFFFFF',
     fontSize: 15,
-    fontFamily: 'Poppins_700Bold',
+    fontFamily: 'HelveticaMedium',
+    textTransform: 'uppercase',
+    fontWeight: '700',
   },
   secondaryButton: {
     paddingVertical: 12,
-    borderRadius: 14,
+    borderRadius: 12,
     alignItems: 'center',
     marginTop: 10,
   },
   secondaryButtonText: {
     fontSize: 14,
-    fontFamily: 'Poppins_600SemiBold',
+    fontFamily: 'HelveticaMedium',
+    textTransform: 'uppercase',
+    fontWeight: '700',
+    color: '#111827',
+  },
+  secondaryButtonTextDisabled: {
+    color: '#9CA3AF',
   },
   infoItem: {
     flexDirection: 'row',
@@ -394,22 +431,29 @@ const styles = StyleSheet.create({
   infoIcon: {
     width: 34,
     height: 34,
-    borderRadius: 10,
+    borderRadius: 12,
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: 10,
+    backgroundColor: '#F3F4F6',
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
   },
   infoContent: {
     flex: 1,
   },
   infoLabel: {
     fontSize: 12,
-    fontFamily: 'Poppins_500Medium',
+    fontFamily: 'HelveticaMedium',
+    textTransform: 'uppercase',
+    fontWeight: '700',
     color: '#6B7280',
   },
   infoValue: {
     fontSize: 14,
-    fontFamily: 'Poppins_600SemiBold',
+    fontFamily: 'HelveticaMedium',
+    textTransform: 'uppercase',
+    fontWeight: '700',
     color: '#111827',
     marginTop: 2,
   },
@@ -422,12 +466,16 @@ const styles = StyleSheet.create({
   },
   emptyTitle: {
     fontSize: 18,
-    fontFamily: 'Poppins_700Bold',
+    fontFamily: 'HelveticaMedium',
+    textTransform: 'uppercase',
+    fontWeight: '700',
     color: '#111827',
   },
   emptySubtitle: {
     fontSize: 14,
-    fontFamily: 'Poppins_400Regular',
+    fontFamily: 'HelveticaMedium',
+    textTransform: 'uppercase',
+    fontWeight: '500',
     color: '#6B7280',
     textAlign: 'center',
   },

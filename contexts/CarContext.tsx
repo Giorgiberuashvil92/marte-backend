@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { Car } from '../types/garage';
-import { garageApi, Car as ApiCar, CreateCarData, Reminder, CreateReminderData, FuelEntry } from '../services/garageApi';
+import { garageApi, Car as ApiCar, CreateCarData, Reminder, CreateReminderData, FuelEntry, ServiceHistory, CreateServiceHistoryData } from '../services/garageApi';
 import { useUser } from './UserContext';
 
 interface CarContextType {
@@ -8,6 +8,7 @@ interface CarContextType {
   selectedCar: Car | null;
   reminders: Reminder[];
   fuelEntries: FuelEntry[];
+  serviceHistory: ServiceHistory[];
   loading: boolean;
   error: string | null;
   addCar: (car: Omit<Car, 'id' | 'lastService' | 'nextService'>) => Promise<void>;
@@ -20,6 +21,9 @@ interface CarContextType {
   markReminderCompleted: (reminderId: string) => Promise<void>;
   loadFuel: (carId?: string) => Promise<void>;
   addFuel: (entry: Omit<FuelEntry, 'id' | 'userId' | 'createdAt' | 'updatedAt'>) => Promise<void>;
+  addServiceHistory: (service: CreateServiceHistoryData) => Promise<void>;
+  updateServiceHistory: (serviceId: string, updates: Partial<CreateServiceHistoryData>) => Promise<void>;
+  deleteServiceHistory: (serviceId: string) => Promise<void>;
   refreshData: () => Promise<void>;
 }
 
@@ -32,6 +36,7 @@ export function CarProvider({ children }: { children: ReactNode }) {
   const [selectedCar, setSelectedCar] = useState<Car | null>(null);
   const [reminders, setReminders] = useState<Reminder[]>([]);
   const [fuelEntries, setFuelEntries] = useState<FuelEntry[]>([]);
+  const [serviceHistory, setServiceHistory] = useState<ServiceHistory[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -72,6 +77,8 @@ export function CarProvider({ children }: { children: ReactNode }) {
         year: apiCar.year,
         plateNumber: apiCar.plateNumber,
         imageUri: apiCar.imageUri || getCarImage(apiCar.make),
+        vin: (apiCar as any).vin,
+        techPassport: (apiCar as any).techPassport,
         lastService: apiCar.lastService ? new Date(apiCar.lastService) : undefined,
         nextService: apiCar.nextService ? new Date(apiCar.nextService) : undefined,
       }));
@@ -81,10 +88,27 @@ export function CarProvider({ children }: { children: ReactNode }) {
       setFuelEntries(fuelData);
 
       // თუ არჩეული მანქანა არ არის, პირველი აირჩიე
+      let finalSelectedCar = selectedCar;
       if (!selectedCar && convertedCars.length > 0) {
-        setSelectedCar(convertedCars[0]);
+        finalSelectedCar = convertedCars[0];
+        setSelectedCar(finalSelectedCar);
       } else if (convertedCars.length === 0) {
         setSelectedCar(null);
+        setServiceHistory([]);
+        return;
+      }
+
+      // Load service history for selected car
+      if (finalSelectedCar) {
+        try {
+          const serviceHistoryData = await garageApi.getServiceHistories(finalSelectedCar.id);
+          setServiceHistory(serviceHistoryData);
+        } catch (err) {
+          console.error('Error loading service history:', err);
+          setServiceHistory([]);
+        }
+      } else {
+        setServiceHistory([]);
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'მონაცემების ჩატვირთვის შეცდომა');
@@ -143,7 +167,8 @@ export function CarProvider({ children }: { children: ReactNode }) {
         imageUri: carData.imageUri || getCarImage(carData.make),
         mileage: (carData as any).mileage,
         color: (carData as any).color,
-        vin: (carData as any).vin,
+        vin: carData.vin,
+        techPassport: carData.techPassport,
       };
 
       const newApiCar = await garageApi.createCar(createCarData);
@@ -155,6 +180,8 @@ export function CarProvider({ children }: { children: ReactNode }) {
         year: newApiCar.year,
         plateNumber: newApiCar.plateNumber,
         imageUri: newApiCar.imageUri || carData.imageUri || getCarImage(newApiCar.make),
+        vin: (newApiCar as any).vin,
+        techPassport: (newApiCar as any).techPassport,
         lastService: newApiCar.lastService ? new Date(newApiCar.lastService) : undefined,
         nextService: newApiCar.nextService ? new Date(newApiCar.nextService) : undefined,
       };
@@ -199,6 +226,8 @@ export function CarProvider({ children }: { children: ReactNode }) {
         year: updates.year,
         plateNumber: updates.plateNumber,
         imageUri: updates.imageUri,
+        vin: updates.vin,
+        techPassport: updates.techPassport,
       };
 
       const updatedApiCar = await garageApi.updateCar(carId, updateData);
@@ -210,6 +239,8 @@ export function CarProvider({ children }: { children: ReactNode }) {
         year: updatedApiCar.year,
         plateNumber: updatedApiCar.plateNumber,
         imageUri: updatedApiCar.imageUri || getCarImage(updatedApiCar.make),
+        vin: (updatedApiCar as any).vin,
+        techPassport: (updatedApiCar as any).techPassport,
         lastService: updatedApiCar.lastService ? new Date(updatedApiCar.lastService) : undefined,
         nextService: updatedApiCar.nextService ? new Date(updatedApiCar.nextService) : undefined,
       };
@@ -293,12 +324,66 @@ export function CarProvider({ children }: { children: ReactNode }) {
     setFuelEntries(prev => [created, ...prev]);
   };
 
+  const addServiceHistory = async (serviceData: CreateServiceHistoryData) => {
+    try {
+      const newService = await garageApi.createServiceHistory(serviceData);
+      setServiceHistory(prev => [...prev, newService]);
+      // Reload cars to update lastService
+      await loadData();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'სერვისის დამატების შეცდომა');
+      throw err;
+    }
+  };
+
+  const updateServiceHistory = async (serviceId: string, updates: Partial<CreateServiceHistoryData>) => {
+    try {
+      const updatedService = await garageApi.updateServiceHistory(serviceId, updates);
+      setServiceHistory(prev => 
+        prev.map(service => 
+          service.id === serviceId ? updatedService : service
+        )
+      );
+      // Reload cars to update lastService
+      await loadData();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'სერვისის განახლების შეცდომა');
+      throw err;
+    }
+  };
+
+  const deleteServiceHistory = async (serviceId: string) => {
+    try {
+      await garageApi.deleteServiceHistory(serviceId);
+      setServiceHistory(prev => prev.filter(service => service.id !== serviceId));
+      // Reload cars to update lastService
+      await loadData();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'სერვისის წაშლის შეცდომა');
+      throw err;
+    }
+  };
+
+  // Reload service history when selected car changes
+  useEffect(() => {
+    if (selectedCar) {
+      garageApi.getServiceHistories(selectedCar.id).then(data => {
+        setServiceHistory(data);
+      }).catch(err => {
+        console.error('Error loading service history:', err);
+      });
+    } else {
+      setServiceHistory([]);
+    }
+  }, [selectedCar]);
+
   return (
     <CarContext.Provider value={{
       cars,
       selectedCar,
       reminders,
       fuelEntries,
+      serviceHistory,
       loading,
       error,
       addCar,
@@ -311,6 +396,9 @@ export function CarProvider({ children }: { children: ReactNode }) {
       markReminderCompleted,
       loadFuel,
       addFuel,
+      addServiceHistory,
+      updateServiceHistory,
+      deleteServiceHistory,
       refreshData,
     }}>
       {children}

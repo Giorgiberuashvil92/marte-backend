@@ -13,13 +13,11 @@ import {
   RefreshControl,
   Alert,
   ActivityIndicator,
-  Image,
   TouchableOpacity,
   KeyboardAvoidingView,
   Platform,
 } from 'react-native';
-import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
-import { LinearGradient } from 'expo-linear-gradient';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { router, Stack } from 'expo-router';
 import { useCars } from '@/contexts/CarContext';
@@ -28,9 +26,8 @@ import { useToast } from '@/contexts/ToastContext';
 import { requestsApi, type Request } from '@/services/requestsApi';
 import { aiApi } from '@/services/aiApi';
 import AddCarModal from '@/components/garage/AddCarModal';
-import { Car } from '@/types/garage';
 import { messagesApi, type RecentChat } from '@/services/messagesApi';
-import FilterModal from '@/components/ui/FilterModal';
+import FilterModal, { DismantlerFilters, PartsFilters } from '@/components/ui/FilterModal';
 import { carBrandsApi } from '@/services/carBrandsApi';
 
 const YEARS = Array.from({ length: 30 }, (_, i) => (2024 - i).toString());
@@ -47,7 +44,6 @@ export default function PartsRequestsScreen() {
   const { user } = useUser();
   const { selectedCar, cars, selectCar } = useCars();
   const { success, error } = useToast();
-  const insets = useSafeAreaInsets();
   
   const [requests, setRequests] = useState<RequestWithUser[]>([]);
   const [loading, setLoading] = useState(true);
@@ -105,6 +101,8 @@ export default function PartsRequestsScreen() {
   const [selectedModel, setSelectedModel] = useState<string>('');
   const [selectedYear, setSelectedYear] = useState<string>('');
   const [createRequestAvailableModels, setCreateRequestAvailableModels] = useState<string[]>([]);
+  const [showCreateMakePicker, setShowCreateMakePicker] = useState(false);
+  const [showCreateModelPicker, setShowCreateModelPicker] = useState(false);
   
   const scrollViewRef = useRef<ScrollView>(null);
   const fadeAnim = useState(new Animated.Value(0))[0];
@@ -350,7 +348,7 @@ export default function PartsRequestsScreen() {
   };
 
   const handleConversationPress = (conversation: ConversationItem) => {
-    router.push(`/chat/chat-${conversation.requestId}`);
+    router.push(`/chat/${conversation.requestId}/${conversation.partnerId}`);
   };
 
   const getUnreadCount = (conversation: ConversationItem) => {
@@ -471,7 +469,7 @@ export default function PartsRequestsScreen() {
   };
 
   const handleRequestPress = (request: RequestWithUser) => {
-    router.push(`/offers/${request.id}` as any);
+    router.push(`/request-detail/${request.id}` as any);
   };
 
   const handleChatPress = (request: RequestWithUser, e: any) => {
@@ -540,105 +538,117 @@ export default function PartsRequestsScreen() {
     const isMyRequest = request.userId === user?.id;
     
     return (
-      <Pressable
+      <TouchableOpacity
         key={request.id}
-        style={styles.requestCardSimple}
-        onPress={isMyRequest ? () => handleRequestPress(request) : undefined}
-        disabled={!isMyRequest}
+        style={styles.listItem}
+        onPress={() => handleRequestPress(request)}
+        activeOpacity={0.7}
       >
-        <View style={styles.cardContentSimple}>
-          {/* Top Row - User & Urgency */}
-          <View style={styles.cardTopRow}>
-            <View style={styles.userInfoSimple}>
-              <View style={[styles.avatarSimple, isMyRequest && styles.myRequestAvatarSimple]}>
-                <Ionicons name="person" size={16} color={isMyRequest ? "#FFFFFF" : "#6366F1"} />
-              </View>
-              <View style={styles.userDetailsSimple}>
-                <Text style={styles.userNameSimple}>
-                  {request.userName || 'მომხმარებელი'}
-                </Text>
-                <Text style={styles.timeAgoSimple}>
-                  {formatTimeAgo(request.createdAt)}
-                </Text>
-              </View>
-              {isMyRequest && (
-                <View style={styles.myRequestBadgeSimple}>
-                  <Ionicons name="checkmark-circle" size={10} color="#6366F1" />
-                  <Text style={styles.myRequestTextSimple}>ჩემი</Text>
-                </View>
-              )}
-            </View>
-            <View style={[styles.urgencyBadgeSimple, { backgroundColor: `${urgencyColor}20` }]}>
-              <View style={[styles.urgencyDotSimple, { backgroundColor: urgencyColor }]} />
+        {/* Left Icon */}
+        <View style={[styles.listItemIcon, isMyRequest && styles.listItemIconMy]}>
+          <Ionicons name="construct" size={22} color={isMyRequest ? "#FFFFFF" : "#111827"} />
+        </View>
+
+        {/* Content */}
+        <View style={styles.listItemContent}>
+          {/* Title & Urgency */}
+          <View style={styles.listItemHeader}>
+            <Text style={styles.listItemTitle} numberOfLines={1}>
+              {request.partName}
+            </Text>
+            <View style={[styles.urgencyDotContainer, { backgroundColor: `${urgencyColor}20` }]}>
+              <View style={[styles.urgencyDotNew, { backgroundColor: urgencyColor }]} />
             </View>
           </View>
 
-          {/* Vehicle & Part */}
-          <View style={styles.cardMainContent}>
-            <View style={styles.vehicleRowSimple}>
-              <Ionicons name="car-outline" size={14} color="#6B7280" />
-              <Text style={styles.vehicleTextSimple}>
-                {request.vehicle.make} {request.vehicle.model} • {request.vehicle.year}
+          {/* Vehicle */}
+          <View style={styles.listItemVehicle}>
+            <Ionicons name="car-outline" size={12} color="#6B7280" />
+            <Text style={styles.listItemSubtitle}>
+              {request.vehicle.make} {request.vehicle.model} • {request.vehicle.year}
+            </Text>
+          </View>
+
+          {/* Author */}
+          {(request.userName || request.userPhone) && (
+            <View style={styles.listItemAuthor}>
+              <Ionicons name="person-outline" size={12} color="#6B7280" />
+              <Text style={styles.listItemAuthorText}>
+                {request.userName || request.userPhone || 'უცნობი'}
               </Text>
             </View>
-            <Text style={styles.partNameSimple}>{request.partName}</Text>
-            {request.description && (
-              <Text style={styles.descriptionSimple} numberOfLines={2}>
-                {request.description}
-              </Text>
+          )}
+
+          {/* Description */}
+          {request.description && (
+            <Text style={styles.listItemDescription} numberOfLines={1}>
+              {request.description}
+            </Text>
+          )}
+
+          {/* Meta Row */}
+          <View style={styles.listItemMeta}>
+            <Text style={styles.listItemTime}>
+              {formatTimeAgo(request.createdAt)}
+            </Text>
+            {request.budgetGEL && (
+              <View style={styles.budgetChip}>
+                <Text style={styles.budgetChipText}>{request.budgetGEL}₾</Text>
+              </View>
             )}
-          </View>
-
-          {/* Bottom Row - Budget, Offers, Status */}
-          <View style={styles.cardBottomRow}>
-            <View style={styles.cardBottomLeft}>
-              {request.budgetGEL && (
-                <View style={styles.budgetBadgeSimple}>
-                  <Text style={styles.budgetTextSimple}>{request.budgetGEL}₾</Text>
-                </View>
-              )}
-              {request.offersCount !== undefined && request.offersCount > 0 && (
-                <View style={styles.offersBadgeSimple}>
-                  <Ionicons name="chatbubbles" size={12} color="#6366F1" />
-                  <Text style={styles.offersTextSimple}>{request.offersCount}</Text>
-                </View>
-              )}
-            </View>
-            <View style={[styles.statusBadgeSimple, { backgroundColor: isActive ? '#ECFDF5' : '#F3F4F6' }]}>
-              <Text style={[styles.statusTextSimple, { color: isActive ? '#10B981' : '#6B7280' }]}>
+            {request.offersCount !== undefined && request.offersCount > 0 && (
+              <View style={styles.offersChip}>
+                <Ionicons name="chatbubbles" size={10} color="#111827" />
+                <Text style={styles.offersChipText}>{request.offersCount}</Text>
+              </View>
+            )}
+            <View style={[styles.statusChip, { backgroundColor: isActive ? '#ECFDF5' : '#F3F4F6' }]}>
+              <Text style={[styles.statusChipText, { color: isActive ? '#10B981' : '#6B7280' }]}>
                 {isActive ? 'აქტიური' : 'დასრულებული'}
               </Text>
             </View>
+            {isMyRequest && (
+              <View style={styles.myBadge}>
+                <Text style={styles.myBadgeText}>ჩემი</Text>
+              </View>
+            )}
           </View>
 
           {/* Action Buttons */}
-          <View style={styles.cardActionsRow}>
-            {/* შეთავაზებების ღილაკი - მხოლოდ request owner-ისთვის */}
+          <View style={styles.listItemActions}>
             {isMyRequest && (
-              <Pressable
-                style={styles.chatButton}
+              <TouchableOpacity
+                style={styles.actionBtnSecondary}
                 onPress={(e) => handleChatPress(request, e)}
+                activeOpacity={0.7}
               >
-                <Ionicons name="chatbubbles-outline" size={16} color="#6366F1" />
-                <Text style={styles.chatButtonText}>
+                <Ionicons name="chatbubbles-outline" size={14} color="#111827" />
+                <Text style={styles.actionBtnSecondaryText}>
                   {request.offersCount && request.offersCount > 0 
                     ? `${request.offersCount} შეთავაზება` 
                     : 'შეთავაზებები'}
                 </Text>
-              </Pressable>
+              </TouchableOpacity>
             )}
             {!isMyRequest && isActive && (
-              <Pressable
-                style={[styles.offerButton, !isMyRequest && styles.offerButtonFull]}
+              <TouchableOpacity
+                style={styles.actionBtnPrimary}
                 onPress={(e) => handleOfferPress(request, e)}
+                activeOpacity={0.7}
               >
-                <Ionicons name="cash-outline" size={16} color="#FFFFFF" />
-                <Text style={styles.offerButtonText}>შეთავაზების გაგზავნა</Text>
-              </Pressable>
+                <Ionicons name="cash-outline" size={14} color="#FFFFFF" />
+                <Text style={styles.actionBtnPrimaryText}>შეთავაზების გაგზავნა</Text>
+              </TouchableOpacity>
             )}
           </View>
         </View>
-      </Pressable>
+
+        {/* View Button */}
+        <View style={styles.viewBtn}>
+          <Ionicons name="eye-outline" size={14} color="#111827" />
+          <Text style={styles.viewBtnText}>ნახვა</Text>
+        </View>
+      </TouchableOpacity>
     );
   };
 
@@ -649,89 +659,66 @@ export default function PartsRequestsScreen() {
         <StatusBar barStyle="dark-content" backgroundColor="#FFFFFF" />
         
         {/* Header */}
-        <LinearGradient
-          colors={['#F8FAFC', '#FFFFFF']}
-          style={[styles.header, { paddingTop: Math.max(insets.top - 20, 4) }]}
-        >
-          <View style={styles.headerContent}>
-            <Pressable onPress={() => router.back()} style={styles.backButton}>
+        <View style={styles.topBar}>
+          <View style={styles.topBarContent}>
+            <TouchableOpacity onPress={() => router.back()} style={styles.topBarButton}>
               <Ionicons name="arrow-back" size={20} color="#111827" />
-            </Pressable>
+            </TouchableOpacity>
             
-            <View style={styles.headerCenter}>
-              <Text style={styles.headerTitle}>ნაწილის მოთხოვნა</Text>
-              <Text style={styles.headerSubtitle}>
-                {activeTab === 'all' ? requests.length : myRequestsCount} მოთხოვნა
-              </Text>
-            </View>
+            <Text style={styles.topBarTitle}>ნაწილის მოთხოვნა</Text>
             
-            <View style={styles.headerRight}>
-              <Pressable
-                style={styles.createButton}
+            <View style={styles.topBarRight}>
+              <TouchableOpacity
+                style={[styles.topBarButton, hasActiveFilters && styles.topBarButtonActive]}
+                onPress={() => setShowFilterModal(true)}
+              >
+                <Ionicons name="options" size={20} color={hasActiveFilters ? "#FFFFFF" : "#111827"} />
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.topBarButtonPrimary}
                 onPress={() => setShowCreateModal(true)}
               >
-                <Ionicons name="add" size={20} color="#FFFFFF" />
-              </Pressable>
+                <Ionicons name="add" size={22} color="#FFFFFF" />
+              </TouchableOpacity>
             </View>
           </View>
-        </LinearGradient>
-
-        {/* Filter Button - Above Tabs */}
-        <View style={styles.filterButtonContainer}>
-          <Pressable
-            style={[styles.filterButtonTop, hasActiveFilters && styles.filterButtonTopActive]}
-            onPress={() => setShowFilterModal(true)}
-          >
-            <Ionicons name="filter" size={18} color={hasActiveFilters ? "#FFFFFF" : "#6366F1"} />
-            <Text style={[styles.filterButtonTopText, hasActiveFilters && styles.filterButtonTopTextActive]}>
-              ფილტრი
-            </Text>
-            {hasActiveFilters && (
-              <View style={styles.filterBadgeTop}>
-                <Text style={styles.filterBadgeTopText}>
-                  {(filterMake ? 1 : 0) + (filterModel ? 1 : 0) + (filterYear ? 1 : 0)}
-                </Text>
-              </View>
-            )}
-          </Pressable>
         </View>
 
-        {/* Tabs */}
-        <View style={styles.tabsContainer}>
-          <Pressable
-            style={[styles.tab, activeTab === 'all' && styles.tabActive]}
-            onPress={() => setActiveTab('all')}
-          >
-            <Text style={[styles.tabText, activeTab === 'all' && styles.tabTextActive]}>
-              ყველა
-            </Text>
-            {activeTab === 'all' && <View style={styles.tabIndicator} />}
-          </Pressable>
-          <Pressable
-            style={[styles.tab, activeTab === 'my' && styles.tabActive]}
-            onPress={() => setActiveTab('my')}
-          >
-            <View style={styles.tabContent}>
-              <Text style={[styles.tabText, activeTab === 'my' && styles.tabTextActive, myRequestsCount > 0 && styles.tabTextWithBadge]}>
-                ჩემი განცხადებები
+        {/* Segment Control Tabs */}
+        <View style={styles.navSection}>
+          <View style={styles.segmentControl}>
+            <Pressable
+              style={[styles.segmentItem, activeTab === 'all' && styles.segmentItemActive]}
+              onPress={() => setActiveTab('all')}
+            >
+              <Text style={[styles.segmentText, activeTab === 'all' && styles.segmentTextActive]}>
+                ყველა
               </Text>
-              {myRequestsCount > 0 && (
-                <View style={styles.tabBadge}>
-                  <Text style={styles.tabBadgeText}>{myRequestsCount}</Text>
-                </View>
-              )}
-            </View>
-            {activeTab === 'my' && <View style={styles.tabIndicator} />}
-          </Pressable>
-          <Pressable
-            style={[styles.tab, activeTab === 'chats' && styles.tabActive]}
-            onPress={() => setActiveTab('chats')}
-          >
-            <Text style={[styles.tabText, activeTab === 'chats' && styles.tabTextActive]}>
-              ჩატები
-            </Text>
-            {activeTab === 'chats' && <View style={styles.tabIndicator} />}
-          </Pressable>
+            </Pressable>
+            <Pressable
+              style={[styles.segmentItem, activeTab === 'my' && styles.segmentItemActive]}
+              onPress={() => setActiveTab('my')}
+            >
+              <View style={styles.segmentContent}>
+                <Text style={[styles.segmentText, activeTab === 'my' && styles.segmentTextActive]}>
+                  ჩემი
+                </Text>
+                {myRequestsCount > 0 && (
+                  <View style={[styles.segmentBadge, activeTab === 'my' && styles.segmentBadgeActive]}>
+                    <Text style={[styles.segmentBadgeText, activeTab === 'my' && styles.segmentBadgeTextActive]}>{myRequestsCount}</Text>
+                  </View>
+                )}
+              </View>
+            </Pressable>
+            <Pressable
+              style={[styles.segmentItem, activeTab === 'chats' && styles.segmentItemActive]}
+              onPress={() => setActiveTab('chats')}
+            >
+              <Text style={[styles.segmentText, activeTab === 'chats' && styles.segmentTextActive]}>
+                ჩატები
+              </Text>
+            </Pressable>
+          </View>
         </View>
 
         {/* Content */}
@@ -753,8 +740,8 @@ export default function PartsRequestsScreen() {
                 <RefreshControl
                   refreshing={chatsRefreshing}
                   onRefresh={onChatsRefresh}
-                  tintColor="#6366F1"
-                  colors={['#6366F1']}
+                  tintColor="#111827"
+                  colors={['#111827']}
                 />
               }
             >
@@ -774,7 +761,7 @@ export default function PartsRequestsScreen() {
                           <Ionicons 
                             name="storefront-outline" 
                             size={24} 
-                            color="#6366F1" 
+                            color="#111827" 
                           />
                         </View>
                         {unreadCount > 0 && (
@@ -850,14 +837,16 @@ export default function PartsRequestsScreen() {
               
               {chatsLoading && conversations.length === 0 && (
                 <View style={styles.chatsLoadingState}>
-                  <ActivityIndicator size="large" color="#6366F1" />
+                  <ActivityIndicator size="large" color="#111827" />
                   <Text style={styles.chatsLoadingText}>ჩატების ჩატვირთვა...</Text>
                 </View>
               )}
               
               {conversations.length === 0 && !chatsLoading && (
                 <View style={styles.chatsEmptyState}>
-                  <Ionicons name="chatbubbles-outline" size={48} color="#D1D5DB" />
+                  <View style={styles.emptyIconCircle}>
+                    <Ionicons name="chatbubbles-outline" size={32} color="#9CA3AF" />
+                  </View>
                   <Text style={styles.chatsEmptyTitle}>ჩატები ჯერ არ არის</Text>
                   <Text style={styles.chatsEmptySubtitle}>
                     როცა შეთავაზებებს მიიღებთ და დაიწყებთ მიწერ-მოწერას, ჩატები აქ გამოჩნდება
@@ -867,12 +856,14 @@ export default function PartsRequestsScreen() {
             </ScrollView>
           ) : loading && requests.length === 0 ? (
             <View style={styles.loadingContainer}>
-              <ActivityIndicator size="large" color="#6366F1" />
+              <ActivityIndicator size="large" color="#111827" />
               <Text style={styles.loadingText}>იტვირთება...</Text>
             </View>
           ) : filteredRequests.length === 0 ? (
             <View style={styles.emptyState}>
-              <Ionicons name="construct-outline" size={64} color="#D1D5DB" />
+              <View style={styles.emptyIconCircle}>
+                <Ionicons name="construct-outline" size={32} color="#9CA3AF" />
+              </View>
               <Text style={styles.emptyTitle}>
                 {activeTab === 'my' ? 'ჩემი განცხადებები ჯერ არ არის' : 'მოთხოვნები ჯერ არ არის'}
               </Text>
@@ -881,13 +872,14 @@ export default function PartsRequestsScreen() {
                   ? 'გამოაქვეყნე პირველი განცხადება' 
                   : 'იყავი პირველი და გამოაქვეყნე მოთხოვნა'}
               </Text>
-              <Pressable
+              <TouchableOpacity
                 style={styles.emptyButton}
                 onPress={() => setShowCreateModal(true)}
+                activeOpacity={0.8}
               >
                 <Ionicons name="add" size={20} color="#FFFFFF" />
                 <Text style={styles.emptyButtonText}>ახალი მოთხოვნა</Text>
-              </Pressable>
+              </TouchableOpacity>
             </View>
           ) : (
             <ScrollView
@@ -916,15 +908,23 @@ export default function PartsRequestsScreen() {
             keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
           >
             <View style={styles.modalContentSimple}>
-              {/* Simple Header */}
-              <View style={styles.modalHeaderSimple}>
-                <Text style={styles.modalTitleSimple}>ახალი მოთხოვნა</Text>
-                <Pressable
+              {/* Handle */}
+              <View style={styles.modalHandle} />
+
+              {/* Header */}
+              <View style={styles.modalHeaderNew}>
+                <View style={styles.modalHeaderLeft}>
+                  <View style={styles.modalHeaderIcon}>
+                    <Ionicons name="add-circle" size={20} color="#111827" />
+                  </View>
+                  <Text style={styles.modalTitleNew}>ახალი მოთხოვნა</Text>
+                </View>
+                <TouchableOpacity
                   onPress={() => setShowCreateModal(false)}
-                  style={styles.modalCloseButtonSimple}
+                  style={styles.modalCloseBtn}
                 >
-                  <Ionicons name="close" size={22} color="#6B7280" />
-                </Pressable>
+                  <Ionicons name="close" size={20} color="#111827" />
+                </TouchableOpacity>
               </View>
 
               <ScrollView
@@ -933,140 +933,291 @@ export default function PartsRequestsScreen() {
                 keyboardShouldPersistTaps="handled"
                 contentContainerStyle={styles.modalScrollContent}
               >
-                {/* Make Selection */}
-                <View style={styles.formSection}>
-                  <Text style={styles.formLabel}>მარკა *</Text>
-                  <ScrollView 
-                    horizontal 
-                    showsHorizontalScrollIndicator={false}
-                    style={styles.brandScrollView}
-                    contentContainerStyle={styles.brandChipsContainer}
-                  >
-                    {carBrands.slice(0, 30).map((brand) => (
-                      <Pressable
-                        key={brand}
-                        style={[styles.brandChip, selectedMake === brand && styles.brandChipActive]}
-                        onPress={() => setSelectedMake(brand)}
-                      >
-                        <Text style={[styles.brandChipText, selectedMake === brand && styles.brandChipTextActive]}>
-                          {brand}
-                        </Text>
-                      </Pressable>
-                    ))}
-                  </ScrollView>
-                </View>
+                {/* Step 1: Vehicle */}
+                <View style={styles.formStepCard}>
+                  <View style={styles.formStepHeader}>
+                    <View style={styles.formStepBadge}>
+                      <Text style={styles.formStepBadgeText}>1</Text>
+                    </View>
+                    <Text style={styles.formStepTitle}>აირჩიეთ ავტომობილი</Text>
+                  </View>
 
-                {/* Model Selection */}
-                {selectedMake && createRequestAvailableModels.length > 0 && (
+                  {/* Selected car summary */}
+                  {(selectedMake || selectedModel || selectedYear) && (
+                    <View style={styles.selectedCarSummary}>
+                      <Ionicons name="car-sport" size={16} color="#111827" />
+                      <Text style={styles.selectedCarText}>
+                        {[selectedMake, selectedModel, selectedYear].filter(Boolean).join(' • ')}
+                      </Text>
+                      <TouchableOpacity onPress={() => { setSelectedMake(''); setSelectedModel(''); setSelectedYear(''); }}>
+                        <Ionicons name="close-circle" size={18} color="#9CA3AF" />
+                      </TouchableOpacity>
+                    </View>
+                  )}
+
+                  {/* Make - Dropdown */}
                   <View style={styles.formSection}>
-                    <Text style={styles.formLabel}>მოდელი *</Text>
+                    <View style={styles.formLabelRow}>
+                      <Text style={styles.formLabelNew}>მარკა</Text>
+                      <Text style={styles.formRequired}>*</Text>
+                    </View>
+                    <TouchableOpacity
+                      style={styles.dropdownButton}
+                      onPress={() => setShowCreateMakePicker(true)}
+                      activeOpacity={0.7}
+                    >
+                      <Ionicons name="car-sport-outline" size={18} color={selectedMake ? '#111827' : '#9CA3AF'} />
+                      <Text style={[styles.dropdownButtonText, selectedMake && styles.dropdownButtonTextSelected]}>
+                        {selectedMake || 'აირჩიეთ მარკა'}
+                      </Text>
+                      <Ionicons name="chevron-down" size={18} color="#9CA3AF" />
+                    </TouchableOpacity>
+                  </View>
+
+                  {/* Model - Dropdown */}
+                  <View style={styles.formSection}>
+                    <View style={styles.formLabelRow}>
+                      <Text style={styles.formLabelNew}>მოდელი</Text>
+                      <Text style={styles.formRequired}>*</Text>
+                    </View>
+                    <TouchableOpacity
+                      style={[styles.dropdownButton, !selectedMake && styles.dropdownButtonDisabled]}
+                      onPress={() => selectedMake && setShowCreateModelPicker(true)}
+                      activeOpacity={selectedMake ? 0.7 : 1}
+                    >
+                      <Ionicons name="options-outline" size={18} color={selectedModel ? '#111827' : '#9CA3AF'} />
+                      <Text style={[styles.dropdownButtonText, selectedModel && styles.dropdownButtonTextSelected]}>
+                        {selectedModel || (selectedMake ? 'აირჩიეთ მოდელი' : 'ჯერ აირჩიეთ მარკა')}
+                      </Text>
+                      <Ionicons name="chevron-down" size={18} color="#9CA3AF" />
+                    </TouchableOpacity>
+                  </View>
+
+                  {/* Year */}
+                  <View style={styles.formSection}>
+                    <View style={styles.formLabelRow}>
+                      <Ionicons name="calendar-outline" size={14} color="#6B7280" />
+                      <Text style={styles.formLabelNew}>წელი</Text>
+                      <Text style={styles.formRequired}>*</Text>
+                    </View>
                     <ScrollView 
                       horizontal 
                       showsHorizontalScrollIndicator={false}
                       style={styles.brandScrollView}
                       contentContainerStyle={styles.brandChipsContainer}
                     >
-                      {createRequestAvailableModels.slice(0, 40).map((model) => (
+                      {YEARS.map((year) => (
                         <Pressable
-                          key={model}
-                          style={[styles.brandChip, selectedModel === model && styles.brandChipActive]}
-                          onPress={() => setSelectedModel(model)}
+                          key={year}
+                          style={[styles.brandChip, selectedYear === year && styles.brandChipActive]}
+                          onPress={() => setSelectedYear(year)}
                         >
-                          <Text style={[styles.brandChipText, selectedModel === model && styles.brandChipTextActive]}>
-                            {model}
+                          <Text style={[styles.brandChipText, selectedYear === year && styles.brandChipTextActive]}>
+                            {year}
                           </Text>
                         </Pressable>
                       ))}
                     </ScrollView>
                   </View>
-                )}
-
-                {/* Year Selection */}
-                <View style={styles.formSection}>
-                  <Text style={styles.formLabel}>წელი *</Text>
-                  <ScrollView 
-                    horizontal 
-                    showsHorizontalScrollIndicator={false}
-                    style={styles.brandScrollView}
-                    contentContainerStyle={styles.brandChipsContainer}
-                  >
-                    {YEARS.map((year) => (
-                      <Pressable
-                        key={year}
-                        style={[styles.brandChip, selectedYear === year && styles.brandChipActive]}
-                        onPress={() => setSelectedYear(year)}
-                      >
-                        <Text style={[styles.brandChipText, selectedYear === year && styles.brandChipTextActive]}>
-                          {year}
-                        </Text>
-                      </Pressable>
-                    ))}
-                  </ScrollView>
                 </View>
 
-                {/* Part Name */}
-                <TextInput
-                  style={styles.inputSimple}
-                  placeholder="ნაწილის სახელი *"
-                  placeholderTextColor="#9CA3AF"
-                  value={partName}
-                  onChangeText={setPartName}
-                />
+                {/* Step 2: Part Info */}
+                <View style={styles.formStepCard}>
+                  <View style={styles.formStepHeader}>
+                    <View style={styles.formStepBadge}>
+                      <Text style={styles.formStepBadgeText}>2</Text>
+                    </View>
+                    <Text style={styles.formStepTitle}>ნაწილის ინფორმაცია</Text>
+                  </View>
 
-                {/* Description */}
-                <TextInput
-                  style={[styles.inputSimple, styles.textAreaSimple]}
-                  placeholder="აღწერა (არასავალდებულო)"
-                  placeholderTextColor="#9CA3AF"
-                  value={description}
-                  onChangeText={setDescription}
-                  multiline
-                  numberOfLines={3}
-                />
+                  <View style={styles.formSection}>
+                    <View style={styles.formLabelRow}>
+                      <Ionicons name="construct-outline" size={14} color="#6B7280" />
+                      <Text style={styles.formLabelNew}>ნაწილის სახელი</Text>
+                      <Text style={styles.formRequired}>*</Text>
+                    </View>
+                    <TextInput
+                      style={styles.inputSimple}
+                      placeholder="მაგ: საჭის კომპიუტერი"
+                      placeholderTextColor="#9CA3AF"
+                      value={partName}
+                      onChangeText={setPartName}
+                    />
+                  </View>
 
-                <View style={styles.rowInputs}>
-                  <TextInput
-                    style={[styles.inputSimple, styles.halfInput]}
-                    placeholder="ბიუჯეტი (₾)"
-                    placeholderTextColor="#9CA3AF"
-                    value={budget}
-                    onChangeText={setBudget}
-                    keyboardType="numeric"
-                  />
-                  <View style={[styles.urgencySelectorSimple]}>
-                    {(['low', 'medium', 'high'] as const).map((level) => (
-                      <Pressable
-                        key={level}
-                        style={[
-                          styles.urgencyOptionSimple,
-                          urgency === level && styles.urgencyOptionSimpleActive,
-                        ]}
-                        onPress={() => setUrgency(level)}
-                      >
-                        <View
+                  <View style={styles.formSection}>
+                    <View style={styles.formLabelRow}>
+                      <Ionicons name="document-text-outline" size={14} color="#6B7280" />
+                      <Text style={styles.formLabelNew}>აღწერა</Text>
+                    </View>
+                    <TextInput
+                      style={[styles.inputSimple, styles.textAreaSimple]}
+                      placeholder="დამატებითი ინფორმაცია, მდგომარეობა..."
+                      placeholderTextColor="#9CA3AF"
+                      value={description}
+                      onChangeText={setDescription}
+                      multiline
+                      numberOfLines={3}
+                    />
+                  </View>
+                </View>
+
+                {/* Step 3: Budget & Urgency */}
+                <View style={styles.formStepCard}>
+                  <View style={styles.formStepHeader}>
+                    <View style={styles.formStepBadge}>
+                      <Text style={styles.formStepBadgeText}>3</Text>
+                    </View>
+                    <Text style={styles.formStepTitle}>ბიუჯეტი და პრიორიტეტი</Text>
+                  </View>
+
+                  <View style={styles.formSection}>
+                    <View style={styles.formLabelRow}>
+                      <Ionicons name="cash-outline" size={14} color="#6B7280" />
+                      <Text style={styles.formLabelNew}>ბიუჯეტი</Text>
+                    </View>
+                    <View style={styles.budgetInputRow}>
+                      <TextInput
+                        style={[styles.inputSimple, { flex: 1, marginBottom: 0 }]}
+                        placeholder="მაქსიმალური თანხა"
+                        placeholderTextColor="#9CA3AF"
+                        value={budget}
+                        onChangeText={setBudget}
+                        keyboardType="numeric"
+                      />
+                      <View style={styles.budgetSuffix}>
+                        <Text style={styles.budgetSuffixText}>₾</Text>
+                      </View>
+                    </View>
+                  </View>
+
+                  <View style={styles.formSection}>
+                    <View style={styles.formLabelRow}>
+                      <Ionicons name="flash-outline" size={14} color="#6B7280" />
+                      <Text style={styles.formLabelNew}>გადაუდებლობა</Text>
+                    </View>
+                    <View style={styles.urgencySelector}>
+                      {([
+                        { key: 'low' as const, label: 'დაბალი', icon: 'leaf-outline' },
+                        { key: 'medium' as const, label: 'ნორმალური', icon: 'time-outline' },
+                        { key: 'high' as const, label: 'სასწრაფო', icon: 'flash' },
+                      ]).map((item) => (
+                        <Pressable
+                          key={item.key}
                           style={[
-                            styles.urgencyOptionDotSimple,
-                            { backgroundColor: getUrgencyColor(level) },
+                            styles.urgencyOption,
+                            urgency === item.key && {
+                              backgroundColor: `${getUrgencyColor(item.key)}15`,
+                              borderColor: getUrgencyColor(item.key),
+                            },
                           ]}
-                        />
-                      </Pressable>
-                    ))}
+                          onPress={() => setUrgency(item.key)}
+                        >
+                          <Ionicons
+                            name={item.icon as any}
+                            size={16}
+                            color={urgency === item.key ? getUrgencyColor(item.key) : '#9CA3AF'}
+                          />
+                          <Text
+                            style={[
+                              styles.urgencyOptionText,
+                              urgency === item.key && { color: getUrgencyColor(item.key) },
+                            ]}
+                          >
+                            {item.label}
+                          </Text>
+                        </Pressable>
+                      ))}
+                    </View>
                   </View>
                 </View>
 
                 {/* Submit Button */}
-                <Pressable
+                <TouchableOpacity
                   style={[styles.submitButtonSimple, isCreating && styles.submitButtonDisabled]}
                   onPress={handleCreateRequest}
                   disabled={isCreating}
+                  activeOpacity={0.7}
                 >
                   {isCreating ? (
                     <ActivityIndicator color="#FFFFFF" />
                   ) : (
-                    <Text style={styles.submitButtonTextSimple}>გამოქვეყნება</Text>
+                    <>
+                      <Ionicons name="send" size={16} color="#FFFFFF" />
+                      <Text style={styles.submitButtonTextSimple}>გამოქვეყნება</Text>
+                    </>
                   )}
-                </Pressable>
+                </TouchableOpacity>
               </ScrollView>
+
+              {/* Create Request - Make Picker (inline overlay) */}
+              {showCreateMakePicker && (
+                <View style={styles.inlinePickerOverlay}>
+                  <View style={styles.inlinePickerContent}>
+                    <View style={styles.modalHeaderNew}>
+                      <Text style={styles.modalTitleNew}>აირჩიეთ მარკა</Text>
+                      <TouchableOpacity
+                        onPress={() => setShowCreateMakePicker(false)}
+                        style={styles.modalCloseBtn}
+                      >
+                        <Ionicons name="close" size={20} color="#6B7280" />
+                      </TouchableOpacity>
+                    </View>
+                    <ScrollView style={styles.pickerModalBody} showsVerticalScrollIndicator={false}>
+                      {carBrands.map((brand) => (
+                        <Pressable
+                          key={brand}
+                          style={[styles.pickerOption, selectedMake === brand && styles.pickerOptionSelected]}
+                          onPress={() => {
+                            setSelectedMake(brand);
+                            setSelectedModel('');
+                            setShowCreateMakePicker(false);
+                          }}
+                        >
+                          <Text style={[styles.pickerOptionText, selectedMake === brand && styles.pickerOptionTextSelected]}>
+                            {brand}
+                          </Text>
+                          {selectedMake === brand && <Ionicons name="checkmark" size={20} color="#111827" />}
+                        </Pressable>
+                      ))}
+                    </ScrollView>
+                  </View>
+                </View>
+              )}
+
+              {/* Create Request - Model Picker (inline overlay) */}
+              {showCreateModelPicker && (
+                <View style={styles.inlinePickerOverlay}>
+                  <View style={styles.inlinePickerContent}>
+                    <View style={styles.modalHeaderNew}>
+                      <Text style={styles.modalTitleNew}>აირჩიეთ მოდელი</Text>
+                      <TouchableOpacity
+                        onPress={() => setShowCreateModelPicker(false)}
+                        style={styles.modalCloseBtn}
+                      >
+                        <Ionicons name="close" size={20} color="#6B7280" />
+                      </TouchableOpacity>
+                    </View>
+                    <ScrollView style={styles.pickerModalBody} showsVerticalScrollIndicator={false}>
+                      {createRequestAvailableModels.map((model) => (
+                        <Pressable
+                          key={model}
+                          style={[styles.pickerOption, selectedModel === model && styles.pickerOptionSelected]}
+                          onPress={() => {
+                            setSelectedModel(model);
+                            setShowCreateModelPicker(false);
+                          }}
+                        >
+                          <Text style={[styles.pickerOptionText, selectedModel === model && styles.pickerOptionTextSelected]}>
+                            {model}
+                          </Text>
+                          {selectedModel === model && <Ionicons name="checkmark" size={20} color="#111827" />}
+                        </Pressable>
+                      ))}
+                    </ScrollView>
+                  </View>
+                </View>
+              )}
             </View>
           </KeyboardAvoidingView>
         </Modal>
@@ -1074,11 +1225,40 @@ export default function PartsRequestsScreen() {
         {/* Filter Modal */}
         <FilterModal
           visible={showFilterModal}
+          activeTab={'დაშლილები'}
+          dismantlerFilters={{
+            brand: filterMake,
+            model: filterModel,
+            yearFrom: filterYear,
+            yearTo: '',
+            location: '',
+          }}
+          partsFilters={{
+            brand: filterMake,
+            category: '',
+            priceMin: minBudget?.toString() || '',
+            priceMax: maxBudget?.toString() || '',
+            location: '',
+          }}
           onClose={() => setShowFilterModal(false)}
-          filterMake={filterMake}
-          filterModel={filterModel}
-          filterYear={filterYear}
-          onFilterChange={handleFilterChange}
+          onApply={(dismantlerF: DismantlerFilters, _partsF: PartsFilters) => {
+            handleFilterChange({
+              make: dismantlerF.brand,
+              model: dismantlerF.model,
+              year: dismantlerF.yearFrom,
+            });
+          }}
+          onReset={() => {
+            handleFilterChange({
+              make: '',
+              model: '',
+              year: '',
+              urgency: '',
+              status: '',
+              minBudget: undefined,
+              maxBudget: undefined,
+            });
+          }}
         />
 
         {/* Offer Modal */}
@@ -1094,18 +1274,18 @@ export default function PartsRequestsScreen() {
             keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
           >
             <View style={styles.modalContentSimple}>
-              <View style={styles.modalHeaderSimple}>
-                <Text style={styles.modalTitleSimple}>შეთავაზების გაგზავნა</Text>
-                <Pressable
+              <View style={styles.modalHeaderNew}>
+                <Text style={styles.modalTitleNew}>შეთავაზების გაგზავნა</Text>
+                <TouchableOpacity
                   onPress={() => {
                     setShowOfferModal(false);
                     setOfferPrice('');
                     setSelectedRequestForOffer(null);
                   }}
-                  style={styles.modalCloseButtonSimple}
+                  style={styles.modalCloseBtn}
                 >
-                  <Ionicons name="close" size={22} color="#6B7280" />
-                </Pressable>
+                  <Ionicons name="close" size={20} color="#6B7280" />
+                </TouchableOpacity>
               </View>
 
               <ScrollView
@@ -1185,14 +1365,14 @@ export default function PartsRequestsScreen() {
         >
           <View style={styles.modalOverlay}>
             <View style={styles.pickerModalContent}>
-              <View style={styles.pickerModalHeader}>
-                <Text style={styles.pickerModalTitle}>აირჩიეთ მარკა</Text>
-                <Pressable
+              <View style={styles.modalHeaderNew}>
+                <Text style={styles.modalTitleNew}>აირჩიეთ მარკა</Text>
+                <TouchableOpacity
                   onPress={() => setShowMakePicker(false)}
-                  style={styles.modalCloseButtonSimple}
+                  style={styles.modalCloseBtn}
                 >
-                  <Ionicons name="close" size={22} color="#6B7280" />
-                </Pressable>
+                  <Ionicons name="close" size={20} color="#6B7280" />
+                </TouchableOpacity>
               </View>
               <ScrollView style={styles.pickerModalBody} showsVerticalScrollIndicator={false}>
                 <Pressable
@@ -1206,7 +1386,7 @@ export default function PartsRequestsScreen() {
                   <Text style={[styles.pickerOptionText, !filterMake && styles.pickerOptionTextSelected]}>
                     ყველა
                   </Text>
-                  {!filterMake && <Ionicons name="checkmark" size={20} color="#6366F1" />}
+                  {!filterMake && <Ionicons name="checkmark" size={20} color="#111827" />}
                 </Pressable>
                 {carBrands.map((brand) => (
                   <Pressable
@@ -1221,7 +1401,7 @@ export default function PartsRequestsScreen() {
                     <Text style={[styles.pickerOptionText, filterMake === brand && styles.pickerOptionTextSelected]}>
                       {brand}
                     </Text>
-                    {filterMake === brand && <Ionicons name="checkmark" size={20} color="#6366F1" />}
+                    {filterMake === brand && <Ionicons name="checkmark" size={20} color="#111827" />}
                   </Pressable>
                 ))}
               </ScrollView>
@@ -1238,14 +1418,14 @@ export default function PartsRequestsScreen() {
         >
           <View style={styles.modalOverlay}>
             <View style={styles.pickerModalContent}>
-              <View style={styles.pickerModalHeader}>
-                <Text style={styles.pickerModalTitle}>აირჩიეთ მოდელი</Text>
-                <Pressable
+              <View style={styles.modalHeaderNew}>
+                <Text style={styles.modalTitleNew}>აირჩიეთ მოდელი</Text>
+                <TouchableOpacity
                   onPress={() => setShowModelPicker(false)}
-                  style={styles.modalCloseButtonSimple}
+                  style={styles.modalCloseBtn}
                 >
-                  <Ionicons name="close" size={22} color="#6B7280" />
-                </Pressable>
+                  <Ionicons name="close" size={20} color="#6B7280" />
+                </TouchableOpacity>
               </View>
               <ScrollView style={styles.pickerModalBody} showsVerticalScrollIndicator={false}>
                 <Pressable
@@ -1258,7 +1438,7 @@ export default function PartsRequestsScreen() {
                   <Text style={[styles.pickerOptionText, !filterModel && styles.pickerOptionTextSelected]}>
                     ყველა
                   </Text>
-                  {!filterModel && <Ionicons name="checkmark" size={20} color="#6366F1" />}
+                  {!filterModel && <Ionicons name="checkmark" size={20} color="#111827" />}
                 </Pressable>
                 {availableModels.map((model) => (
                   <Pressable
@@ -1272,7 +1452,7 @@ export default function PartsRequestsScreen() {
                     <Text style={[styles.pickerOptionText, filterModel === model && styles.pickerOptionTextSelected]}>
                       {model}
                     </Text>
-                    {filterModel === model && <Ionicons name="checkmark" size={20} color="#6366F1" />}
+                    {filterModel === model && <Ionicons name="checkmark" size={20} color="#111827" />}
                   </Pressable>
                 ))}
               </ScrollView>
@@ -1289,194 +1469,112 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#F9FAFB',
   },
-  header: {
-    paddingBottom: 8,
+  // Top Bar - matches parts-new.tsx
+  topBar: {
+    backgroundColor: '#FFFFFF',
+    paddingBottom: 12,
     borderBottomWidth: 1,
     borderBottomColor: '#E5E7EB',
   },
-  headerContent: {
+  topBarContent: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    gap: 12,
+    paddingHorizontal: 20,
+    paddingTop: 8,
   },
-  backButton: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
+  topBarTitle: {
+    fontSize: 18,
+    fontFamily: 'HelveticaMedium',
+    textTransform: 'uppercase',
+    fontWeight: '700',
+    color: '#111827',
+    flex: 1,
+    textAlign: 'center',
+  },
+  topBarButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
     backgroundColor: '#F3F4F6',
     alignItems: 'center',
     justifyContent: 'center',
   },
-  headerCenter: {
-    flex: 1,
-    alignItems: 'center',
-    paddingHorizontal: 8,
+  topBarButtonActive: {
+    backgroundColor: '#111827',
   },
-  headerTitle: {
-    fontSize: 17,
-    fontWeight: '700',
-    color: '#111827',
-  },
-  headerSubtitle: {
-    fontSize: 11,
-    color: '#6B7280',
-    marginTop: 1,
-  },
-  headerRight: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  filterButton: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: '#EEF2FF',
+  topBarButtonPrimary: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: '#111827',
     alignItems: 'center',
     justifyContent: 'center',
-    position: 'relative',
   },
-  filterButtonActive: {
-    backgroundColor: '#6366F1',
+  topBarRight: {
+    flexDirection: 'row',
+    gap: 12,
   },
-  filterBadge: {
-    position: 'absolute',
-    top: -2,
-    right: -2,
-    backgroundColor: '#EF4444',
+  // Segment Control - matches parts-new.tsx
+  navSection: {
+    paddingHorizontal: 20,
+    paddingVertical: 16,
+    backgroundColor: '#FFFFFF',
+    borderBottomWidth: 1,
+    borderBottomColor: '#E5E7EB',
+  },
+  segmentControl: {
+    flexDirection: 'row',
+    backgroundColor: '#F3F4F6',
+    borderRadius: 12,
+    padding: 4,
+  },
+  segmentItem: {
+    flex: 1,
+    paddingVertical: 10,
+    paddingHorizontal: 16,
     borderRadius: 8,
-    minWidth: 16,
-    height: 16,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 4,
-  },
-  filterBadgeText: {
-    color: '#FFFFFF',
-    fontSize: 9,
-    fontWeight: '700',
-  },
-  createButton: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: '#6366F1',
     alignItems: 'center',
     justifyContent: 'center',
   },
-  filterButtonContainer: {
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    backgroundColor: '#FFFFFF',
-    borderBottomWidth: 1,
-    borderBottomColor: '#E5E7EB',
+  segmentItemActive: {
+    backgroundColor: '#111827',
   },
-  filterButtonTop: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 6,
-    paddingVertical: 10,
-    paddingHorizontal: 16,
-    backgroundColor: '#EEF2FF',
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: '#E0E7FF',
-    position: 'relative',
-  },
-  filterButtonTopActive: {
-    backgroundColor: '#6366F1',
-    borderColor: '#4F46E5',
-  },
-  filterButtonTopText: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#6366F1',
-  },
-  filterButtonTopTextActive: {
-    color: '#FFFFFF',
-  },
-  filterBadgeTop: {
-    position: 'absolute',
-    top: -4,
-    right: -4,
-    backgroundColor: '#EF4444',
-    borderRadius: 10,
-    minWidth: 20,
-    height: 20,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 6,
-    borderWidth: 2,
-    borderColor: '#FFFFFF',
-  },
-  filterBadgeTopText: {
-    color: '#FFFFFF',
-    fontSize: 10,
-    fontWeight: '700',
-  },
-  tabsContainer: {
-    flexDirection: 'row',
-    backgroundColor: '#FFFFFF',
-    borderBottomWidth: 1,
-    borderBottomColor: '#E5E7EB',
-    paddingHorizontal: 14,
-  },
-  tab: {
-    flex: 1,
-    paddingVertical: 10,
-    alignItems: 'center',
-    justifyContent: 'center',
-    position: 'relative',
-  },
-  tabActive: {
-    // Active state handled by indicator
-  },
-  tabContent: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 6,
-    position: 'relative',
-  },
-  tabText: {
-    fontSize: 14,
-    fontWeight: '500',
+  segmentText: {
+    fontSize: 13,
+    fontFamily: 'HelveticaMedium',
+    textTransform: 'uppercase',
     color: '#6B7280',
-  },
-  tabTextActive: {
-    color: '#6366F1',
     fontWeight: '600',
   },
-  tabTextWithBadge: {
-    paddingRight: 0,
+  segmentTextActive: {
+    color: '#FFFFFF',
   },
-  tabIndicator: {
-    position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
-    height: 2,
-    backgroundColor: '#6366F1',
-    borderRadius: 1,
+  segmentContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
   },
-  tabBadge: {
-    backgroundColor: '#6366F1',
+  segmentBadge: {
+    backgroundColor: '#111827',
     borderRadius: 9,
     minWidth: 18,
     height: 18,
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: 5,
-    marginLeft: 2,
   },
-  tabBadgeText: {
+  segmentBadgeActive: {
+    backgroundColor: '#FFFFFF',
+  },
+  segmentBadgeText: {
     color: '#FFFFFF',
     fontSize: 10,
+    fontFamily: 'HelveticaMedium',
     fontWeight: '700',
+  },
+  segmentBadgeTextActive: {
+    color: '#111827',
   },
   content: {
     flex: 1,
@@ -1485,777 +1583,571 @@ const styles = StyleSheet.create({
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
+    gap: 12,
   },
   loadingText: {
-    marginTop: 12,
     fontSize: 14,
+    fontFamily: 'HelveticaMedium',
+    textTransform: 'uppercase',
     color: '#6B7280',
+    fontWeight: '600',
   },
   emptyState: {
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: 32,
+    gap: 12,
+  },
+  emptyIconCircle: {
+    width: 72,
+    height: 72,
+    borderRadius: 36,
+    backgroundColor: '#F3F4F6',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 8,
   },
   emptyTitle: {
     fontSize: 16,
-    fontWeight: '600',
+    fontFamily: 'HelveticaMedium',
+    textTransform: 'uppercase',
+    fontWeight: '700',
     color: '#111827',
-    marginTop: 16,
   },
   emptySubtitle: {
     fontSize: 13,
+    fontFamily: 'HelveticaMedium',
     color: '#6B7280',
-    marginTop: 8,
     textAlign: 'center',
+    fontWeight: '500',
   },
   emptyButton: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#6366F1',
+    backgroundColor: '#111827',
     paddingHorizontal: 24,
     paddingVertical: 12,
     borderRadius: 12,
-    marginTop: 24,
+    marginTop: 12,
+    gap: 8,
   },
   emptyButtonText: {
     color: '#FFFFFF',
     fontSize: 14,
-    fontWeight: '600',
-    marginLeft: 8,
+    fontFamily: 'HelveticaMedium',
+    textTransform: 'uppercase',
+    fontWeight: '700',
   },
   scrollView: {
     flex: 1,
   },
   scrollContent: {
-    padding: 14,
+    paddingHorizontal: 20,
+    paddingTop: 16,
+    paddingBottom: 20,
+    gap: 12,
   },
-  requestCard: {
-    marginBottom: 12,
-    borderRadius: 14,
-    overflow: 'hidden',
-    elevation: 1,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.08,
-    shadowRadius: 3,
-  },
-  cardGradient: {
-    padding: 14,
-  },
-  cardHeader: {
+  // List Item Card - matches parts-new.tsx
+  listItem: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
+    backgroundColor: '#FFFFFF',
+    borderRadius: 12,
+    padding: 14,
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
     alignItems: 'flex-start',
-    marginBottom: 10,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 8,
+    elevation: 2,
   },
-  userInfo: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    flex: 1,
-  },
-  avatar: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: '#EEF2FF',
+  listItemIcon: {
+    width: 48,
+    height: 48,
+    borderRadius: 14,
+    backgroundColor: '#F3F4F6',
     alignItems: 'center',
     justifyContent: 'center',
-    marginRight: 10,
+    marginRight: 12,
   },
-  userDetails: {
+  listItemIconMy: {
+    backgroundColor: '#111827',
+  },
+  listItemContent: {
+    flex: 1,
+    gap: 4,
+  },
+  listItemHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 2,
+  },
+  listItemTitle: {
+    fontSize: 15,
+    fontFamily: 'HelveticaMedium',
+    textTransform: 'uppercase',
+    fontWeight: '700',
+    color: '#111827',
     flex: 1,
   },
-  userNameRow: {
+  listItemVehicle: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    marginBottom: 2,
+  },
+  listItemSubtitle: {
+    fontSize: 12,
+    fontFamily: 'HelveticaMedium',
+    color: '#6B7280',
+    fontWeight: '500',
+  },
+  listItemAuthor: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    marginTop: 4,
+    marginBottom: 2,
+  },
+  listItemAuthorText: {
+    fontSize: 12,
+    fontFamily: 'HelveticaMedium',
+    color: '#6B7280',
+    fontWeight: '500',
+  },
+  listItemDescription: {
+    fontSize: 12,
+    fontFamily: 'HelveticaMedium',
+    color: '#9CA3AF',
+    fontWeight: '500',
+    marginBottom: 4,
+  },
+  listItemTime: {
+    fontSize: 11,
+    fontFamily: 'HelveticaMedium',
+    color: '#9CA3AF',
+    fontWeight: '500',
+  },
+  listItemMeta: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
+    flexWrap: 'wrap',
+    marginTop: 4,
   },
-  userName: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#111827',
-  },
-  myRequestBadge: {
-    flexDirection: 'row',
+  listItemArrow: {
+    width: 28,
+    height: 28,
     alignItems: 'center',
-    backgroundColor: '#EEF2FF',
+    justifyContent: 'center',
+    marginLeft: 8,
+    marginTop: 10,
+  },
+  viewBtn: {
+    flexDirection: 'column',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 2,
+    backgroundColor: '#F3F4F6',
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    borderRadius: 10,
+    marginLeft: 8,
+    alignSelf: 'center',
+  },
+  viewBtnText: {
+    fontSize: 9,
+    fontFamily: 'HelveticaMedium',
+    color: '#111827',
+    textTransform: 'uppercase',
+    letterSpacing: 0.3,
+  },
+  listItemActions: {
+    flexDirection: 'row',
+    gap: 8,
+    marginTop: 8,
+    paddingTop: 8,
+    borderTopWidth: 1,
+    borderTopColor: '#F3F4F6',
+  },
+  urgencyDotContainer: {
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  urgencyDotNew: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+  },
+  budgetChip: {
+    backgroundColor: '#ECFDF5',
     paddingHorizontal: 6,
     paddingVertical: 2,
-    borderRadius: 8,
-    gap: 4,
+    borderRadius: 6,
   },
-  myRequestText: {
+  budgetChipText: {
+    fontSize: 11,
+    fontFamily: 'HelveticaMedium',
+    fontWeight: '700',
+    color: '#10B981',
+  },
+  offersChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#F3F4F6',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 6,
+    gap: 3,
+  },
+  offersChipText: {
+    fontSize: 11,
+    fontFamily: 'HelveticaMedium',
+    fontWeight: '700',
+    color: '#111827',
+  },
+  statusChip: {
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 6,
+  },
+  statusChipText: {
+    fontSize: 11,
+    fontFamily: 'HelveticaMedium',
+    fontWeight: '600',
+  },
+  myBadge: {
+    backgroundColor: '#111827',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 6,
+  },
+  myBadgeText: {
     fontSize: 10,
-    fontWeight: '600',
-    color: '#6366F1',
+    fontFamily: 'HelveticaMedium',
+    fontWeight: '700',
+    color: '#FFFFFF',
+    textTransform: 'uppercase',
   },
-  myRequestAvatar: {
-    backgroundColor: '#6366F1',
-  },
-  timeAgo: {
-    fontSize: 11,
-    color: '#6B7280',
-    marginTop: 2,
-  },
-  urgencyBadge: {
+  actionBtnSecondary: {
+    flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 8,
-    paddingVertical: 5,
-    borderRadius: 10,
-  },
-  urgencyDot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-    marginRight: 5,
-  },
-  urgencyText: {
-    fontSize: 11,
-    fontWeight: '600',
-  },
-  vehicleInfo: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 10,
-    paddingVertical: 7,
+    justifyContent: 'center',
+    paddingVertical: 8,
     paddingHorizontal: 10,
     backgroundColor: '#F3F4F6',
     borderRadius: 8,
+    gap: 6,
   },
-  vehicleText: {
-    fontSize: 13,
+  actionBtnSecondaryText: {
+    fontSize: 12,
+    fontFamily: 'HelveticaMedium',
+    textTransform: 'uppercase',
     fontWeight: '600',
-    color: '#374151',
-    marginLeft: 8,
-  },
-  partSection: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 10,
-  },
-  partName: {
-    fontSize: 16,
-    fontWeight: '700',
     color: '#111827',
-    marginLeft: 8,
+  },
+  actionBtnPrimary: {
     flex: 1,
-  },
-  description: {
-    fontSize: 13,
-    color: '#6B7280',
-    lineHeight: 18,
-    marginBottom: 12,
-  },
-  cardFooter: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingTop: 10,
-    borderTopWidth: 1,
-    borderTopColor: '#E5E7EB',
-  },
-  footerLeft: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 12,
+    justifyContent: 'center',
+    paddingVertical: 8,
+    paddingHorizontal: 10,
+    backgroundColor: '#111827',
+    borderRadius: 8,
+    gap: 6,
   },
-  budgetBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#ECFDF5',
-    paddingHorizontal: 8,
-    paddingVertical: 5,
-    borderRadius: 6,
-  },
-  budgetText: {
-    fontSize: 11,
+  actionBtnPrimaryText: {
+    fontSize: 12,
+    fontFamily: 'HelveticaMedium',
+    textTransform: 'uppercase',
     fontWeight: '600',
-    color: '#10B981',
-    marginLeft: 4,
+    color: '#FFFFFF',
   },
-  offersBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#EEF2FF',
-    paddingHorizontal: 8,
-    paddingVertical: 5,
-    borderRadius: 6,
-  },
-  offersText: {
-    fontSize: 11,
-    fontWeight: '600',
-    color: '#6366F1',
-    marginLeft: 4,
-  },
-  statusBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  statusDot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-    marginRight: 5,
-  },
-  statusText: {
-    fontSize: 11,
-    fontWeight: '600',
-  },
+  // Modal Styles
   modalOverlay: {
     flex: 1,
     backgroundColor: 'rgba(0, 0, 0, 0.5)',
     justifyContent: 'flex-end',
   },
-  modalContent: {
-    backgroundColor: '#FFFFFF',
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-    maxHeight: '90%',
+  modalHandle: {
+    width: 40,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: '#E5E7EB',
+    alignSelf: 'center',
+    marginTop: 12,
+    marginBottom: 8,
   },
-  modalHeader: {
+  modalContentSimple: {
+    backgroundColor: '#FFFFFF',
+    borderTopLeftRadius: 28,
+    borderTopRightRadius: 28,
+    maxHeight: '92%',
+  },
+  modalHeaderNew: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    padding: 18,
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
+    paddingHorizontal: 20,
+    paddingVertical: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F3F4F6',
   },
-  modalTitle: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: '#FFFFFF',
+  modalHeaderLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
   },
-  modalCloseButton: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+  modalHeaderIcon: {
+    width: 36,
+    height: 36,
+    borderRadius: 12,
+    backgroundColor: '#F3F4F6',
     alignItems: 'center',
     justifyContent: 'center',
   },
-  modalBody: {
+  modalTitleNew: {
+    fontSize: 17,
+    fontFamily: 'HelveticaMedium',
+    textTransform: 'uppercase',
+    color: '#111827',
+    letterSpacing: 0.3,
+  },
+  modalCloseBtn: {
+    width: 38,
+    height: 38,
+    borderRadius: 14,
+    backgroundColor: '#F3F4F6',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  modalBodySimple: {
+    paddingHorizontal: 20,
+  },
+  modalScrollContent: {
+    paddingTop: 16,
+    paddingBottom: 44,
+    gap: 14,
+  },
+  // Form Step Card
+  formStepCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 18,
     padding: 18,
-  },
-  formSection: {
-    marginBottom: 16,
-  },
-  formLabel: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: '#374151',
-    marginBottom: 8,
-  },
-  carSelector: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    padding: 14,
-    backgroundColor: '#F9FAFB',
-    borderRadius: 12,
     borderWidth: 1,
-    borderColor: '#E5E7EB',
+    borderColor: '#F3F4F6',
+    gap: 14,
   },
-  selectedCar: {
+  formStepHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    flex: 1,
+    gap: 10,
+    marginBottom: 2,
+  },
+  formStepBadge: {
+    width: 26,
+    height: 26,
+    borderRadius: 9,
+    backgroundColor: '#111827',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  formStepBadgeText: {
+    fontSize: 12,
+    fontFamily: 'HelveticaMedium',
+    color: '#FFFFFF',
+  },
+  formStepTitle: {
+    fontSize: 14,
+    fontFamily: 'HelveticaMedium',
+    color: '#111827',
+    textTransform: 'uppercase',
+    letterSpacing: 0.3,
+  },
+  // Selected car summary
+  selectedCarSummary: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: '#F3F4F6',
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderRadius: 12,
   },
   selectedCarText: {
-    fontSize: 14,
-    fontWeight: '600',
+    flex: 1,
+    fontSize: 13,
+    fontFamily: 'HelveticaMedium',
     color: '#111827',
-    marginLeft: 8,
+    textTransform: 'uppercase',
   },
-  noCarSelected: {
+  formSection: {
+    gap: 8,
+  },
+  formLabelRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    flex: 1,
+    gap: 6,
   },
-  noCarText: {
-    fontSize: 14,
-    color: '#9CA3AF',
-    marginLeft: 8,
+  formLabelNew: {
+    fontSize: 12,
+    fontFamily: 'HelveticaMedium',
+    textTransform: 'uppercase',
+    color: '#6B7280',
+    letterSpacing: 0.3,
   },
-  input: {
+  formRequired: {
+    fontSize: 12,
+    fontFamily: 'HelveticaMedium',
+    color: '#EF4444',
+  },
+  inputSimple: {
     backgroundColor: '#F9FAFB',
-    borderRadius: 12,
-    padding: 14,
-    fontSize: 14,
+    borderRadius: 14,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    fontSize: 15,
+    fontFamily: 'HelveticaMedium',
     color: '#111827',
     borderWidth: 1,
-    borderColor: '#E5E7EB',
+    borderColor: '#F3F4F6',
   },
-  textArea: {
-    minHeight: 100,
+  textAreaSimple: {
+    minHeight: 88,
     textAlignVertical: 'top',
+    paddingTop: 14,
   },
+  // Budget input
+  budgetInputRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 0,
+  },
+  budgetSuffix: {
+    backgroundColor: '#F3F4F6',
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    borderTopRightRadius: 14,
+    borderBottomRightRadius: 14,
+    borderWidth: 1,
+    borderLeftWidth: 0,
+    borderColor: '#F3F4F6',
+    marginLeft: -14,
+  },
+  budgetSuffixText: {
+    fontSize: 16,
+    fontFamily: 'HelveticaMedium',
+    color: '#6B7280',
+  },
+  // Urgency selector
   urgencySelector: {
     flexDirection: 'row',
-    gap: 10,
+    gap: 8,
   },
   urgencyOption: {
     flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    padding: 10,
-    borderRadius: 10,
+    gap: 6,
+    paddingVertical: 12,
+    borderRadius: 12,
     backgroundColor: '#F9FAFB',
-    borderWidth: 2,
-    borderColor: 'transparent',
-  },
-  urgencyOptionActive: {
-    backgroundColor: '#EEF2FF',
-    borderColor: '#6366F1',
-  },
-  urgencyOptionDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    marginRight: 6,
+    borderWidth: 1.5,
+    borderColor: '#F3F4F6',
   },
   urgencyOptionText: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: '#6B7280',
-  },
-  urgencyOptionTextActive: {
-    color: '#6366F1',
-  },
-  submitButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: '#6366F1',
-    padding: 14,
-    borderRadius: 12,
-    marginTop: 8,
-  },
-  submitButtonDisabled: {
-    opacity: 0.6,
-  },
-  submitButtonText: {
-    color: '#FFFFFF',
-    fontSize: 14,
-    fontWeight: '600',
-    marginLeft: 8,
-  },
-  modalHeaderRight: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-  },
-  clearFilterButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: 'rgba(255, 255, 255, 0.2)',
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 12,
-    gap: 6,
-  },
-  clearFilterText: {
-    color: '#FFFFFF',
-    fontSize: 12,
-    fontWeight: '600',
-  },
-  filterScrollView: {
-    marginHorizontal: -18,
-    paddingHorizontal: 18,
-  },
-  filterChips: {
-    flexDirection: 'row',
-    gap: 8,
-    paddingVertical: 4,
-  },
-  filterChip: {
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    borderRadius: 20,
-    backgroundColor: '#F3F4F6',
-    borderWidth: 1,
-    borderColor: '#E5E7EB',
-  },
-  filterChipActive: {
-    backgroundColor: '#6366F1',
-    borderColor: '#6366F1',
-  },
-  filterChipText: {
-    fontSize: 13,
-    fontWeight: '500',
-    color: '#374151',
-  },
-  filterChipTextActive: {
-    color: '#FFFFFF',
-    fontWeight: '600',
-  },
-  // Simplified Modal Styles
-  modalContentSimple: {
-    backgroundColor: '#FFFFFF',
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
-    maxHeight: '85%',
-  },
-  modalHeaderSimple: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    padding: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: '#E5E7EB',
-  },
-  modalTitleSimple: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: '#111827',
-  },
-  modalCloseButtonSimple: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    backgroundColor: '#F3F4F6',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  modalBodySimple: {
-    padding: 16,
-  },
-  modalScrollContent: {
-    paddingBottom: 40,
-  },
-  carSelectorSimple: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    padding: 12,
-    backgroundColor: '#F9FAFB',
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: '#E5E7EB',
-    marginBottom: 12,
-  },
-  selectedCarSimple: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    flex: 1,
-  },
-  selectedCarTextSimple: {
-    fontSize: 14,
-    fontWeight: '500',
-    color: '#111827',
-    marginLeft: 8,
-  },
-  noCarSelectedSimple: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    flex: 1,
-  },
-  noCarTextSimple: {
-    fontSize: 14,
+    fontSize: 11,
+    fontFamily: 'HelveticaMedium',
     color: '#9CA3AF',
-    marginLeft: 8,
-  },
-  inputSimple: {
-    backgroundColor: '#F9FAFB',
-    borderRadius: 10,
-    padding: 12,
-    fontSize: 14,
-    color: '#111827',
-    borderWidth: 1,
-    borderColor: '#E5E7EB',
-    marginBottom: 12,
-  },
-  textAreaSimple: {
-    minHeight: 80,
-    textAlignVertical: 'top',
-  },
-  rowInputs: {
-    flexDirection: 'row',
-    gap: 10,
-    marginBottom: 12,
-  },
-  halfInput: {
-    flex: 1,
-  },
-  urgencySelectorSimple: {
-    flexDirection: 'row',
-    gap: 8,
-    alignItems: 'center',
-  },
-  urgencyOptionSimple: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: '#F3F4F6',
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 2,
-    borderColor: 'transparent',
-  },
-  urgencyOptionSimpleActive: {
-    backgroundColor: '#EEF2FF',
-    borderColor: '#6366F1',
-  },
-  urgencyOptionDotSimple: {
-    width: 10,
-    height: 10,
-    borderRadius: 5,
+    textTransform: 'uppercase',
   },
   submitButtonSimple: {
-    backgroundColor: '#6366F1',
-    padding: 14,
-    borderRadius: 10,
+    flexDirection: 'row',
+    backgroundColor: '#111827',
+    paddingVertical: 16,
+    borderRadius: 16,
     alignItems: 'center',
     justifyContent: 'center',
-    marginTop: 8,
+    gap: 10,
+    shadowColor: '#111827',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.2,
+    shadowRadius: 8,
+    elevation: 4,
+  },
+  submitButtonDisabled: {
+    opacity: 0.5,
   },
   submitButtonTextSimple: {
     color: '#FFFFFF',
     fontSize: 15,
-    fontWeight: '600',
+    fontFamily: 'HelveticaMedium',
+    textTransform: 'uppercase',
   },
-  // Simplified Card Styles
-  requestCardSimple: {
-    marginBottom: 10,
-    borderRadius: 12,
-    backgroundColor: '#FFFFFF',
-    borderWidth: 1,
-    borderColor: '#E5E7EB',
-    overflow: 'hidden',
+  brandScrollView: {
+    marginHorizontal: -18,
+    paddingHorizontal: 18,
   },
-  cardContentSimple: {
-    padding: 12,
-  },
-  cardTopRow: {
+  brandChipsContainer: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
-    marginBottom: 10,
-  },
-  userInfoSimple: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    flex: 1,
-  },
-  avatarSimple: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    backgroundColor: '#EEF2FF',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: 8,
-  },
-  myRequestAvatarSimple: {
-    backgroundColor: '#6366F1',
-  },
-  userDetailsSimple: {
-    flex: 1,
-  },
-  userNameSimple: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: '#111827',
-  },
-  timeAgoSimple: {
-    fontSize: 11,
-    color: '#9CA3AF',
-    marginTop: 1,
-  },
-  myRequestBadgeSimple: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    backgroundColor: '#EEF2FF',
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 8,
-    marginLeft: 6,
-    borderWidth: 1,
-    borderColor: '#C7D2FE',
-  },
-  myRequestTextSimple: {
-    fontSize: 10,
-    fontWeight: '700',
-    color: '#6366F1',
-  },
-  urgencyBadgeSimple: {
-    width: 24,
-    height: 24,
-    borderRadius: 12,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  urgencyDotSimple: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-  },
-  cardMainContent: {
-    marginBottom: 10,
-  },
-  vehicleRowSimple: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 6,
-  },
-  vehicleTextSimple: {
-    fontSize: 12,
-    color: '#6B7280',
-    marginLeft: 6,
-  },
-  partNameSimple: {
-    fontSize: 15,
-    fontWeight: '700',
-    color: '#111827',
-    marginBottom: 4,
-  },
-  descriptionSimple: {
-    fontSize: 12,
-    color: '#6B7280',
-    lineHeight: 16,
-    marginTop: 4,
-  },
-  cardBottomRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingTop: 8,
-    borderTopWidth: 1,
-    borderTopColor: '#F3F4F6',
-  },
-  cardBottomLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  budgetBadgeSimple: {
-    backgroundColor: '#ECFDF5',
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 6,
-  },
-  budgetTextSimple: {
-    fontSize: 11,
-    fontWeight: '600',
-    color: '#10B981',
-  },
-  offersBadgeSimple: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#EEF2FF',
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 6,
-    gap: 4,
-  },
-  offersTextSimple: {
-    fontSize: 11,
-    fontWeight: '600',
-    color: '#6366F1',
-  },
-  statusBadgeSimple: {
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 6,
-  },
-  statusTextSimple: {
-    fontSize: 11,
-    fontWeight: '600',
-  },
-  cardActionsRow: {
-    flexDirection: 'row',
-    gap: 8,
-    marginTop: 8,
-    paddingTop: 8,
-    borderTopWidth: 1,
-    borderTopColor: '#F3F4F6',
-  },
-  chatButton: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 10,
-    paddingHorizontal: 12,
-    backgroundColor: '#EEF2FF',
-    borderRadius: 8,
     gap: 6,
+    paddingRight: 18,
   },
-  chatButtonText: {
+  brandChip: {
+    paddingHorizontal: 14,
+    paddingVertical: 9,
+    borderRadius: 10,
+    backgroundColor: '#F3F4F6',
+    borderWidth: 1.5,
+    borderColor: '#F3F4F6',
+  },
+  brandChipActive: {
+    backgroundColor: '#111827',
+    borderColor: '#111827',
+  },
+  brandChipText: {
     fontSize: 13,
-    fontWeight: '600',
-    color: '#6366F1',
+    fontFamily: 'HelveticaMedium',
+    color: '#6B7280',
   },
-  offerButton: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 10,
-    paddingHorizontal: 12,
-    backgroundColor: '#10B981',
-    borderRadius: 8,
-    gap: 6,
-  },
-  offerButtonFull: {
-    width: '100%',
-  },
-  offerButtonText: {
-    fontSize: 13,
-    fontWeight: '600',
+  brandChipTextActive: {
     color: '#FFFFFF',
   },
+  // Offer Request Info
   offerRequestInfo: {
     backgroundColor: '#F9FAFB',
-    padding: 12,
-    borderRadius: 10,
+    padding: 14,
+    borderRadius: 12,
     marginBottom: 16,
-  },
-  chatsTabContent: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 60,
-    paddingHorizontal: 32,
-  },
-  chatScreenButton: {
-    borderRadius: 16,
-    overflow: 'hidden',
-    shadowColor: '#6366F1',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 12,
-    elevation: 8,
-  },
-  chatScreenButtonGradient: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 16,
-    paddingHorizontal: 32,
-    gap: 12,
-  },
-  chatScreenButtonText: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
   },
   offerRequestTitle: {
     fontSize: 16,
+    fontFamily: 'HelveticaMedium',
+    textTransform: 'uppercase',
     fontWeight: '700',
     color: '#111827',
     marginBottom: 4,
   },
   offerRequestVehicle: {
     fontSize: 13,
+    fontFamily: 'HelveticaMedium',
     color: '#6B7280',
     marginBottom: 4,
   },
   offerRequestBudget: {
     fontSize: 13,
+    fontFamily: 'HelveticaMedium',
     color: '#10B981',
     fontWeight: '600',
   },
@@ -2271,14 +2163,14 @@ const styles = StyleSheet.create({
     backgroundColor: '#FFFFFF',
     borderRadius: 12,
     padding: 16,
-    marginHorizontal: 16,
+    marginHorizontal: 20,
     marginBottom: 8,
     borderWidth: 1,
     borderColor: '#E5E7EB',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.05,
-    shadowRadius: 4,
+    shadowRadius: 8,
     elevation: 2,
   },
   conversationContent: {
@@ -2290,14 +2182,12 @@ const styles = StyleSheet.create({
     position: 'relative',
   },
   conversationAvatar: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    backgroundColor: '#EEF2FF',
+    width: 48,
+    height: 48,
+    borderRadius: 14,
+    backgroundColor: '#F3F4F6',
     alignItems: 'center',
     justifyContent: 'center',
-    borderWidth: 2,
-    borderColor: '#E0E7FF',
   },
   conversationUnreadBadge: {
     position: 'absolute',
@@ -2315,12 +2205,13 @@ const styles = StyleSheet.create({
   },
   conversationUnreadText: {
     fontSize: 10,
+    fontFamily: 'HelveticaMedium',
     color: '#FFFFFF',
     fontWeight: '700',
   },
   conversationInfo: {
     flex: 1,
-    gap: 6,
+    gap: 4,
   },
   conversationHeader: {
     flexDirection: 'row',
@@ -2328,24 +2219,28 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   conversationPartnerName: {
-    fontSize: 16,
+    fontSize: 15,
+    fontFamily: 'HelveticaMedium',
+    textTransform: 'uppercase',
     color: '#111827',
     fontWeight: '700',
     flex: 1,
   },
   conversationTime: {
-    fontSize: 12,
-    color: '#6B7280',
+    fontSize: 11,
+    fontFamily: 'HelveticaMedium',
+    color: '#9CA3AF',
     fontWeight: '500',
     marginLeft: 8,
   },
   conversationVehicleInfo: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
+    gap: 4,
   },
   conversationVehicleText: {
     fontSize: 12,
+    fontFamily: 'HelveticaMedium',
     color: '#6B7280',
     fontWeight: '500',
     flex: 1,
@@ -2363,12 +2258,14 @@ const styles = StyleSheet.create({
     gap: 4,
   },
   conversationSenderName: {
-    fontSize: 13,
+    fontSize: 12,
+    fontFamily: 'HelveticaMedium',
     color: '#6B7280',
     fontWeight: '600',
   },
   conversationLastMessage: {
-    fontSize: 14,
+    fontSize: 13,
+    fontFamily: 'HelveticaMedium',
     color: '#6B7280',
     fontWeight: '400',
     flex: 1,
@@ -2380,18 +2277,19 @@ const styles = StyleSheet.create({
   conversationRequestTitle: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
-    marginTop: 4,
+    gap: 4,
+    marginTop: 2,
   },
   conversationRequestTitleText: {
-    fontSize: 12,
+    fontSize: 11,
+    fontFamily: 'HelveticaMedium',
     color: '#9CA3AF',
     fontWeight: '500',
     flex: 1,
   },
   conversationArrow: {
-    width: 32,
-    height: 32,
+    width: 28,
+    height: 28,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -2402,8 +2300,10 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   chatsLoadingText: {
-    fontSize: 16,
-    color: '#6366F1',
+    fontSize: 14,
+    fontFamily: 'HelveticaMedium',
+    textTransform: 'uppercase',
+    color: '#111827',
     textAlign: 'center',
     fontWeight: '600',
   },
@@ -2412,144 +2312,30 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     paddingVertical: 60,
     paddingHorizontal: 32,
-    gap: 16,
+    gap: 12,
   },
   chatsEmptyTitle: {
-    fontSize: 20,
+    fontSize: 16,
+    fontFamily: 'HelveticaMedium',
+    textTransform: 'uppercase',
     color: '#111827',
     textAlign: 'center',
     fontWeight: '700',
   },
   chatsEmptySubtitle: {
-    fontSize: 14,
+    fontSize: 13,
+    fontFamily: 'HelveticaMedium',
     color: '#6B7280',
     textAlign: 'center',
     lineHeight: 20,
     fontWeight: '500',
   },
-  // Filter Modal Simple Styles
-  modalHeaderRightSimple: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-  },
-  clearFilterButtonSimple: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 8,
-    backgroundColor: '#F3F4F6',
-  },
-  clearFilterTextSimple: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: '#6B7280',
-  },
-  filterSectionSimple: {
-    marginBottom: 20,
-  },
-  filterLabelSimple: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#111827',
-    marginBottom: 10,
-  },
-  filterScrollViewSimple: {
-    marginHorizontal: -16,
-    paddingHorizontal: 16,
-  },
-  filterChipsContainerSimple: {
-    gap: 8,
-    paddingRight: 16,
-  },
-  filterChipSimple: {
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    borderRadius: 8,
-    backgroundColor: '#F3F4F6',
-    borderWidth: 1,
-    borderColor: '#E5E7EB',
-    marginRight: 8,
-  },
-  filterChipSimpleActive: {
-    backgroundColor: '#6366F1',
-    borderColor: '#4F46E5',
-  },
-  filterChipTextSimple: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: '#6B7280',
-  },
-  filterChipTextSimpleActive: {
-    color: '#FFFFFF',
-  },
-  brandScrollView: {
-    marginHorizontal: -16,
-    paddingHorizontal: 16,
-  },
-  brandChipsContainer: {
-    flexDirection: 'row',
-    gap: 8,
-    paddingRight: 16,
-  },
-  brandChip: {
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-    borderRadius: 20,
-    backgroundColor: '#F3F4F6',
-    borderWidth: 1.5,
-    borderColor: '#E5E7EB',
-    marginRight: 8,
-  },
-  brandChipActive: {
-    backgroundColor: '#6366F1',
-    borderColor: '#4F46E5',
-  },
-  brandChipText: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: '#6B7280',
-  },
-  brandChipTextActive: {
-    color: '#FFFFFF',
-    fontWeight: '700',
-  },
-  filterSelectButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    padding: 12,
-    backgroundColor: '#F9FAFB',
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: '#E5E7EB',
-  },
-  filterSelectText: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#111827',
-  },
-  filterSelectTextPlaceholder: {
-    color: '#9CA3AF',
-    fontWeight: '400',
-  },
+  // Picker Modal
   pickerModalContent: {
     backgroundColor: '#FFFFFF',
     borderTopLeftRadius: 20,
     borderTopRightRadius: 20,
     maxHeight: '80%',
-  },
-  pickerModalHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    padding: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: '#E5E7EB',
-  },
-  pickerModalTitle: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: '#111827',
   },
   pickerModalBody: {
     maxHeight: 500,
@@ -2563,15 +2349,54 @@ const styles = StyleSheet.create({
     borderBottomColor: '#F3F4F6',
   },
   pickerOptionSelected: {
-    backgroundColor: '#F0F9FF',
+    backgroundColor: '#F3F4F6',
   },
   pickerOptionText: {
     fontSize: 15,
+    fontFamily: 'HelveticaMedium',
     fontWeight: '500',
     color: '#111827',
   },
   pickerOptionTextSelected: {
-    color: '#6366F1',
+    color: '#111827',
+    fontWeight: '700',
+  },
+  // Inline Picker Overlay (inside modal)
+  inlinePickerOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0,0,0,0.4)',
+    justifyContent: 'flex-end',
+    zIndex: 100,
+  },
+  inlinePickerContent: {
+    backgroundColor: '#FFFFFF',
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    maxHeight: '70%',
+  },
+  // Dropdown Button
+  dropdownButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#F9FAFB',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    paddingHorizontal: 14,
+    paddingVertical: 14,
+    gap: 10,
+  },
+  dropdownButtonDisabled: {
+    opacity: 0.5,
+  },
+  dropdownButtonText: {
+    flex: 1,
+    fontSize: 14,
+    fontFamily: 'HelveticaMedium',
+    color: '#9CA3AF',
+  },
+  dropdownButtonTextSelected: {
+    color: '#111827',
     fontWeight: '600',
   },
 });

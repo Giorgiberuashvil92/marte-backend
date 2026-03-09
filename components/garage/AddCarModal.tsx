@@ -146,7 +146,7 @@ export default function AddCarModal({ visible, onClose, onAddCar }: AddCarModalP
           <View style={styles.modalHeader}>
             <Text style={styles.modalTitle}>ახალი მანქანა</Text>
             <TouchableOpacity onPress={onClose}>
-              <Ionicons name="close" size={24} color="#E5E7EB" />
+              <Ionicons name="close" size={24} color="#6B7280" />
             </TouchableOpacity>
           </View>
           <ScrollView style={[styles.modalBody, { paddingBottom: 32 + insets.bottom }]}>
@@ -161,23 +161,23 @@ export default function AddCarModal({ visible, onClose, onAddCar }: AddCarModalP
                   <View style={{ position: 'relative', width: '100%', height: '100%' }}>
                     <Image source={{ uri: newCarData.image }} style={styles.selectedImage} />
                     {isUploadingImage && (
-                      <View style={styles.uploadOverlay}>
-                        <ActivityIndicator size="large" color="#6366F1" />
-                        <Text style={styles.uploadText}>ავტვირთვა...</Text>
-                      </View>
+                        <View style={styles.uploadOverlay}>
+                          <ActivityIndicator size="large" color="#3B82F6" />
+                          <Text style={styles.uploadText}>ავტვირთვა...</Text>
+                        </View>
                     )}
                   </View>
                 ) : (
                   <>
                     {isUploadingImage ? (
                       <>
-                        <ActivityIndicator size="large" color="#6366F1" />
-                        <Text style={{ color: '#6366F1', marginTop: 8, fontWeight: '600' }}>ავტვირთვა...</Text>
+                          <ActivityIndicator size="large" color="#3B82F6" />
+                          <Text style={{ color: '#3B82F6', marginTop: 8, fontWeight: '600' }}>ავტვირთვა...</Text>
                       </>
                     ) : (
                       <>
                         <Ionicons name="camera-outline" size={32} color="#9CA3AF" />
-                        <Text style={{ color: '#9CA3AF', marginTop: 8 }}>ფოტოს დამატება</Text>
+                        <Text style={{ color: '#6B7280', marginTop: 8 }}>ფოტოს დამატება</Text>
                       </>
                     )}
                   </>
@@ -333,11 +333,11 @@ export default function AddCarModal({ visible, onClose, onAddCar }: AddCarModalP
 const styles = StyleSheet.create({
   modal: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.9)',
+    backgroundColor: 'rgba(0,0,0,0.5)',
     justifyContent: 'flex-end',
   },
   modalContent: {
-    backgroundColor: '#1A1A1A',
+    backgroundColor: '#FFFFFF',
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
     paddingTop: 8,
@@ -346,7 +346,7 @@ const styles = StyleSheet.create({
   modalHandle: {
     width: 40,
     height: 4,
-    backgroundColor: '#4B5563',
+    backgroundColor: '#D1D5DB',
     borderRadius: 2,
     alignSelf: 'center',
     marginBottom: 20,
@@ -361,7 +361,7 @@ const styles = StyleSheet.create({
   modalTitle: {
     fontSize: 24,
     fontWeight: '700',
-    color: '#FFFFFF',
+    color: '#111827',
   },
   modalBody: {
     paddingHorizontal: 20,
@@ -373,18 +373,18 @@ const styles = StyleSheet.create({
   inputLabel: {
     fontSize: 14,
     fontWeight: '500',
-    color: '#E5E7EB',
+    color: '#111827',
     marginBottom: 8,
   },
   input: {
-    backgroundColor: 'rgba(55, 65, 81, 0.4)',
+    backgroundColor: '#F9FAFB',
     borderRadius: 12,
     paddingHorizontal: 16,
     paddingVertical: 12,
     fontSize: 16,
     borderWidth: 1,
-    borderColor: 'rgba(156, 163, 175, 0.2)',
-    color: '#FFFFFF',
+    borderColor: '#E5E7EB',
+    color: '#111827',
   },
   colorPicker: {
     flexDirection: 'row',
@@ -402,14 +402,14 @@ const styles = StyleSheet.create({
     borderColor: '#6366F1',
   },
   imagePickerButton: {
-    backgroundColor: 'rgba(55, 65, 81, 0.3)',
+    backgroundColor: '#F9FAFB',
     borderRadius: 12,
     height: 120,
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 2,
     borderStyle: 'dashed',
-    borderColor: 'rgba(156, 163, 175, 0.3)',
+    borderColor: '#E5E7EB',
   },
   selectedImage: {
     width: '100%',
@@ -441,16 +441,16 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    backgroundColor: '#374151',
+    backgroundColor: '#F9FAFB',
     borderWidth: 1,
-    borderColor: '#4B5563',
+    borderColor: '#E5E7EB',
     borderRadius: 12,
     paddingHorizontal: 16,
     paddingVertical: 14,
     minHeight: 50,
   },
   dropdownText: {
-    color: '#FFFFFF',
+    color: '#111827',
     fontSize: 16,
     fontWeight: '500',
     flex: 1,
@@ -466,16 +466,16 @@ const styles = StyleSheet.create({
     top: 50,
     left: 0,
     right: 0,
-    backgroundColor: '#374151',
+    backgroundColor: '#FFFFFF',
     borderWidth: 1,
-    borderColor: '#4B5563',
+    borderColor: '#E5E7EB',
     borderRadius: 12,
     maxHeight: 200,
     zIndex: 1000,
     elevation: 5,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.25,
+    shadowOpacity: 0.1,
     shadowRadius: 4,
   },
   dropdownScroll: {
@@ -485,10 +485,10 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 12,
     borderBottomWidth: 1,
-    borderBottomColor: '#4B5563',
+    borderBottomColor: '#E5E7EB',
   },
   dropdownItemText: {
-    color: '#FFFFFF',
+    color: '#111827',
     fontSize: 16,
     fontWeight: '500',
   },
@@ -500,21 +500,21 @@ const styles = StyleSheet.create({
   },
   cancelModalButton: {
     flex: 1,
-    backgroundColor: 'rgba(255,255,255,0.1)',
+    backgroundColor: '#F9FAFB',
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.2)',
+    borderColor: '#E5E7EB',
     paddingVertical: 16,
     borderRadius: 12,
     alignItems: 'center',
   },
   cancelModalButtonText: {
-    color: '#FFFFFF',
+    color: '#6B7280',
     fontSize: 16,
     fontWeight: '600',
   },
   saveModalButton: {
     flex: 1,
-    backgroundColor: '#10B981',
+    backgroundColor: '#3B82F6',
     paddingVertical: 16,
     borderRadius: 12,
     alignItems: 'center',

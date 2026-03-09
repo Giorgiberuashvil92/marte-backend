@@ -399,7 +399,7 @@ export default function StoreManagementScreen() {
             </Text>
             <TouchableOpacity
               style={styles.addButton}
-              onPress={() => router.push('/stores' as any)}
+              onPress={() => router.push('/stores-new' as any)}
             >
               <Ionicons name="add-circle" size={20} color="#FFFFFF" />
               <Text style={styles.addButtonText}>განცხადების დამატება</Text>

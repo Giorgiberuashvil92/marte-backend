@@ -138,7 +138,7 @@ function createStyles(theme: typeof Colors.light) {
     side: { flexDirection: 'row', gap: 24, alignItems: 'center' },
     fabHole: { width: 64 },
     tabItem: { alignItems: 'center', justifyContent: 'center' },
-    tabText: { fontFamily: 'Outfit', fontSize: 11, marginTop: 4 },
+    tabText: { fontFamily: 'HelveticaMedium', textTransform: 'uppercase', fontSize: 11, marginTop: 4 },
     fab: {
       position: 'absolute',
       bottom: 24,

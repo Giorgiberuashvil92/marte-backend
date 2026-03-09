@@ -531,7 +531,8 @@ export default function CategoryScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#111827' },
   loadingContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#111827' },
-  loadingText: { marginTop: 16, fontSize: 16, color: '#9CA3AF', fontFamily: 'FiraGO-Regular' },
+  loadingText: { marginTop: 16, fontSize: 16, color: '#9CA3AF', fontFamily: 'HelveticaMedium',
+      textTransform: 'uppercase' },
   
   // Header
   header: { paddingBottom: 20 },
@@ -540,7 +541,8 @@ const styles = StyleSheet.create({
   backButtonBlur: { flex: 1, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: 'rgba(255,255,255,0.15)' },
   headerTitle: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10 },
   headerIcon: { width: 36, height: 36, borderRadius: 18, backgroundColor: 'rgba(255,255,255,0.2)', alignItems: 'center', justifyContent: 'center' },
-  headerText: { fontSize: 20, fontWeight: '700', color: '#FFF', fontFamily: 'FiraGO-Bold' },
+  headerText: { fontSize: 20, fontWeight: '700', color: '#FFF', fontFamily: 'HelveticaMedium',
+      textTransform: 'uppercase' },
   headerRight: { width: 44 },
   headerButton: { width: 44, height: 44, borderRadius: 22, overflow: 'hidden' },
   
@@ -548,8 +550,10 @@ const styles = StyleSheet.create({
   statsContainer: { paddingHorizontal: 20, marginTop: 20 },
   statsBlur: { flexDirection: 'row', borderRadius: 20, overflow: 'hidden', borderWidth: 1, borderColor: 'rgba(255,255,255,0.15)', paddingVertical: 16 },
   statItem: { flex: 1, alignItems: 'center', gap: 4 },
-  statValue: { fontSize: 24, fontWeight: '800', color: '#FFF', fontFamily: 'FiraGO-Bold' },
-  statLabel: { fontSize: 12, color: 'rgba(255,255,255,0.7)', fontFamily: 'FiraGO-Regular' },
+  statValue: { fontSize: 24, fontWeight: '800', color: '#FFF', fontFamily: 'HelveticaMedium',
+      textTransform: 'uppercase' },
+  statLabel: { fontSize: 12, color: 'rgba(255,255,255,0.7)', fontFamily: 'HelveticaMedium',
+      textTransform: 'uppercase' },
   statDivider: { width: 1, height: '100%', backgroundColor: 'rgba(255,255,255,0.2)' },
   
   // Filters
@@ -558,8 +562,10 @@ const styles = StyleSheet.create({
   filterButton: { borderRadius: 16, overflow: 'hidden' },
   filterButtonActive: { borderWidth: 1, borderColor: 'rgba(59,130,246,0.5)' },
   filterBlur: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 16, paddingVertical: 10, borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)' },
-  filterText: { fontSize: 14, color: '#9CA3AF', fontFamily: 'FiraGO-Medium' },
-  filterTextActive: { color: '#FFF', fontFamily: 'FiraGO-Bold' },
+  filterText: { fontSize: 14, color: '#9CA3AF', fontFamily: 'HelveticaMedium',
+      textTransform: 'uppercase' },
+  filterTextActive: { color: '#FFF', fontFamily: 'HelveticaMedium',
+      textTransform: 'uppercase' },
   
   // Services Grid
   scrollView: { flex: 1 },
@@ -570,17 +576,23 @@ const styles = StyleSheet.create({
   serviceImageGradient: { ...StyleSheet.absoluteFillObject },
   serviceImagePlaceholder: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   statusBadge: { position: 'absolute', top: 12, right: 12, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 12 },
-  statusText: { fontSize: 11, color: '#FFF', fontFamily: 'FiraGO-Bold' },
+  statusText: { fontSize: 11, color: '#FFF', fontFamily: 'HelveticaMedium',
+      textTransform: 'uppercase' },
   
   // Service Info
   serviceInfo: { padding: 16, gap: 10 },
-  serviceName: { fontSize: 17, fontWeight: '700', color: '#E5E7EB', fontFamily: 'FiraGO-Bold' },
+  serviceName: { fontSize: 17, fontWeight: '700', color: '#E5E7EB', fontFamily: 'HelveticaMedium',
+      textTransform: 'uppercase' },
   serviceMetaRow: { flexDirection: 'row', gap: 12 },
   serviceMeta: { flexDirection: 'row', alignItems: 'center', gap: 4, flex: 1 },
-  serviceMetaText: { fontSize: 12, color: '#9CA3AF', fontFamily: 'FiraGO-Regular', flex: 1 },
+  serviceMetaText: { fontSize: 12, color: '#9CA3AF', fontFamily: 'HelveticaMedium',
+      textTransform: 'uppercase', flex: 1 },
   serviceFooter: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 4 },
   ratingBox: { flexDirection: 'row', alignItems: 'center', gap: 4 },
-  ratingText: { fontSize: 14, fontWeight: '700', color: '#E5E7EB', fontFamily: 'FiraGO-Bold' },
-  reviewsText: { fontSize: 12, color: '#9CA3AF', fontFamily: 'FiraGO-Regular' },
-  priceText: { fontSize: 18, fontWeight: '800', color: '#60A5FA', fontFamily: 'FiraGO-Bold' },
+  ratingText: { fontSize: 14, fontWeight: '700', color: '#E5E7EB', fontFamily: 'HelveticaMedium',
+      textTransform: 'uppercase' },
+  reviewsText: { fontSize: 12, color: '#9CA3AF', fontFamily: 'HelveticaMedium',
+      textTransform: 'uppercase' },
+  priceText: { fontSize: 18, fontWeight: '800', color: '#60A5FA', fontFamily: 'HelveticaMedium',
+      textTransform: 'uppercase' },
 });

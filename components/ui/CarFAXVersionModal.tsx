@@ -249,7 +249,7 @@ export default function CarFAXVersionModal({
                 <View style={styles.upgradePrompt}>
                   <Ionicons name="lock-closed" size={12} color="#F59E0B" />
                   <Text style={styles.upgradePromptText}>
-                    საჭიროა Premium პაკეტი (2.99₾/თვე)
+                    საჭიროა Premium პაკეტი (3.99₾/თვე)
                   </Text>
                 </View>
               )}

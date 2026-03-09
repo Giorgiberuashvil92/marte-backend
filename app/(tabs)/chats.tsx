@@ -1,552 +1,616 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   View,
   Text,
   StyleSheet,
-  SafeAreaView,
   ScrollView,
-  Pressable,
-  Animated,
-  Dimensions,
+  TouchableOpacity,
   StatusBar,
   RefreshControl,
+  ActivityIndicator,
+  Linking,
+  Alert,
 } from 'react-native';
-import { LinearGradient } from 'expo-linear-gradient';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import FontAwesome from '@expo/vector-icons/FontAwesome';
 import { Ionicons } from '@expo/vector-icons';
-import { router } from 'expo-router';
-import { Stack } from 'expo-router';
+import { router, Stack, useFocusEffect } from 'expo-router';
 import { useUser } from '@/contexts/UserContext';
 import { messagesApi, type RecentChat } from '@/services/messagesApi';
 import { requestsApi } from '@/services/requestsApi';
-
-const { width } = Dimensions.get('window');
+import API_BASE_URL from '@/config/api';
 
 type ConversationItem = RecentChat & {
   partnerName?: string;
   requestTitle?: string;
   lastSenderName?: string;
+  offerPriceGEL?: number;
+  offerEtaMin?: number;
+  partnerPhone?: string;
 };
 
-export default function ChatsScreen() {
+export default function ChatsTabScreen() {
   const { user } = useUser();
   const [conversations, setConversations] = useState<ConversationItem[]>([]);
   const [loading, setLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
-  const [fadeAnim] = useState(new Animated.Value(0));
-  const [slideAnim] = useState(new Animated.Value(50));
 
-  useEffect(() => {
-    fetchConversations();
-    
-    Animated.parallel([
-      Animated.timing(fadeAnim, {
-        toValue: 1,
-        duration: 800,
-        useNativeDriver: true,
-      }),
-      Animated.timing(slideAnim, {
-        toValue: 0,
-        duration: 600,
-        useNativeDriver: true,
-      }),
-    ]).start();
-  }, [user?.id]);
-
-  const fetchConversations = async () => {
+  const fetchConversations = useCallback(async (silent = false) => {
     if (!user?.id) return;
-    
-    setLoading(true);
+    if (!silent) setLoading(true);
     try {
-      // Fetch recent chats
       const recentChats = await messagesApi.getRecentChats(user.id);
-      
-      // Enrich with request and offer data
-      const enrichedConversations = await Promise.all(
+      const enriched = await Promise.all(
         recentChats.map(async (chat) => {
           try {
-            // Get request details
             const request = await requestsApi.getRequestById(chat.requestId);
-            
-            // Get offers to find partner name
             const offers = await requestsApi.getOffers(chat.requestId);
             const partnerOffer = offers.find(o => o.partnerId === chat.partnerId) || offers[0];
-            
-            // Get last message to determine sender
-            const messages = await messagesApi.getChatHistory(chat.requestId);
+            const messages = await messagesApi.getChatHistory(chat.requestId, chat.partnerId);
             const lastMessage = messages[messages.length - 1];
-            
-            // Determine sender name
             let lastSenderName = '';
             if (lastMessage) {
-              if (lastMessage.sender === 'user') {
-                // User sent - show user name
-                lastSenderName = user?.name || user?.firstName || 'თქვენ';
-              } else {
-                // Partner sent - show partner name
-                lastSenderName = partnerOffer?.providerName || 'მაღაზია';
-              }
+              lastSenderName = lastMessage.sender === 'user'
+                ? (user?.name || 'თქვენ')
+                : (partnerOffer?.providerName || 'მაღაზია');
             }
-            
+            let partnerPhone: string | undefined;
+            try {
+              const res = await fetch(`${API_BASE_URL}/users/${chat.partnerId}`, {
+                headers: { 'x-user-id': user.id, 'Content-Type': 'application/json' },
+              });
+              if (res.ok) {
+                const data = await res.json();
+                partnerPhone = data?.data?.phone;
+              }
+            } catch {
+              /* ignore */
+            }
+            let lastMessageAtNorm: number | undefined;
+            if (chat.lastMessageAt != null) {
+              const t = typeof chat.lastMessageAt === 'number'
+                ? chat.lastMessageAt
+                : new Date(chat.lastMessageAt as any).getTime();
+              if (Number.isFinite(t)) lastMessageAtNorm = t;
+            }
+
             return {
               ...chat,
+              lastMessageAt: lastMessageAtNorm,
               partnerName: partnerOffer?.providerName || 'მაღაზია',
               requestTitle: request?.partName || 'ნაწილის მოთხოვნა',
               lastSenderName,
+              offerPriceGEL: partnerOffer?.priceGEL,
+              offerEtaMin: partnerOffer?.etaMin,
+              partnerPhone,
             } as ConversationItem;
-          } catch (error) {
-            console.error('Error enriching conversation:', error);
-            return {
-              ...chat,
-              partnerName: 'მაღაზია',
-              requestTitle: 'ნაწილის მოთხოვნა',
-              lastSenderName: '',
-            } as ConversationItem;
+          } catch {
+            return { ...chat, partnerName: 'მაღაზია', requestTitle: 'ნაწილის მოთხოვნა', lastSenderName: '' } as ConversationItem;
           }
         })
       );
-      
-      setConversations(enrichedConversations);
-    } catch (error) {
-      console.error('Failed to fetch conversations:', error);
+      setConversations(enriched);
+    } catch {
       setConversations([]);
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
-  };
+  }, [user?.id]);
+
+  useEffect(() => {
+    fetchConversations(false);
+  }, [fetchConversations]);
+
+  const isFirstFocus = useRef(true);
+  useFocusEffect(
+    useCallback(() => {
+      if (isFirstFocus.current) {
+        isFirstFocus.current = false;
+        return;
+      }
+      if (user?.id) fetchConversations(true);
+    }, [user?.id, fetchConversations]),
+  );
 
   const onRefresh = () => {
     setRefreshing(true);
     fetchConversations();
-    setTimeout(() => setRefreshing(false), 1000);
+    setTimeout(() => setRefreshing(false), 800);
   };
 
-  const formatTime = (timestamp?: number) => {
-    if (!timestamp) return '';
-    
-    const now = Date.now();
-    const diff = now - timestamp;
-    
+  const formatTime = (timestamp?: number | string | Date) => {
+    if (timestamp == null) return '';
+    const t = typeof timestamp === 'number'
+      ? timestamp
+      : typeof timestamp === 'string'
+        ? new Date(timestamp).getTime()
+        : timestamp instanceof Date
+          ? timestamp.getTime()
+          : NaN;
+    if (!Number.isFinite(t)) return '';
+    const diff = Date.now() - t;
     if (diff < 60000) return 'ახლა';
     if (diff < 3600000) return `${Math.floor(diff / 60000)} წუთი`;
     if (diff < 86400000) return `${Math.floor(diff / 3600000)} სთ`;
     if (diff < 604800000) return `${Math.floor(diff / 86400000)} დღე`;
-    
-    const date = new Date(timestamp);
-    return date.toLocaleDateString('ka-GE', { day: 'numeric', month: 'short' });
+    return new Date(t).toLocaleDateString('ka-GE', { day: 'numeric', month: 'short' });
   };
 
-  const handleConversationPress = (conversation: ConversationItem) => {
-    router.push(`/chat/chat-${conversation.requestId}`);
+  const handleConversationPress = (c: ConversationItem) => {
+    const reqId = String(c.requestId ?? '');
+    const partId = String(c.partnerId ?? '');
+    if (!reqId || !partId) return;
+    router.push(`/chat/${reqId}/${partId}` as any);
   };
 
-  const getUnreadCount = (conversation: ConversationItem) => {
-    // If current user is the request owner, show user unread count
-    // Otherwise show partner unread count
-    if (conversation.userId === user?.id) {
-      return conversation.unreadCounts?.user || 0;
+  const handleCall = (c: ConversationItem) => {
+    const phone = c.partnerPhone?.replace(/\s/g, '') || '';
+    const tel = phone.startsWith('+') ? phone : `+995${phone.replace(/^995/, '')}`;
+    const url = `tel:${tel}`;
+    Linking.canOpenURL(url).then((ok) => {
+      if (ok) Linking.openURL(url);
+      else Alert.alert('შეცდომა', 'ტელეფონზე დარეკვა ვერ მოხერხდა');
+    }).catch(() => Alert.alert('შეცდომა', 'ტელეფონზე დარეკვა ვერ მოხერხდა'));
+  };
+
+  const getUnreadCount = (c: ConversationItem) => {
+    if (c.userId === user?.id) return c.unreadCounts?.user || 0;
+    return c.unreadCounts?.partner || 0;
+  };
+
+  const getServiceFromTitle = (title?: string): 'parts' | 'mechanic' | 'tow' | 'rental' => {
+    const t = (title || '').toLowerCase();
+    if (/ბრეიკ|ლამპ|ფარ|ძრავ|ჰაერ|ფილტრ/.test(t)) return 'parts';
+    if (/შემოწმებ|რემონტ|დიაგნოსტ/.test(t)) return 'mechanic';
+    if (/ევაკუაცია|ევაკუატორ/.test(t)) return 'tow';
+    if (/ქირაობა|rental/.test(t)) return 'rental';
+    return 'parts';
+  };
+
+  const getServiceColor = (service: string) => {
+    switch (service) {
+      case 'parts': return '#10B981';
+      case 'mechanic': return '#3B82F6';
+      case 'tow': return '#F59E0B';
+      case 'rental': return '#8B5CF6';
+      default: return '#3B82F6';
     }
-    return conversation.unreadCounts?.partner || 0;
+  };
+
+  const getServiceIcon = (service: string) => {
+    switch (service) {
+      case 'parts': return 'construct-outline';
+      case 'mechanic': return 'build-outline';
+      case 'tow': return 'car-outline';
+      case 'rental': return 'car-sport-outline';
+      default: return 'chatbubbles-outline';
+    }
   };
 
   return (
     <>
       <Stack.Screen options={{ headerShown: false }} />
-      <SafeAreaView style={styles.safeArea}>
-        <StatusBar barStyle="light-content" backgroundColor="transparent" translucent />
-      
-      <LinearGradient
-        colors={['rgba(99, 102, 241, 0.1)', 'rgba(59, 130, 246, 0.05)', 'rgba(99, 102, 241, 0.1)']}
-        style={styles.backgroundGradient}
-      >
-        <View style={styles.container}>
-          {/* Header */}
-          <Animated.View 
-            style={[
-              styles.header,
-              {
-                opacity: fadeAnim,
-                transform: [{ translateY: slideAnim }]
-              }
-            ]}
-          >
-            <Text style={styles.headerTitle}>ჩატები</Text>
-            
-            <Pressable style={styles.searchButton}>
-              <Ionicons name="search" size={20} color="#FFFFFF" />
-            </Pressable>
-          </Animated.View>
+      <View style={styles.container}>
+        <StatusBar barStyle="dark-content" backgroundColor="#FFFFFF" translucent />
 
-          {/* Conversations List */}
-          <ScrollView
-            style={styles.conversationsContainer}
-            contentContainerStyle={styles.conversationsContent}
-            showsVerticalScrollIndicator={false}
-            refreshControl={
-              <RefreshControl
-                refreshing={refreshing}
-                onRefresh={onRefresh}
-                tintColor="#6366F1"
-                colors={['#6366F1']}
-              />
-            }
+        <View style={styles.topBar}>
+          <SafeAreaView edges={['top']}>
+            <View style={styles.topBarContent}>
+              <TouchableOpacity
+                style={styles.topBarButton}
+                onPress={() => router.back()}
+                activeOpacity={0.7}
+              >
+                <FontAwesome name="arrow-left" size={18} color="#111827" />
+              </TouchableOpacity>
+              <Text style={styles.topBarTitle}>ჩატები</Text>
+              <View style={styles.topBarRight}>
+                <View style={styles.topBarCountBadge}>
+                  <Text style={styles.topBarCountText}>{conversations.length}</Text>
+                </View>
+              </View>
+            </View>
+          </SafeAreaView>
+        </View>
+
+        <View style={styles.refreshRow}>
+          <TouchableOpacity
+            style={styles.refreshButton}
+            onPress={() => onRefresh()}
+            disabled={refreshing}
+            activeOpacity={0.7}
           >
-            {conversations.map((conversation, index) => {
-              const unreadCount = getUnreadCount(conversation);
-              
-              return (
-                <Animated.View
-                  key={conversation._id || conversation.requestId}
-                  style={[
-                    styles.conversationWrapper,
-                    {
-                      opacity: fadeAnim,
-                      transform: [
-                        { 
-                          translateY: slideAnim.interpolate({
-                            inputRange: [0, 50],
-                            outputRange: [0, 20 + (index * 10)],
-                            extrapolate: 'clamp',
-                          })
-                        }
-                      ]
-                    }
-                  ]}
-                >
-                  <Pressable
-                    style={styles.conversationCard}
-                    onPress={() => handleConversationPress(conversation)}
+            <FontAwesome
+              name="refresh"
+              size={14}
+              color={refreshing ? '#9CA3AF' : '#111827'}
+            />
+            <Text style={[styles.refreshButtonText, refreshing && styles.refreshButtonTextDisabled]}>
+              ჩატების განახლება
+            </Text>
+          </TouchableOpacity>
+        </View>
+
+        <ScrollView
+          style={styles.scrollView}
+          contentContainerStyle={styles.scrollContent}
+          showsVerticalScrollIndicator={false}
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={onRefresh}
+              tintColor="#111827"
+              colors={['#111827']}
+            />
+          }
+        >
+          {loading && conversations.length === 0 ? (
+            <View style={styles.loadingState}>
+              <ActivityIndicator size="large" color="#111827" />
+              <Text style={styles.loadingText}>ჩატების ჩატვირთვა...</Text>
+            </View>
+          ) : conversations.length === 0 ? (
+            <View style={styles.emptyState}>
+              <View style={styles.emptyIconWrap}>
+                <FontAwesome name="comments" size={48} color="#6B7280" />
+              </View>
+              <Text style={styles.emptyTitle}>ჩატები ჯერ არ არის</Text>
+              <Text style={styles.emptySubtitle}>
+                როცა შეთავაზებებს მიიღებთ და დაიწყებთ მიწერ-მოწერას, ჩატები აქ გამოჩნდება
+              </Text>
+            </View>
+          ) : (
+            <View style={styles.listWrap}>
+{conversations.map((c) => {
+                const unread = getUnreadCount(c);
+                const service = getServiceFromTitle(c.requestTitle);
+                const accent = getServiceColor(service);
+                const timeStr = c.lastMessageAt ? formatTime(c.lastMessageAt) : '';
+                const isNow = timeStr === 'ახლა';
+                return (
+                  <TouchableOpacity
+                    key={c._id || `${c.requestId}-${c.partnerId}`}
+                    style={[
+                      styles.chatCard,
+                      { borderLeftWidth: 3, borderLeftColor: accent },
+                      unread > 0 && styles.chatCardUnread,
+                    ]}
+                    onPress={() => handleConversationPress(c)}
+                    activeOpacity={0.7}
                   >
-                    <LinearGradient
-                      colors={['rgba(255, 255, 255, 0.1)', 'rgba(255, 255, 255, 0.05)']}
-                      style={styles.conversationGradient}
-                    >
-                      <View style={styles.conversationContent}>
-                        {/* Avatar */}
-                        <View style={styles.avatarContainer}>
-                          <View style={styles.avatar}>
-                            <Ionicons 
-                              name="storefront-outline" 
-                              size={24} 
-                              color="#6366F1" 
-                            />
-                          </View>
-                        </View>
-
-                        {/* Conversation Info */}
-                        <View style={styles.conversationInfo}>
-                          <View style={styles.conversationHeader}>
-                            <Text style={styles.partnerName} numberOfLines={1}>
-                              {conversation.partnerName || 'მაღაზია'}
+                    <View style={[styles.avatarWrap, { backgroundColor: `${accent}22` }]}>
+                      <Ionicons name={getServiceIcon(service) as any} size={24} color={accent} />
+                    </View>
+                    <View style={styles.chatInfo}>
+                      <View style={styles.chatRow}>
+                        <Text style={styles.chatName} numberOfLines={1}>
+                          {c.partnerName || 'მაღაზია'}
+                        </Text>
+                        {timeStr ? (
+                          <Text style={[styles.chatTime, isNow && { color: accent, fontWeight: '700' }]}>
+                            {timeStr}
+                          </Text>
+                        ) : null}
+                      </View>
+                      <View style={styles.chatRow}>
+                        <View style={styles.lastMessageRow}>
+                          {c.lastSenderName ? (
+                            <Text style={styles.senderName} numberOfLines={1}>
+                              {c.lastSenderName}:{' '}
                             </Text>
-                            {conversation.lastMessageAt && (
-                              <Text style={styles.conversationTime}>
-                                {formatTime(conversation.lastMessageAt)}
-                              </Text>
-                            )}
+                          ) : null}
+                          <Text
+                            style={[styles.lastMessage, unread > 0 && styles.lastMessageUnread]}
+                            numberOfLines={1}
+                          >
+                            {c.lastMessage || 'შეტყობინება არ არის'}
+                          </Text>
+                        </View>
+                        {unread > 0 && (
+                          <View style={styles.unreadBadge}>
+                            <Text style={styles.unreadText}>{unread > 99 ? '99+' : unread}</Text>
                           </View>
-                          
-                          <View style={styles.conversationFooter}>
-                            <View style={styles.lastMessageContainer}>
-                              {conversation.lastSenderName && (
-                                <Text style={styles.senderName}>
-                                  {conversation.lastSenderName}:
-                                </Text>
-                              )}
-                              <Text 
-                                style={[
-                                  styles.lastMessage,
-                                  unreadCount > 0 && styles.lastMessageUnread
-                                ]} 
-                                numberOfLines={1}
-                              >
-                                {conversation.lastMessage || 'შეტყობინება არ არის'}
-                              </Text>
-                            </View>
-                            {unreadCount > 0 && (
-                              <View style={styles.unreadBadge}>
-                                <Text style={styles.unreadText}>
-                                  {unreadCount > 99 ? '99+' : unreadCount}
-                                </Text>
-                              </View>
-                            )}
-                          </View>
-                          
-                          {/* Request Title */}
-                          {conversation.requestTitle && (
-                            <View style={styles.requestTitleContainer}>
-                              <Ionicons name="cube-outline" size={12} color="rgba(255, 255, 255, 0.5)" />
+                        )}
+                      </View>
+                      {(c.requestTitle || c.offerPriceGEL != null || c.offerEtaMin != null) && (
+                        <View style={styles.requestTitleRow}>
+                          {c.requestTitle ? (
+                            <>
+                              <FontAwesome name="cube" size={12} color="#6B7280" />
                               <Text style={styles.requestTitle} numberOfLines={1}>
-                                {conversation.requestTitle}
+                                {c.requestTitle}
                               </Text>
-                            </View>
+                            </>
+                          ) : null}
+                          {(c.offerPriceGEL != null || c.offerEtaMin != null) && (
+                            <Text style={[styles.priceText, { color: accent }]}>
+                              {c.requestTitle ? ' · ' : ''}
+                              {c.offerPriceGEL != null ? `${c.offerPriceGEL}₾` : ''}
+                              {c.offerPriceGEL != null && c.offerEtaMin != null ? ' · ' : ''}
+                              {c.offerEtaMin != null ? `${c.offerEtaMin} წთ` : ''}
+                            </Text>
                           )}
                         </View>
-
-                        {/* Arrow */}
-                        <View style={styles.arrowContainer}>
-                          <Ionicons name="chevron-forward" size={20} color="rgba(255, 255, 255, 0.4)" />
-                        </View>
-                      </View>
-                    </LinearGradient>
-                  </Pressable>
-                </Animated.View>
-              );
-            })}
-            
-            {loading && conversations.length === 0 && (
-              <Animated.View 
-                style={[
-                  styles.loadingState,
-                  {
-                    opacity: fadeAnim,
-                    transform: [{ translateY: slideAnim }]
-                  }
-                ]}
-              >
-                <View style={styles.loadingIconContainer}>
-                  <Ionicons name="hourglass-outline" size={32} color="#6366F1" />
-                </View>
-                <Text style={styles.loadingText}>ჩატების ჩატვირთვა...</Text>
-              </Animated.View>
-            )}
-            
-            {conversations.length === 0 && !loading && (
-              <Animated.View 
-                style={[
-                  styles.emptyState,
-                  {
-                    opacity: fadeAnim,
-                    transform: [{ translateY: slideAnim }]
-                  }
-                ]}
-              >
-                <View style={styles.emptyIconContainer}>
-                  <Ionicons name="chatbubbles-outline" size={48} color="#6366F1" />
-                </View>
-                <Text style={styles.emptyTitle}>ჩატები ჯერ არ არის</Text>
-                <Text style={styles.emptySubtitle}>
-                  როცა შეთავაზებებს მიიღებთ და დაიწყებთ მიწერ-მოწერას, ჩატები აქ გამოჩნდება
-                </Text>
-              </Animated.View>
-            )}
-          </ScrollView>
-        </View>
-      </LinearGradient>
-    </SafeAreaView>
+                      )}
+                    </View>
+                    <TouchableOpacity
+                      style={[styles.callButton, c.partnerPhone && { backgroundColor: `${accent}20` }]}
+                      onPress={(e) => { e.stopPropagation(); handleCall(c); }}
+                      disabled={!c.partnerPhone}
+                      activeOpacity={0.7}
+                    >
+                      <FontAwesome
+                        name="phone"
+                        size={18}
+                        color={c.partnerPhone ? accent : '#9CA3AF'}
+                      />
+                    </TouchableOpacity>
+                    <Ionicons name="chevron-forward" size={18} color={accent} />
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+          )}
+          <View style={{ height: 40 }} />
+        </ScrollView>
+      </View>
     </>
   );
 }
 
 const styles = StyleSheet.create({
-  safeArea: {
-    flex: 1,
-    backgroundColor: '#0A0A0A',
-  },
-  backgroundGradient: {
-    flex: 1,
-  },
   container: {
     flex: 1,
+    backgroundColor: '#FFFFFF',
   },
-
-  // Header
-  header: {
+  topBar: {
+    backgroundColor: '#FFFFFF',
+    paddingBottom: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#E5E7EB',
+  },
+  topBarContent: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: 20,
-    paddingVertical: 16,
-    backgroundColor: 'rgba(99, 102, 241, 0.15)',
-    borderBottomWidth: 1,
-    borderBottomColor: 'rgba(99, 102, 241, 0.2)',
+    paddingTop: 8,
   },
-  headerTitle: {
-    fontSize: 20,
-    color: '#FFFFFF',
+  topBarTitle: {
+    fontSize: 18,
+    fontFamily: 'HelveticaMedium',
+    textTransform: 'uppercase',
     fontWeight: '700',
+    color: '#111827',
     flex: 1,
     textAlign: 'center',
   },
-  searchButton: {
+  topBarButton: {
     width: 40,
     height: 40,
     borderRadius: 20,
-    backgroundColor: 'rgba(99, 102, 241, 0.2)',
+    backgroundColor: '#F3F4F6',
     alignItems: 'center',
     justifyContent: 'center',
   },
-
-  // Conversations
-  conversationsContainer: {
-    flex: 1,
-  },
-  conversationsContent: {
-    paddingVertical: 12,
-    gap: 8,
-  },
-  conversationWrapper: {
-    paddingHorizontal: 16,
-  },
-  conversationCard: {
-    borderRadius: 16,
-    overflow: 'hidden',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.2,
-    shadowRadius: 8,
-    elevation: 4,
-  },
-  conversationGradient: {
-    padding: 16,
-  },
-  conversationContent: {
+  topBarRight: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 12,
   },
-  avatarContainer: {
-    position: 'relative',
-  },
-  avatar: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    backgroundColor: 'rgba(99, 102, 241, 0.2)',
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 2,
-    borderColor: 'rgba(99, 102, 241, 0.3)',
-  },
-  conversationInfo: {
-    flex: 1,
-    gap: 6,
-  },
-  conversationHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  partnerName: {
-    fontSize: 16,
-    color: '#FFFFFF',
-    fontWeight: '700',
-    flex: 1,
-  },
-  conversationTime: {
-    fontSize: 12,
-    color: 'rgba(255, 255, 255, 0.5)',
-    fontWeight: '500',
-    marginLeft: 8,
-  },
-  conversationFooter: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    gap: 8,
-  },
-  lastMessageContainer: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-  },
-  senderName: {
-    fontSize: 13,
-    color: 'rgba(255, 255, 255, 0.6)',
-    fontWeight: '600',
-  },
-  lastMessage: {
-    fontSize: 14,
-    color: 'rgba(255, 255, 255, 0.7)',
-    fontWeight: '400',
-    flex: 1,
-  },
-  lastMessageUnread: {
-    color: '#FFFFFF',
-    fontWeight: '600',
-  },
-  unreadBadge: {
-    backgroundColor: '#EF4444',
-    borderRadius: 12,
-    minWidth: 24,
-    height: 24,
+  topBarCountBadge: {
+    minWidth: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: '#111827',
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: 8,
   },
-  unreadText: {
-    fontSize: 12,
-    color: '#FFFFFF',
+  topBarCountText: {
+    fontSize: 14,
+    fontFamily: 'HelveticaMedium',
     fontWeight: '700',
+    color: '#FFFFFF',
   },
-  requestTitleContainer: {
+  refreshRow: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    paddingVertical: 10,
+    paddingHorizontal: 20,
+    borderBottomWidth: 1,
+    borderBottomColor: '#E5E7EB',
+    backgroundColor: '#FFFFFF',
+  },
+  refreshButton: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
-    marginTop: 4,
+    gap: 8,
+    paddingVertical: 8,
+    paddingHorizontal: 14,
+    borderRadius: 20,
+    backgroundColor: '#F3F4F6',
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
   },
-  requestTitle: {
-    fontSize: 12,
-    color: 'rgba(255, 255, 255, 0.5)',
-    fontWeight: '500',
+  refreshButtonText: {
+    fontSize: 13,
+    fontFamily: 'HelveticaMedium',
+    color: '#111827',
+    fontWeight: '600',
+  },
+  refreshButtonTextDisabled: {
+    color: '#9CA3AF',
+  },
+  scrollView: {
     flex: 1,
   },
-  arrowContainer: {
-    width: 32,
-    height: 32,
+  scrollContent: {
+    paddingHorizontal: 20,
+    paddingTop: 16,
+  },
+  listWrap: {
+    gap: 12,
+  },
+  chatCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FFFFFF',
+    borderRadius: 12,
+    padding: 14,
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    gap: 12,
+  },
+  chatCardUnread: {
+    backgroundColor: '#F9FAFB',
+  },
+  avatarWrap: {
+    width: 52,
+    height: 52,
+    borderRadius: 26,
+    backgroundColor: '#E5E7EB',
     alignItems: 'center',
     justifyContent: 'center',
   },
-
-  // Empty State
+  chatInfo: {
+    flex: 1,
+    minWidth: 0,
+    gap: 4,
+  },
+  chatRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 8,
+  },
+  chatName: {
+    fontSize: 15,
+    fontFamily: 'HelveticaMedium',
+    textTransform: 'uppercase',
+    fontWeight: '700',
+    color: '#111827',
+    flex: 1,
+  },
+  chatTime: {
+    fontSize: 12,
+    fontFamily: 'HelveticaMedium',
+    textTransform: 'uppercase',
+    color: '#6B7280',
+    fontWeight: '500',
+  },
+  lastMessageRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+    minWidth: 0,
+  },
+  senderName: {
+    fontSize: 13,
+    fontFamily: 'HelveticaMedium',
+    color: '#6B7280',
+    fontWeight: '600',
+  },
+  lastMessage: {
+    fontSize: 13,
+    fontFamily: 'HelveticaMedium',
+    color: '#6B7280',
+    fontWeight: '500',
+    flex: 1,
+  },
+  lastMessageUnread: {
+    color: '#111827',
+    fontWeight: '700',
+  },
+  requestTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginTop: 2,
+  },
+  requestTitle: {
+    fontSize: 12,
+    fontFamily: 'HelveticaMedium',
+    textTransform: 'uppercase',
+    color: '#9CA3AF',
+    fontWeight: '500',
+    flex: 1,
+  },
+  priceText: {
+    fontSize: 12,
+    fontFamily: 'HelveticaMedium',
+    color: '#6B7280',
+    fontWeight: '600',
+  },
+  callButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: '#F3F4F6',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  unreadBadge: {
+    backgroundColor: '#DC2626',
+    borderRadius: 12,
+    minWidth: 22,
+    height: 22,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 7,
+    shadowColor: '#DC2626',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.25,
+    shadowRadius: 2,
+    elevation: 2,
+  },
+  unreadText: {
+    fontSize: 11,
+    fontFamily: 'HelveticaMedium',
+    fontWeight: '700',
+    color: '#FFFFFF',
+  },
   emptyState: {
     alignItems: 'center',
     justifyContent: 'center',
     paddingVertical: 60,
     paddingHorizontal: 32,
-    gap: 16,
   },
-  emptyIconContainer: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
-    backgroundColor: 'rgba(99, 102, 241, 0.2)',
+  emptyIconWrap: {
+    width: 88,
+    height: 88,
+    borderRadius: 44,
+    backgroundColor: '#E5E7EB',
     alignItems: 'center',
     justifyContent: 'center',
+    marginBottom: 20,
   },
   emptyTitle: {
-    fontSize: 20,
-    color: '#FFFFFF',
-    textAlign: 'center',
+    fontSize: 18,
+    fontFamily: 'HelveticaMedium',
+    textTransform: 'uppercase',
     fontWeight: '700',
+    color: '#111827',
+    textAlign: 'center',
+    marginBottom: 8,
   },
   emptySubtitle: {
     fontSize: 14,
-    color: '#9CA3AF',
+    fontFamily: 'HelveticaMedium',
+    color: '#6B7280',
     textAlign: 'center',
     lineHeight: 20,
-    fontWeight: '500',
   },
-
-  // Loading State
   loadingState: {
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 40,
+    paddingVertical: 48,
     gap: 12,
   },
-  loadingIconContainer: {
-    width: 60,
-    height: 60,
-    borderRadius: 30,
-    backgroundColor: 'rgba(99, 102, 241, 0.2)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
   loadingText: {
-    fontSize: 16,
-    color: '#6366F1',
-    textAlign: 'center',
-    fontWeight: '600',
+    fontSize: 14,
+    fontFamily: 'HelveticaMedium',
+    textTransform: 'uppercase',
+    color: '#6B7280',
+    fontWeight: '500',
   },
 });

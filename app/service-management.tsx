@@ -401,7 +401,7 @@ export default function ServiceManagementScreen() {
             </Text>
             <TouchableOpacity
               style={styles.addButton}
-              onPress={() => router.push('/(tabs)/services' as any)}
+              onPress={() => router.push('/services-new' as any)}
             >
               <Ionicons name="add-circle" size={20} color="#FFFFFF" />
               <Text style={styles.addButtonText}>განცხადების დამატება</Text>

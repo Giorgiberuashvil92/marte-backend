@@ -568,13 +568,15 @@ const styles = StyleSheet.create({
   },
   headerTitle: {
     fontSize: 24,
-    fontFamily: 'NotoSans_700Bold',
+    fontFamily: 'HelveticaMedium',
+    textTransform: 'uppercase',
     color: '#1A1A1A',
     letterSpacing: -0.5,
   },
   headerSubtitle: {
     fontSize: 14,
-    fontFamily: 'NotoSans_500Medium',
+    fontFamily: 'HelveticaMedium',
+    textTransform: 'uppercase',
     color: '#6B7280',
     marginTop: 4,
   },
@@ -670,7 +672,8 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontSize: 13,
     fontWeight: '600',
-    fontFamily: 'Outfit',
+    fontFamily: 'HelveticaMedium',
+    textTransform: 'uppercase',
     letterSpacing: 0.1,
   },
   postsContainer: {

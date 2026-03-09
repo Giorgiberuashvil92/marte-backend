@@ -5,8 +5,6 @@ import {
   StyleSheet,
   ScrollView,
   TouchableOpacity,
-  Dimensions,
-  Platform,
   Image,
   Alert,
   StatusBar,
@@ -14,9 +12,7 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
-import { LinearGradient } from 'expo-linear-gradient';
-import Colors from '../../constants/Colors';
-import { useColorScheme } from '../../components/useColorScheme';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { useUser } from '../../contexts/UserContext';
 import { useSubscription } from '../../contexts/SubscriptionContext';
 import { photoService } from '../../services/photoService';
@@ -24,8 +20,6 @@ import API_BASE_URL from '../../config/api';
 import SubscriptionModal from '../../components/ui/SubscriptionModal';
 import PremiumInfoModal from '../../components/ui/PremiumInfoModal';
 import { getCurrentAppVersion } from '../../services/versionCheck';
-
-const { width, height } = Dimensions.get('window');
 
 // Mock user data for fallback
 const MOCK_USER_DATA = {
@@ -81,8 +75,6 @@ const PROFILE_MENU_ITEMS = [
 
 export default function ProfileScreen() {
   const router = useRouter();
-  const colorScheme = useColorScheme();
-  const colors = Colors[colorScheme ?? 'light'];
   const { user, logout, updateProfile } = useUser();
   const { subscription } = useSubscription();
   const [pressedButtons, setPressedButtons] = useState<{ [key: string]: boolean }>({});
@@ -174,8 +166,7 @@ export default function ProfileScreen() {
       backgroundColor: '#FFFFFF',
     },
     modernHeader: {
-      paddingTop: Platform.OS === 'ios' ? 60 : 40,
-      paddingBottom: 24,
+      paddingBottom: 20,
       paddingHorizontal: 20,
       backgroundColor: '#FFFFFF',
       borderBottomWidth: 1,
@@ -185,23 +176,30 @@ export default function ProfileScreen() {
       flexDirection: 'row',
       justifyContent: 'space-between',
       alignItems: 'center',
-      marginBottom: 24,
+      marginBottom: 18,
     },
     headerTitle: {
       fontSize: 18,
-      fontWeight: '500',
+      fontFamily: 'HelveticaMedium',
+      textTransform: 'uppercase',
+      fontWeight: '700',
       color: '#111827',
-      letterSpacing: -0.5,
+      flex: 1,
+      textAlign: 'center',
     },
     backButton: {
-      width: 44,
-      height: 44,
-      borderRadius: 14,
-      backgroundColor: '#F9FAFB',
+      width: 40,
+      height: 40,
+      borderRadius: 20,
+      backgroundColor: '#F3F4F6',
       alignItems: 'center',
       justifyContent: 'center',
       borderWidth: 1,
       borderColor: '#E5E7EB',
+    },
+    headerRight: {
+      width: 40,
+      height: 40,
     },
     settingsButton: {
       width: 44,
@@ -238,8 +236,10 @@ export default function ProfileScreen() {
     },
     largeAvatarText: {
       fontSize: 24,
+      fontFamily: 'HelveticaMedium',
+      textTransform: 'uppercase',
       fontWeight: '700',
-      color: '#6366F1',
+      color: '#111827',
     },
     cameraIconLarge: {
       position: 'absolute',
@@ -267,6 +267,8 @@ export default function ProfileScreen() {
     },
     headerProfileName: {
       fontSize: 20,
+      fontFamily: 'HelveticaMedium',
+      textTransform: 'uppercase',
       fontWeight: '700',
       color: '#111827',
       marginBottom: 6,
@@ -274,7 +276,9 @@ export default function ProfileScreen() {
     },
     headerProfileEmail: {
       fontSize: 14,
-      fontWeight: '400',
+      fontFamily: 'HelveticaMedium',
+      textTransform: 'uppercase',
+      fontWeight: '500',
       color: '#6B7280',
       marginBottom: 12,
       textAlign: 'center',
@@ -282,6 +286,8 @@ export default function ProfileScreen() {
     
     memberSinceText: {
       fontSize: 13,
+      fontFamily: 'HelveticaMedium',
+      textTransform: 'uppercase',
       fontWeight: '500',
       color: '#6B7280',
     },
@@ -294,12 +300,16 @@ export default function ProfileScreen() {
    
     statValue: {
       fontSize: 20,
+      fontFamily: 'HelveticaMedium',
+      textTransform: 'uppercase',
       fontWeight: '700',
       color: '#111827',
       marginBottom: 4,
     },
     statLabel: {
       fontSize: 12,
+      fontFamily: 'HelveticaMedium',
+      textTransform: 'uppercase',
       fontWeight: '500',
       color: '#6B7280',
       textAlign: 'center',
@@ -319,6 +329,8 @@ export default function ProfileScreen() {
     },
     menuTitle: {
       fontSize: 18,
+      fontFamily: 'HelveticaMedium',
+      textTransform: 'uppercase',
       fontWeight: '700',
       color: '#111827',
       marginBottom: 8,
@@ -331,8 +343,8 @@ export default function ProfileScreen() {
     },
     menuItem: {
       backgroundColor: '#FFFFFF',
-      borderRadius: 16,
-      padding: 16,
+      borderRadius: 12,
+      padding: 14,
       marginBottom: 12,
       flexDirection: 'row',
       alignItems: 'center',
@@ -344,13 +356,13 @@ export default function ProfileScreen() {
       transform: [{ scale: 0.98 }],
     },
     menuItemIcon: {
-      width: 44,
-      height: 44,
-      borderRadius: 12,
+      width: 40,
+      height: 40,
+      borderRadius: 20,
       alignItems: 'center',
       justifyContent: 'center',
       marginRight: 12,
-      backgroundColor: '#F9FAFB',
+      backgroundColor: '#F3F4F6',
       borderWidth: 1,
       borderColor: '#E5E7EB',
     },
@@ -359,18 +371,22 @@ export default function ProfileScreen() {
     },
     menuItemTitle: {
       fontSize: 15,
+      fontFamily: 'HelveticaMedium',
+      textTransform: 'uppercase',
       fontWeight: '600',
       color: '#111827',
       marginBottom: 4,
     },
     menuItemSubtitle: {
       fontSize: 12,
-      fontWeight: '400',
+      fontFamily: 'HelveticaMedium',
+      textTransform: 'uppercase',
+      fontWeight: '500',
       color: '#6B7280',
     },
     menuItemArrow: {
       marginLeft: 8,
-      opacity: 0.4,
+      opacity: 0.6,
     },
     logoutButton: {
       backgroundColor: '#FFFFFF',
@@ -385,39 +401,31 @@ export default function ProfileScreen() {
       borderRadius: 16,
       gap: 5,
       borderWidth: 1.5,
-      shadowColor: '#000',
-      shadowOffset: { width: 0, height: 2 },
-      shadowOpacity: 0.2,
-      shadowRadius: 3,
-      elevation: 4,
       position: 'relative',
       overflow: 'hidden',
       alignSelf: 'center',
-    },
-    subscriptionGradient: {
-      ...StyleSheet.absoluteFillObject,
-      borderRadius: 16,
     },
     premiumBadge: {
       backgroundColor: '#F59E0B',
       borderColor: '#D97706',
     },
     basicBadge: {
-      backgroundColor: '#3B82F6',
-      borderColor: '#2563EB',
+      backgroundColor: '#111827',
+      borderColor: '#111827',
     },
     freeBadge: {
-      backgroundColor: '#10B981',
-      borderColor: '#059669',
+      backgroundColor: '#F3F4F6',
+      borderColor: '#E5E7EB',
     },
     subscriptionText: {
       fontSize: 11,
+      fontFamily: 'HelveticaMedium',
+      textTransform: 'uppercase',
       fontWeight: '700',
       color: '#FFFFFF',
-      textShadowColor: 'rgba(0, 0, 0, 0.25)',
-      textShadowOffset: { width: 0, height: 1 },
-      textShadowRadius: 1.5,
-      letterSpacing: 0.2,
+    },
+    subscriptionTextDark: {
+      color: '#111827',
     },
     versionContainer: {
       alignItems: 'center',
@@ -426,7 +434,9 @@ export default function ProfileScreen() {
     },
     versionText: {
       fontSize: 12,
-      fontWeight: '400',
+      fontFamily: 'HelveticaMedium',
+      textTransform: 'uppercase',
+      fontWeight: '500',
       color: '#9CA3AF',
     },
   });
@@ -494,19 +504,21 @@ export default function ProfileScreen() {
       
       {/* Modern White Header - Airbnb style */}
       <View style={styles.modernHeader}>
-        <View style={styles.headerTop}>
-          <TouchableOpacity 
-            style={styles.backButton}
-            onPress={() => router.back()}
-            activeOpacity={0.7}
-          >
-            <Ionicons name="arrow-back" size={24} color="#111827" />
-          </TouchableOpacity>
+        <SafeAreaView edges={['top']}>
+          <View style={styles.headerTop}>
+            <TouchableOpacity 
+              style={styles.backButton}
+              onPress={() => router.back()}
+              activeOpacity={0.7}
+            >
+              <Ionicons name="arrow-back" size={22} color="#111827" />
+            </TouchableOpacity>
 
-          
-        </View>
+            <Text style={styles.headerTitle}>პროფილი</Text>
+            <View style={styles.headerRight} />
+          </View>
 
-        <View style={styles.headerProfileSection}>
+          <View style={styles.headerProfileSection}>
           <TouchableOpacity 
             style={styles.largeAvatarContainer} 
             onPress={handlePhotoUpload}
@@ -515,7 +527,7 @@ export default function ProfileScreen() {
           >
             {isUploadingAvatar ? (
               <View style={styles.uploadingContainer}>
-                <ActivityIndicator size="large" color="#6366F1" />
+                <ActivityIndicator size="large" color="#111827" />
               </View>
             ) : userAvatar ? (
               <Image source={{ uri: userAvatar }} style={styles.largeAvatarImage} />
@@ -554,16 +566,6 @@ export default function ProfileScreen() {
                   subscription.plan === 'premium' && styles.premiumBadge,
                   subscription.plan === 'basic' && styles.basicBadge,
                 ]}>
-                  <LinearGradient
-                    colors={
-                      subscription.plan === 'premium' 
-                        ? ['#F59E0B', '#D97706']
-                        : ['#3B82F6', '#2563EB']
-                    }
-                    start={{ x: 0, y: 0 }}
-                    end={{ x: 1, y: 1 }}
-                    style={styles.subscriptionGradient}
-                  />
                   <Ionicons 
                     name={subscription.plan === 'premium' ? 'star' : 'shield-checkmark'} 
                     size={13} 
@@ -585,23 +587,18 @@ export default function ProfileScreen() {
                   styles.subscriptionBadge,
                   styles.freeBadge,
                 ]}>
-                  <LinearGradient
-                    colors={['#10B981', '#059669']}
-                    start={{ x: 0, y: 0 }}
-                    end={{ x: 1, y: 1 }}
-                    style={styles.subscriptionGradient}
-                  />
                   <Ionicons 
                     name="checkmark-circle" 
                     size={13} 
-                    color="#FFFFFF" 
+                    color="#111827" 
                   />
-                  <Text style={styles.subscriptionText}>უფასო</Text>
+                  <Text style={[styles.subscriptionText, styles.subscriptionTextDark]}>უფასო</Text>
                 </View>
               </TouchableOpacity>
             )}
           </View>
-        </View>
+          </View>
+        </SafeAreaView>
 
       </View>
 
@@ -620,7 +617,7 @@ export default function ProfileScreen() {
               onPressOut={() => setPressedButtons(prev => ({ ...prev, [item.id]: false }))}
               activeOpacity={0.8}
             >
-              <View style={[styles.menuItemIcon, { backgroundColor: '#F9FAFB' }]}>
+              <View style={styles.menuItemIcon}>
                 <Ionicons name={item.icon as any} size={22} color={item.color} />
               </View>
               <View style={styles.menuItemContent}>

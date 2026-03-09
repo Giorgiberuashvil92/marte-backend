@@ -31,6 +31,10 @@ export interface Reminder {
   priority: string;
   reminderDate: Date;
   reminderTime?: string;
+  reminderTime2?: string; // მეორე დრო "ყოველდღე"-სთვის (დღეში 2 ჯერ)
+  startDate?: string; // დაწყების თარიღი recurring-ისთვის
+  endDate?: string; // დასრულების თარიღი recurring-ისთვის
+  recurringInterval?: string; // 'daily' | 'weekly' | 'monthly' | 'yearly'
   isCompleted: boolean;
   isUrgent: boolean;
   isActive: boolean;
@@ -47,6 +51,7 @@ export interface CreateCarData {
   mileage?: number;
   color?: string;
   vin?: string;
+  techPassport?: string;
 }
 
 export interface CreateReminderData {
@@ -57,6 +62,10 @@ export interface CreateReminderData {
   priority: string;
   reminderDate: string;
   reminderTime?: string;
+  reminderTime2?: string; // მეორე დრო "ყოველდღე"-სთვის (დღეში 2 ჯერ)
+  startDate?: string; // დაწყების თარიღი recurring-ისთვის
+  endDate?: string; // დასრულების თარიღი recurring-ისთვის
+  recurringInterval?: string; // 'daily' | 'weekly' | 'monthly' | 'yearly'
 }
 
 export interface GarageStats {
@@ -78,6 +87,37 @@ export interface FuelEntry {
   mileage: number;
   createdAt: string | number;
   updatedAt: string | number;
+}
+
+export interface ServiceHistory {
+  id: string;
+  userId: string;
+  carId: string;
+  serviceType: string;
+  date: Date | string;
+  mileage: number;
+  cost?: number;
+  description?: string;
+  provider?: string;
+  location?: string;
+  images?: string[];
+  warrantyUntil?: Date | string;
+  isActive: boolean;
+  createdAt: Date | string;
+  updatedAt: Date | string;
+}
+
+export interface CreateServiceHistoryData {
+  carId: string;
+  serviceType: string;
+  date: string;
+  mileage: number;
+  cost?: number;
+  description?: string;
+  provider?: string;
+  location?: string;
+  images?: string[];
+  warrantyUntil?: string;
 }
 
 class GarageApiService {
@@ -211,6 +251,36 @@ class GarageApiService {
     return this.request<FuelEntry>('/fuel', {
       method: 'POST',
       body: JSON.stringify(entry),
+    });
+  }
+
+  // Service History API
+  async getServiceHistories(carId?: string): Promise<ServiceHistory[]> {
+    const endpoint = carId ? `/services/car/${carId}` : '/services';
+    return this.request<ServiceHistory[]>(endpoint);
+  }
+
+  async getServiceHistory(id: string): Promise<ServiceHistory> {
+    return this.request<ServiceHistory>(`/services/${id}`);
+  }
+
+  async createServiceHistory(serviceData: CreateServiceHistoryData): Promise<ServiceHistory> {
+    return this.request<ServiceHistory>('/services', {
+      method: 'POST',
+      body: JSON.stringify(serviceData),
+    });
+  }
+
+  async updateServiceHistory(id: string, serviceData: Partial<CreateServiceHistoryData>): Promise<ServiceHistory> {
+    return this.request<ServiceHistory>(`/services/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(serviceData),
+    });
+  }
+
+  async deleteServiceHistory(id: string): Promise<void> {
+    return this.request<void>(`/services/${id}`, {
+      method: 'DELETE',
     });
   }
 }

@@ -262,7 +262,7 @@ export default function AllServicesScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#F8FAFC' },
   loadingContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#F8FAFC' },
-  loadingText: { marginTop: 16, fontSize: 16, color: '#6B7280', fontFamily: 'FiraGO-Regular' },
+  loadingText: { marginTop: 16, fontSize: 16, color: '#6B7280', fontFamily: 'NotoSansGeorgian-Regular' },
   
   // Header
   header: { 
@@ -282,9 +282,9 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(255, 255, 255, 0.2)', 
     borderRadius: 22,
   },
-  headerText: { fontSize: 20, fontWeight: '700', color: '#FFFFFF', fontFamily: 'FiraGO-Bold' },
+  headerText: { fontSize: 20, fontWeight: '700', color: '#FFFFFF', fontFamily: 'NotoSansGeorgian-Bold' },
   headerTitleContainer: { flex: 1, alignItems: 'center' },
-  headerSubtext: { fontSize: 12, color: 'rgba(255, 255, 255, 0.8)', fontFamily: 'FiraGO-Regular', marginTop: 2 },
+  headerSubtext: { fontSize: 12, color: 'rgba(255, 255, 255, 0.8)', fontFamily: 'NotoSansGeorgian-Regular', marginTop: 2 },
   headerButton: { width: 44, height: 44, borderRadius: 22 },
   
   // Filters
@@ -312,8 +312,8 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16, 
     paddingVertical: 10,
   },
-  filterText: { fontSize: 14, color: '#6B7280', fontFamily: 'FiraGO-Medium' },
-  filterTextActive: { color: '#3B82F6', fontFamily: 'FiraGO-Bold' },
+  filterText: { fontSize: 14, color: '#6B7280', fontFamily: 'NotoSansGeorgian-Medium' },
+  filterTextActive: { color: '#3B82F6', fontFamily: 'NotoSansGeorgian-Bold' },
   
   // Services
   scrollView: { flex: 1, backgroundColor: '#F1F5F9' },
@@ -371,7 +371,7 @@ const styles = StyleSheet.create({
     elevation: 3,
   },
   openDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: '#FFFFFF' },
-  openText: { fontSize: 11, color: '#FFFFFF', fontFamily: 'FiraGO-Bold', fontWeight: '700' },
+  openText: { fontSize: 11, color: '#FFFFFF', fontFamily: 'NotoSansGeorgian-Bold', fontWeight: '700' },
   typeBadge: {
     width: 28,
     height: 28,
@@ -406,7 +406,7 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '700',
     color: '#111827',
-    fontFamily: 'FiraGO-Bold',
+    fontFamily: 'NotoSansGeorgian-Bold',
   },
   serviceCardContent: {
     padding: 16,
@@ -422,7 +422,7 @@ const styles = StyleSheet.create({
     fontSize: 18, 
     fontWeight: '700', 
     color: '#111827', 
-    fontFamily: 'FiraGO-Bold', 
+    fontFamily: 'NotoSansGeorgian-Bold', 
     flex: 1,
     lineHeight: 24,
   },
@@ -430,7 +430,7 @@ const styles = StyleSheet.create({
     fontSize: 18, 
     fontWeight: '800', 
     color: '#6366F1', 
-    fontFamily: 'FiraGO-Bold' 
+    fontFamily: 'NotoSansGeorgian-Bold' 
   },
   serviceCardMeta: {
     flexDirection: 'row',
@@ -447,7 +447,7 @@ const styles = StyleSheet.create({
   metaText: { 
     fontSize: 13, 
     color: '#475569', 
-    fontFamily: 'FiraGO-Medium',
+    fontFamily: 'NotoSansGeorgian-Medium',
     flex: 1,
   },
   serviceCardFooter: {
@@ -465,7 +465,7 @@ const styles = StyleSheet.create({
   reviewsText: { 
     fontSize: 12, 
     color: '#64748B', 
-    fontFamily: 'FiraGO-Regular' 
+    fontFamily: 'NotoSansGeorgian-Regular' 
   },
   distanceBox: {
     flexDirection: 'row',
@@ -479,12 +479,12 @@ const styles = StyleSheet.create({
   distanceText: {
     fontSize: 12,
     color: '#8B5CF6',
-    fontFamily: 'FiraGO-Medium',
+    fontFamily: 'NotoSansGeorgian-Medium',
     fontWeight: '600',
   },
   
   // Empty State
   emptyState: { alignItems: 'center', justifyContent: 'center', paddingVertical: 60, gap: 12 },
-  emptyText: { fontSize: 18, fontWeight: '700', color: '#111827', fontFamily: 'FiraGO-Bold' },
-  emptySubtext: { fontSize: 14, color: '#6B7280', fontFamily: 'FiraGO-Regular' },
+  emptyText: { fontSize: 18, fontWeight: '700', color: '#111827', fontFamily: 'NotoSansGeorgian-Bold' },
+  emptySubtext: { fontSize: 14, color: '#6B7280', fontFamily: 'NotoSansGeorgian-Regular' },
 });

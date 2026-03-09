@@ -60,17 +60,19 @@ const subscriptionPlans: SubscriptionPlan[] = [
   {
     id: 'premium-monthly',
     name: 'პრემიუმ - თვეში',
-    price: 2.99,
+    price: 3.99,
     currency: '₾',
     period: 'თვეში',
     features: [
       'ყველა ძირითადი ფუნქცია',
-      '5 ოფიციალური CarFAX რეპორტი',
       'კრედო ბანკის 0% განვადება',
       'ფასდაკლებები პარტნიორებთან',
+      '1 ოფიციალური CarFAX რეპორტი',
       'ჯარიმების კონტროლი',
       'შეხსენებები სერვისზე',
       'AI დამხმარე',
+      'უსაზღვრო AI რეკომენდაციები',
+      'პრიორიტეტული მხარდაჭერა',
     ],
     icon: 'diamond-outline',
     color: '#F59E0B',
@@ -217,31 +219,20 @@ export default function SubscriptionModal({ visible, onClose, onSuccess }: Subsc
     >
       <View style={styles.overlay}>
         <View style={styles.modalContainer}>
-          {/* Header */}
-          <View style={styles.header}>
-            <TouchableOpacity onPress={onClose} style={styles.backButton}>
-              <Ionicons name="arrow-back" size={20} color="#0B1220" />
-            </TouchableOpacity>
-            <Text style={styles.headerTitle}>პაკეტი</Text>
-            <View style={{ width: 40 }} />
-          </View>
-
-          {/* Progress Indicator */}
-          <View style={styles.progressContainer}>
-            <Text style={styles.progressText}>1 of 3</Text>
-            <View style={styles.progressBar}>
-              <View style={[styles.progressFill, { width: '33.33%' }]} />
-            </View>
-          </View>
-
           {/* Main Content */}
           <ScrollView 
             style={styles.content} 
             contentContainerStyle={styles.scrollContent}
             showsVerticalScrollIndicator={false}
           >
+            {/* Close Button */}
+            <View style={styles.closeButtonContainer}>
+              <TouchableOpacity onPress={onClose} style={styles.closeButton}>
+                <Ionicons name="close" size={24} color="#111827" />
+              </TouchableOpacity>
+            </View>
+
             <Text style={styles.mainTitle}>აირჩიე შენთვის შესაფერისი პაკეტი</Text>
-            <Text style={styles.mainSubtitle}>დაწევა ან გაზრდა ნებისმიერ დროს</Text>
 
             {/* Plan Cards */}
             <View style={styles.plansContainer}>
@@ -414,22 +405,29 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     paddingTop: 16,
     paddingBottom: 12,
+    backgroundColor: '#FFFFFF',
+    borderBottomWidth: 1,
+    borderBottomColor: '#E5E7EB',
   },
   backButton: {
     width: 40,
     height: 40,
+    borderRadius: 20,
+    backgroundColor: '#F3F4F6',
     alignItems: 'center',
     justifyContent: 'center',
   },
   headerTitle: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#0B1220',
-    fontFamily: 'System',
+    fontSize: 18,
+    fontFamily: 'HelveticaMedium',
+    textTransform: 'uppercase',
+    fontWeight: '700',
+    color: '#111827',
   },
   progressContainer: {
     paddingHorizontal: 20,
     paddingBottom: 16,
+    backgroundColor: '#FFFFFF',
   },
   progressText: {
     fontSize: 11,
@@ -451,11 +449,12 @@ const styles = StyleSheet.create({
   },
   mainTitle: {
     fontSize: 20,
+    fontFamily: 'HelveticaMedium',
+    textTransform: 'uppercase',
     fontWeight: '700',
-    color: '#0B1220',
+    color: '#111827',
     marginBottom: 8,
     textAlign: 'center',
-    fontFamily: 'System',
   },
   mainSubtitle: {
     fontSize: 13,
@@ -470,21 +469,31 @@ const styles = StyleSheet.create({
   planCard: {
     backgroundColor: '#FFFFFF',
     borderRadius: 12,
-    borderWidth: 1.5,
+    borderWidth: 1,
     borderColor: '#E5E7EB',
     padding: 20,
     minHeight: 100,
     flexDirection: 'row',
     alignItems: 'center',
     position: 'relative',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 8,
+    elevation: 2,
   },
   planCardSelected: {
-    backgroundColor: '#F5F5DC',
+    backgroundColor: '#FFFFFF',
     borderColor: '#6366F1',
     borderWidth: 2,
+    shadowColor: '#6366F1',
+    shadowOpacity: 0.15,
+    shadowRadius: 12,
+    elevation: 4,
   },
   planCardCurrent: {
     opacity: 0.7,
+    backgroundColor: '#F9FAFB',
   },
   discountBadge: {
     position: 'absolute',
@@ -499,8 +508,9 @@ const styles = StyleSheet.create({
   discountBadgeText: {
     color: '#FFFFFF',
     fontSize: 9,
-    fontWeight: '600',
-    fontFamily: 'System',
+    fontFamily: 'HelveticaMedium',
+    textTransform: 'uppercase',
+    fontWeight: '700',
   },
   radioContainer: {
     marginRight: 12,
@@ -540,10 +550,11 @@ const styles = StyleSheet.create({
   },
   planName: {
     fontSize: 15,
+    fontFamily: 'HelveticaMedium',
+    textTransform: 'uppercase',
     fontWeight: '600',
-    color: '#0B1220',
+    color: '#111827',
     marginBottom: 8,
-    fontFamily: 'System',
   },
   featuresList: {
     gap: 6,
@@ -574,7 +585,7 @@ const styles = StyleSheet.create({
     fontFamily: 'System',
   },
   planSubtextSelected: {
-    color: '#374151',
+    color: '#111827',
     fontWeight: '500',
   },
   priceContainer: {
@@ -582,9 +593,10 @@ const styles = StyleSheet.create({
   },
   priceText: {
     fontSize: 15,
+    fontFamily: 'HelveticaMedium',
+    textTransform: 'uppercase',
     fontWeight: '700',
-    color: '#0B1220',
-    fontFamily: 'System',
+    color: '#111827',
   },
   pricePeriod: {
     fontSize: 11,
@@ -627,16 +639,31 @@ const styles = StyleSheet.create({
   },
   activeBadgeText: {
     fontSize: 10,
+    fontFamily: 'HelveticaMedium',
+    textTransform: 'uppercase',
     fontWeight: '700',
     color: '#FFFFFF',
-    fontFamily: 'System',
   },
   content: {
     flex: 1,
   },
   scrollContent: {
     paddingHorizontal: 20,
-    paddingVertical: 16,
+    paddingTop: 16,
+    paddingBottom: 16,
+  },
+  closeButtonContainer: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    marginBottom: 8,
+  },
+  closeButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: '#F3F4F6',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   billingToggleContainer: {
     flexDirection: 'row',
@@ -734,14 +761,20 @@ const styles = StyleSheet.create({
     paddingBottom: 32,
     borderTopWidth: 1,
     borderTopColor: '#E5E7EB',
+    backgroundColor: '#FFFFFF',
   },
   subscribeButton: {
-    backgroundColor: '#0B1220',
+    backgroundColor: '#111827',
     borderRadius: 12,
     paddingVertical: 16,
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: 12,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
   },
   disabledButton: {
     opacity: 0.5,
@@ -749,8 +782,9 @@ const styles = StyleSheet.create({
   subscribeButtonText: {
     color: '#FFFFFF',
     fontSize: 15,
+    fontFamily: 'HelveticaMedium',
+    textTransform: 'uppercase',
     fontWeight: '600',
-    fontFamily: 'System',
   },
   footerNote: {
     fontSize: 11,

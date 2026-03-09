@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -8,7 +8,6 @@ import {
   RefreshControl,
   StatusBar,
   Dimensions,
-  Animated,
   ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -20,57 +19,34 @@ import { analyticsService } from '@/services/analytics';
 import { aiApi } from '@/services/aiApi';
 import API_BASE_URL from '@/config/api';
 
-const { width } = Dimensions.get('window');
+const { width: screenWidth } = Dimensions.get('window');
 
-export default function ManagementScreen() {
+export default function EcommerceScreen() {
   const { user } = useUser();
   const router = useRouter();
-  const [sellerStatus, setSellerStatus] = useState<any>(null);
-  const [stats, setStats] = useState<any>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [sellerStatus, setSellerStatus] = useState<any>(null);
+  const [stats, setStats] = useState({ requests: 0, offers: 0, activeRequests: 0 });
 
-  // Animation values
-  const fadeAnim = useRef(new Animated.Value(0)).current;
-  const slideAnim = useRef(new Animated.Value(30)).current;
-  const scaleAnim = useRef(new Animated.Value(0.95)).current;
+  useFocusEffect(
+    React.useCallback(() => {
+      analyticsService.logScreenViewWithBackend('მართვა', 'EcommerceScreen', user?.id);
+    }, [user?.id])
+  );
 
-  // Load data
   useEffect(() => {
     loadData();
   }, [user?.id]);
 
-  useEffect(() => {
-    if (!loading) {
-      Animated.parallel([
-        Animated.timing(fadeAnim, {
-          toValue: 1,
-          duration: 600,
-          useNativeDriver: true,
-        }),
-        Animated.timing(slideAnim, {
-          toValue: 0,
-          duration: 600,
-          useNativeDriver: true,
-        }),
-        Animated.spring(scaleAnim, {
-          toValue: 1,
-          tension: 50,
-          friction: 7,
-          useNativeDriver: true,
-        }),
-      ]).start();
-    }
-  }, [loading]);
-
   const loadData = async () => {
-    if (!user?.id) return;
+    if (!user?.id) {
+      setLoading(false);
+      return;
+    }
     setLoading(true);
     try {
-      await Promise.all([
-        loadSellerStatus(),
-        loadUserStats(),
-      ]);
+      await Promise.all([loadSellerStatus(), loadStats()]);
     } finally {
       setLoading(false);
     }
@@ -79,36 +55,31 @@ export default function ManagementScreen() {
   const loadSellerStatus = async () => {
     if (!user?.id) return;
     try {
-      const res = await aiApi.getSellerStatus({
-        userId: user.id,
-        phone: user.phone,
-      });
+      const res = await aiApi.getSellerStatus({ userId: user.id, phone: user.phone });
       setSellerStatus(res.data);
     } catch (e) {
-      console.log('[ManagementScreen] Failed to load seller status:', e);
+      console.log('[Ecommerce] seller status error:', e);
     }
   };
 
-  const loadUserStats = async () => {
+  const loadStats = async () => {
     if (!user?.id) return;
     try {
-      const [requestsRes, offersRes] = await Promise.all([
+      const [reqRes, offRes] = await Promise.all([
         fetch(`${API_BASE_URL}/requests?userId=${user.id}`).catch(() => null),
         fetch(`${API_BASE_URL}/offers?userId=${user.id}`).catch(() => null),
       ]);
-
-      const requests = requestsRes?.ok ? await requestsRes.json().catch(() => []) : [];
-      const offers = offersRes?.ok ? await offersRes.json().catch(() => []) : [];
-
+      const requests = reqRes?.ok ? await reqRes.json().catch(() => []) : [];
+      const offers = offRes?.ok ? await offRes.json().catch(() => []) : [];
+      const reqArr = Array.isArray(requests?.data) ? requests.data : Array.isArray(requests) ? requests : [];
+      const offArr = Array.isArray(offers?.data) ? offers.data : Array.isArray(offers) ? offers : [];
       setStats({
-        requests: Array.isArray(requests?.data) ? requests.data.length : Array.isArray(requests) ? requests.length : 0,
-        offers: Array.isArray(offers?.data) ? offers.data.length : Array.isArray(offers) ? offers.length : 0,
-        activeRequests: Array.isArray(requests?.data) 
-          ? requests.data.filter((r: any) => r.status !== 'completed' && r.status !== 'cancelled').length 
-          : 0,
+        requests: reqArr.length,
+        offers: offArr.length,
+        activeRequests: reqArr.filter((r: any) => r.status !== 'completed' && r.status !== 'cancelled').length,
       });
     } catch (e) {
-      console.log('[ManagementScreen] Failed to load stats:', e);
+      console.log('[Ecommerce] stats error:', e);
     }
   };
 
@@ -125,75 +96,91 @@ export default function ManagementScreen() {
     !!(sellerStatus?.counts?.dismantlers && sellerStatus.counts.dismantlers > 0) ||
     !!(sellerStatus?.ownedDismantlers && sellerStatus.ownedDismantlers.length > 0);
 
-  // Track screen view when focused
-  useFocusEffect(
-    React.useCallback(() => {
-      analyticsService.logScreenViewWithBackend('მართვა', 'ManagementScreen', user?.id);
-    }, [user?.id])
-  );
-
+  // === Quick Actions ===
   const quickActions = [
     {
-      id: 'parts-request',
+      key: 'parts-request',
       title: 'ნაწილის მოთხოვნა',
-      subtitle: 'გამოაქვეყნე მოთხოვნა',
-      icon: 'construct-outline',
+      icon: 'construct-outline' as const,
       color: '#3B82F6',
-      gradient: ['#3B82F6', '#2563EB'],
-      bgColor: '#EFF6FF',
       route: '/parts-requests' as any,
     },
     {
-      id: 'repairmen',
+      key: 'repairman',
       title: 'ხელოსნის მოძიება',
-      subtitle: 'იპოვე ხელოსანი',
-      icon: 'build-outline',
+      icon: 'build-outline' as const,
       color: '#10B981',
-      gradient: ['#10B981', '#059669'],
-      bgColor: '#F0FDF4',
       route: '/search-repairmen' as any,
     },
     {
-      id: 'car-rental',
-      title: 'მანქანის გაქირავება',
-      subtitle: 'იქირავე მანქანა',
-      icon: 'car-sport-outline',
+      key: 'car-rental',
+      title: 'მანქანის ქირავნობა',
+      icon: 'car-sport-outline' as const,
       color: '#8B5CF6',
-      gradient: ['#8B5CF6', '#7C3AED'],
-      bgColor: '#F5F3FF',
       route: '/car-rental-list' as any,
     },
     {
-      id: 'requests',
-      title: 'ჩემი მოთხოვნები',
-      subtitle: `${stats?.requests || 0} მოთხოვნა`,
-      icon: 'document-text-outline',
+      key: 'ai-chat',
+      title: 'AI ასისტენტი',
+      icon: 'sparkles-outline' as const,
       color: '#F59E0B',
-      gradient: ['#F59E0B', '#D97706'],
-      bgColor: '#FFFBEB',
-      route: '/all-requests' as any,
+      route: '/ai-chat' as any,
     },
   ];
 
-  if (hasStore || hasDismantlers) {
-    quickActions.push({
-      id: 'business',
-      title: 'ბიზნესის მართვა',
-      subtitle: hasDismantlers ? 'დაშლილების მართვა' : 'მაღაზიის მართვა',
-      icon: 'business-outline',
-      color: '#10B981',
-      gradient: ['#10B981', '#059669'],
-      bgColor: '#F0FDF4',
-      route: hasDismantlers ? '/dismantler-dashboard' as any : '/partner-dashboard-store' as any,
-    });
-  }
+  const hasAnyBusiness = hasStore || hasDismantlers;
+
+  // === Business Section ===
+  const businessActions = [
+    ...(hasStore
+      ? [
+          
+        ]
+      : []),
+    ...(hasAnyBusiness
+      ? [
+          {
+            key: 'business-panel',
+            title: 'ბიზნესის სამართავი პანელი',
+            subtitle: 'განცხადებების განახლება, ვადები და სხვა',
+            icon: 'storefront-outline' as const,
+            color: '#10B981',
+            route: '/business-panel' as any,
+          },
+        ]
+      : []),
+    {
+      key: 'my-requests',
+      title: 'ჩემი მოთხოვნები',
+      subtitle: `${stats.activeRequests} აქტიური მოთხოვნა`,
+      icon: 'document-text-outline' as const,
+      color: '#3B82F6',
+      route: '/all-requests' as any,
+    },
+    {
+      key: 'offers',
+      title: 'შეთავაზებები',
+      subtitle: `${stats.offers} შეთავაზება`,
+      icon: 'pricetag-outline' as const,
+      color: '#F59E0B',
+      route: '/offers' as any,
+    },
+    {
+      key: 'chats',
+      title: 'ჩატები',
+      subtitle: 'შეტყობინებები',
+      icon: 'chatbubbles-outline' as const,
+      color: '#8B5CF6',
+      route: '/chats' as any,
+    },
+  ];
 
   if (loading) {
     return (
       <SafeAreaView style={styles.container}>
-        <StatusBar barStyle="dark-content" backgroundColor="#FFFFFF" />
+        <StatusBar barStyle="dark-content" backgroundColor="#F8FAFC" />
         <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color="#3B82F6" />
+          <ActivityIndicator size="large" color="#111827" />
           <Text style={styles.loadingText}>იტვირთება...</Text>
         </View>
       </SafeAreaView>
@@ -202,347 +189,163 @@ export default function ManagementScreen() {
 
   return (
     <SafeAreaView style={styles.container}>
-      <StatusBar barStyle="dark-content" backgroundColor="#FFFFFF" />
-      
-      {/* Header with Gradient */}
+      <StatusBar barStyle="dark-content" backgroundColor="#F8FAFC" />
       <LinearGradient
-        colors={['#F8FAFC', '#FFFFFF']}
-        style={styles.header}
-      >
-        <View style={styles.headerContent}>
-          <View style={styles.headerCenter}>
-            <View style={styles.headerIconContainer}>
-              <LinearGradient
-                colors={['#3B82F6', '#2563EB']}
-                style={styles.headerIcon}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 1 }}
-              >
-                <Ionicons name="settings" size={20} color="#FFFFFF" />
-              </LinearGradient>
-            </View>
-            <Text style={styles.headerTitle}>მართვა</Text>
-            <View style={styles.titleUnderline} />
-          </View>
-        </View>
-      </LinearGradient>
+        colors={['#F8FAFC', '#F1F5F9', '#E2E8F0']}
+        style={StyleSheet.absoluteFillObject}
+      />
 
-      <ScrollView 
-        style={styles.scrollView}
-        contentContainerStyle={styles.scrollContent}
+      <ScrollView
         showsVerticalScrollIndicator={false}
+        contentContainerStyle={styles.scrollContent}
         refreshControl={
-          <RefreshControl 
-            refreshing={refreshing} 
+          <RefreshControl
+            refreshing={refreshing}
             onRefresh={onRefresh}
-            colors={['#3B82F6']}
-            tintColor="#3B82F6"
+            colors={['#111827']}
+            tintColor="#111827"
           />
         }
       >
-        <Animated.View
-          style={{
-            opacity: fadeAnim,
-            transform: [{ translateY: slideAnim }, { scale: scaleAnim }],
-          }}
-        >
-          {/* Stats Cards with Gradients */}
-          {stats && (
-            <View style={styles.statsContainer}>
-              <View style={styles.statsRow}>
-                <TouchableOpacity
-                  style={styles.statCard}
-                  activeOpacity={0.9}
-                  onPress={() => {
-                    analyticsService.logButtonClick('მოთხოვნები სტატისტიკა', 'მართვა', undefined, user?.id);
-                    router.push('/all-requests' as any);
-                  }}
-                >
-                  <LinearGradient
-                    colors={['#EFF6FF', '#DBEAFE']}
-                    style={styles.statCardGradient}
-                    start={{ x: 0, y: 0 }}
-                    end={{ x: 1, y: 1 }}
-                  >
-                    <View style={[styles.statIcon, { backgroundColor: '#3B82F6' }]}>
-                      <Ionicons name="document-text" size={22} color="#FFFFFF" />
-                    </View>
-                    <Text style={styles.statValue}>{stats.requests || 0}</Text>
-                    <Text style={styles.statLabel}>მოთხოვნა</Text>
-                  </LinearGradient>
-                </TouchableOpacity>
+        {/* Header */}
+        <View style={styles.header}>
+          <Text style={styles.pageTitle}>მართე</Text>
+          <Text style={styles.pageSubtitle}>
+            {user?.name ? `გამარჯობა, ${user.name.split(' ')[0]}` : 'გამარჯობა'}
+          </Text>
+        </View>
 
-                <TouchableOpacity
-                  style={styles.statCard}
-                  activeOpacity={0.9}
-                  onPress={() => {
-                    analyticsService.logButtonClick('აქტიური მოთხოვნები', 'მართვა', undefined, user?.id);
-                    router.push('/all-requests' as any);
-                  }}
-                >
-                  <LinearGradient
-                    colors={['#F0FDF4', '#D1FAE5']}
-                    style={styles.statCardGradient}
-                    start={{ x: 0, y: 0 }}
-                    end={{ x: 1, y: 1 }}
-                  >
-                    <View style={[styles.statIcon, { backgroundColor: '#10B981' }]}>
-                      <Ionicons name="checkmark-circle" size={22} color="#FFFFFF" />
-                    </View>
-                    <Text style={styles.statValue}>{stats.activeRequests || 0}</Text>
-                    <Text style={styles.statLabel}>აქტიური</Text>
-                  </LinearGradient>
-                </TouchableOpacity>
-
-                <TouchableOpacity
-                  style={styles.statCard}
-                  activeOpacity={0.9}
-                  onPress={() => {
-                    analyticsService.logButtonClick('შეთავაზებები სტატისტიკა', 'მართვა', undefined, user?.id);
-                    router.push('/offers' as any);
-                  }}
-                >
-                  <LinearGradient
-                    colors={['#FFFBEB', '#FEF3C7']}
-                    style={styles.statCardGradient}
-                    start={{ x: 0, y: 0 }}
-                    end={{ x: 1, y: 1 }}
-                  >
-                    <View style={[styles.statIcon, { backgroundColor: '#F59E0B' }]}>
-                      <Ionicons name="pricetag" size={22} color="#FFFFFF" />
-                    </View>
-                    <Text style={styles.statValue}>{stats.offers || 0}</Text>
-                    <Text style={styles.statLabel}>შეთავაზება</Text>
-                  </LinearGradient>
-                </TouchableOpacity>
-              </View>
+        {/* Stats Row */}
+        <View style={styles.statsRow}>
+          <TouchableOpacity
+            style={styles.statCard}
+            activeOpacity={0.7}
+            onPress={() => router.push('/all-requests' as any)}
+          >
+            <View style={[styles.statIconWrap, { backgroundColor: '#3B82F615' }]}>
+              <Ionicons name="document-text-outline" size={20} color="#3B82F6" />
             </View>
-          )}
+            <Text style={styles.statValue}>{stats.requests}</Text>
+            <Text style={styles.statLabel}>მოთხოვნა</Text>
+          </TouchableOpacity>
 
-          {/* Welcome Section with Enhanced Design */}
-          <View style={styles.welcomeSection}>
-            <LinearGradient
-              colors={['#EFF6FF', '#DBEAFE']}
-              style={styles.welcomeIconContainer}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 1 }}
-            >
-              <Ionicons name="settings" size={36} color="#3B82F6" />
-            </LinearGradient>
-            <Text style={styles.welcomeTitle}>
-              {user?.name ? `გამარჯობა, ${user.name.split(' ')[0]}` : 'გამარჯობა'}
-            </Text>
-            <Text style={styles.welcomeSubtitle}>
-              რას გსურთ გააკეთოთ დღეს?
-            </Text>
+          <TouchableOpacity
+            style={styles.statCard}
+            activeOpacity={0.7}
+            onPress={() => router.push('/all-requests' as any)}
+          >
+            <View style={[styles.statIconWrap, { backgroundColor: '#10B98115' }]}>
+              <Ionicons name="checkmark-circle-outline" size={20} color="#10B981" />
+            </View>
+            <Text style={styles.statValue}>{stats.activeRequests}</Text>
+            <Text style={styles.statLabel}>აქტიური</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={styles.statCard}
+            activeOpacity={0.7}
+            onPress={() => router.push('/offers' as any)}
+          >
+            <View style={[styles.statIconWrap, { backgroundColor: '#F59E0B15' }]}>
+              <Ionicons name="pricetag-outline" size={20} color="#F59E0B" />
+            </View>
+            <Text style={styles.statValue}>{stats.offers}</Text>
+            <Text style={styles.statLabel}>შეთავაზება</Text>
+          </TouchableOpacity>
+        </View>
+
+        {/* Quick Actions - 2x2 Grid */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>სწრაფი ქმედებები</Text>
+          <View style={styles.quickGrid}>
+            {quickActions.map((action) => (
+              <TouchableOpacity
+                key={action.key}
+                style={styles.quickCard}
+                activeOpacity={0.7}
+                onPress={() => {
+                  analyticsService.logButtonClick(action.title, 'მართვა', { key: action.key }, user?.id);
+                  router.push(action.route);
+                }}
+              >
+                <View style={[styles.quickIconWrap, { backgroundColor: `${action.color}15` }]}>
+                  <Ionicons name={action.icon} size={26} color={action.color} />
+                </View>
+                <Text style={styles.quickTitle}>{action.title}</Text>
+              </TouchableOpacity>
+            ))}
           </View>
+        </View>
 
-          {/* Quick Actions Grid with Enhanced Cards */}
-          <View style={styles.section}>
-            <View style={styles.sectionHeader}>
-              <Text style={styles.sectionTitle}>სწრაფი ქმედებები</Text>
-              <View style={styles.sectionTitleLine} />
-            </View>
-            <View style={styles.quickActionsGrid}>
-              {quickActions.map((action, index) => (
+        {/* Business & Management */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>
+            {hasStore || hasDismantlers ? 'ბიზნესი და მართვა' : 'მართვა'}
+          </Text>
+          <View style={styles.listContainer}>
+            {businessActions.map((action, index) => (
+              <React.Fragment key={action.key}>
+                {index > 0 && <View style={styles.listDivider} />}
                 <TouchableOpacity
-                  key={action.id}
-                  style={styles.quickActionCard}
+                  style={styles.listItem}
+                  activeOpacity={0.7}
                   onPress={() => {
-                    analyticsService.logButtonClick(action.title, 'მართვა', { actionId: action.id }, user?.id);
+                    analyticsService.logButtonClick(action.title, 'მართვა', { key: action.key }, user?.id);
                     router.push(action.route);
                   }}
-                  activeOpacity={0.85}
                 >
-                  <LinearGradient
-                    colors={action.gradient as [string, string]}
-                    style={styles.quickActionIcon}
-                    start={{ x: 0, y: 0 }}
-                    end={{ x: 1, y: 1 }}
-                  >
-                    <Ionicons name={action.icon as any} size={26} color="#FFFFFF" />
-                  </LinearGradient>
-                  <Text style={[styles.quickActionTitle, { color: action.color }]}>
-                    {action.title}
-                  </Text>
-                  <Text style={styles.quickActionSubtitle}>
-                    {action.subtitle}
-                  </Text>
-                  <View style={[styles.quickActionArrow, { backgroundColor: `${action.color}15` }]}>
-                    <Ionicons name="arrow-forward" size={14} color={action.color} />
+                  <View style={[styles.listIconWrap, { backgroundColor: `${action.color}15` }]}>
+                    <Ionicons name={action.icon} size={22} color={action.color} />
                   </View>
+                  <View style={styles.listContent}>
+                    <Text style={styles.listTitle}>{action.title}</Text>
+                    <Text style={styles.listSubtitle}>{action.subtitle}</Text>
+                  </View>
+                  <Ionicons name="chevron-forward" size={18} color="#D1D5DB" />
                 </TouchableOpacity>
-              ))}
-            </View>
+              </React.Fragment>
+            ))}
           </View>
+        </View>
 
-          {/* Main Actions with Enhanced Design */}
+        {/* Partner Banner */}
+        {!hasStore && !hasDismantlers && (
           <View style={styles.section}>
-            <View style={styles.sectionHeader}>
-              <Text style={styles.sectionTitle}>ძირითადი ოფციები</Text>
-              <View style={styles.sectionTitleLine} />
-            </View>
-            <View style={styles.mainActionsContainer}>
-              {/* Parts Request */}
-              <TouchableOpacity
-                style={styles.mainActionCard}
-                onPress={() => {
-                  analyticsService.logButtonClick('ნაწილის მოთხოვნა', 'მართვა', undefined, user?.id);
-                  router.push('/parts-requests' as any);
-                }}
-                activeOpacity={0.85}
+            <TouchableOpacity
+              activeOpacity={0.8}
+              onPress={() => {
+                analyticsService.logButtonClick('გახდი პარტნიორი', 'მართვა', undefined, user?.id);
+                router.push('/partner' as any);
+              }}
+            >
+              <LinearGradient
+                colors={['#111827', '#1F2937']}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 1 }}
+                style={styles.partnerBanner}
               >
-                <LinearGradient
-                  colors={['#EFF6FF', '#DBEAFE']}
-                  style={styles.mainActionIconBg}
-                  start={{ x: 0, y: 0 }}
-                  end={{ x: 1, y: 1 }}
-                >
-                  <Ionicons name="construct" size={28} color="#3B82F6" />
-                </LinearGradient>
-                <View style={styles.mainActionContent}>
-                  <Text style={styles.mainActionTitle}>ნაწილის მოთხოვნა</Text>
-                  <Text style={styles.mainActionDescription}>
-                    გამოაქვეყნე მოთხოვნა და მიიღე შეთავაზებები გამყიდველებისგან
-                  </Text>
-                </View>
-                <View style={styles.mainActionArrow}>
-                  <Ionicons name="chevron-forward" size={20} color="#9CA3AF" />
-                </View>
-              </TouchableOpacity>
-
-              {/* Repairmen Search */}
-              <TouchableOpacity
-                style={styles.mainActionCard}
-                onPress={() => {
-                  analyticsService.logButtonClick('ხელოსნის მოძიება', 'მართვა', undefined, user?.id);
-                  router.push('/search-repairmen' as any);
-                }}
-                activeOpacity={0.85}
-              >
-                <LinearGradient
-                  colors={['#F0FDF4', '#D1FAE5']}
-                  style={styles.mainActionIconBg}
-                  start={{ x: 0, y: 0 }}
-                  end={{ x: 1, y: 1 }}
-                >
-                  <Ionicons name="build" size={28} color="#10B981" />
-                </LinearGradient>
-                <View style={styles.mainActionContent}>
-                  <Text style={styles.mainActionTitle}>ხელოსნის მოძიება</Text>
-                  <Text style={styles.mainActionDescription}>
-                    გამოაქვეყნე მოთხოვნა და მიიღე შეთავაზებები ხელოსნებისგან
-                  </Text>
-                </View>
-                <View style={styles.mainActionArrow}>
-                  <Ionicons name="chevron-forward" size={20} color="#9CA3AF" />
-                </View>
-              </TouchableOpacity>
-
-              {/* Business Management */}
-              {(hasStore || hasDismantlers) && (
-                <TouchableOpacity
-                  style={styles.mainActionCard}
-                  onPress={() => {
-                    analyticsService.logButtonClick('ბიზნესის მართვა', 'მართვა', undefined, user?.id);
-                    if (hasDismantlers) {
-                      router.push('/dismantler-dashboard' as any);
-                    } else {
-                      router.push('/partner-dashboard-store' as any);
-                    }
-                  }}
-                  activeOpacity={0.85}
-                >
-                  <LinearGradient
-                    colors={['#F0FDF4', '#D1FAE5']}
-                    style={styles.mainActionIconBg}
-                    start={{ x: 0, y: 0 }}
-                    end={{ x: 1, y: 1 }}
-                  >
-                    <Ionicons name="business" size={28} color="#10B981" />
-                  </LinearGradient>
-                  <View style={styles.mainActionContent}>
-                    <Text style={styles.mainActionTitle}>ბიზნესის მართვა</Text>
-                    <Text style={styles.mainActionDescription}>
-                      {hasDismantlers ? 'დაშლილების' : 'მაღაზიის'} მოთხოვნები, ჩატები და ანალიტიკა
-                    </Text>
+                <View style={styles.partnerBannerContent}>
+                  <View style={styles.partnerBannerLeft}>
+                    <View style={styles.partnerBannerIcon}>
+                      <Ionicons name="business" size={24} color="#FFFFFF" />
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.partnerBannerTitle}>გახდი პარტნიორი</Text>
+                      <Text style={styles.partnerBannerSubtitle}>
+                        დაამატე მაღაზია ან დაშლილი და მიიღე მოთხოვნები
+                      </Text>
+                    </View>
                   </View>
-                  <View style={styles.mainActionArrow}>
-                    <Ionicons name="chevron-forward" size={20} color="#9CA3AF" />
+                  <View style={styles.partnerBannerArrow}>
+                    <Ionicons name="arrow-forward" size={18} color="#FFFFFF" />
                   </View>
-                </TouchableOpacity>
-              )}
-            </View>
+                </View>
+              </LinearGradient>
+            </TouchableOpacity>
           </View>
+        )}
 
-          {/* Additional Options with Enhanced Design */}
-          <View style={styles.section}>
-            <View style={styles.sectionHeader}>
-              <Text style={styles.sectionTitle}>დამატებითი ოფციები</Text>
-              <View style={styles.sectionTitleLine} />
-            </View>
-            <View style={styles.additionalOptionsContainer}>
-              <TouchableOpacity
-                style={styles.additionalOption}
-                onPress={() => {
-                  analyticsService.logButtonClick('ჩემი მოთხოვნები', 'მართვა', undefined, user?.id);
-                  router.push('/all-requests' as any);
-                }}
-                activeOpacity={0.7}
-              >
-                <View style={[styles.additionalOptionIcon, { backgroundColor: '#EFF6FF' }]}>
-                  <Ionicons name="list" size={20} color="#3B82F6" />
-                </View>
-                <Text style={styles.additionalOptionText}>ჩემი მოთხოვნები</Text>
-                {stats?.requests > 0 && (
-                  <View style={[styles.badge, { backgroundColor: '#3B82F6' }]}>
-                    <Text style={styles.badgeText}>{stats.requests}</Text>
-                  </View>
-                )}
-                <Ionicons name="chevron-forward" size={18} color="#D1D5DB" />
-              </TouchableOpacity>
-
-              <View style={styles.additionalOptionDivider} />
-
-              <TouchableOpacity
-                style={styles.additionalOption}
-                onPress={() => {
-                  analyticsService.logButtonClick('შეთავაზებები', 'მართვა', undefined, user?.id);
-                  router.push('/offers' as any);
-                }}
-                activeOpacity={0.7}
-              >
-                <View style={[styles.additionalOptionIcon, { backgroundColor: '#FFFBEB' }]}>
-                  <Ionicons name="pricetag" size={20} color="#F59E0B" />
-                </View>
-                <Text style={styles.additionalOptionText}>შეთავაზებები</Text>
-                {stats?.offers > 0 && (
-                  <View style={[styles.badge, { backgroundColor: '#F59E0B' }]}>
-                    <Text style={styles.badgeText}>{stats.offers}</Text>
-                  </View>
-                )}
-                <Ionicons name="chevron-forward" size={18} color="#D1D5DB" />
-              </TouchableOpacity>
-
-              <View style={styles.additionalOptionDivider} />
-
-              <TouchableOpacity
-                style={styles.additionalOption}
-                onPress={() => {
-                  analyticsService.logButtonClick('ჩატები', 'მართვა', undefined, user?.id);
-                  router.push('/chats' as any);
-                }}
-                activeOpacity={0.7}
-              >
-                <View style={[styles.additionalOptionIcon, { backgroundColor: '#F0FDF4' }]}>
-                  <Ionicons name="chatbubbles" size={20} color="#10B981" />
-                </View>
-                <Text style={styles.additionalOptionText}>ჩატები</Text>
-                <Ionicons name="chevron-forward" size={18} color="#D1D5DB" />
-              </TouchableOpacity>
-            </View>
-          </View>
-        </Animated.View>
+        <View style={{ height: 40 }} />
       </ScrollView>
     </SafeAreaView>
   );
@@ -551,7 +354,7 @@ export default function ManagementScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#F9FAFB',
+    backgroundColor: '#F8FAFC',
   },
   loadingContainer: {
     flex: 1,
@@ -560,337 +363,224 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   loadingText: {
-    fontSize: 16,
-    fontFamily: 'Outfit',
+    fontSize: 14,
+    fontFamily: 'HelveticaMedium',
     color: '#6B7280',
-    fontWeight: '500',
-  },
-  header: {
-    paddingBottom: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: '#F3F4F6',
-  },
-  headerContent: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 20,
-    paddingTop: 8,
-    paddingBottom: 16,
-  },
-  headerCenter: {
-    alignItems: 'center',
-    gap: 8,
-  },
-  headerIconContainer: {
-    marginBottom: 4,
-  },
-  headerIcon: {
-    width: 40,
-    height: 40,
-    borderRadius: 12,
-    alignItems: 'center',
-    justifyContent: 'center',
-    shadowColor: '#3B82F6',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 6,
-  },
-  headerTitle: {
-    fontSize: 22,
-    fontFamily: 'Outfit',
-    fontWeight: '700',
-    color: '#111827',
-    textAlign: 'center',
-    letterSpacing: -0.5,
-  },
-  titleUnderline: {
-    width: 50,
-    height: 4,
-    backgroundColor: '#3B82F6',
-    borderRadius: 2,
-    marginTop: 2,
-  },
-  scrollView: {
-    flex: 1,
   },
   scrollContent: {
-    padding: 20,
-    paddingBottom: 100,
+    paddingBottom: 120,
   },
-  statsContainer: {
-    marginBottom: 28,
+  header: {
+    paddingHorizontal: 20,
+    paddingTop: 16,
+    paddingBottom: 20,
   },
+  pageTitle: {
+    fontSize: 26,
+    fontFamily: 'HelveticaMedium',
+    fontWeight: '800',
+    color: '#111827',
+    textTransform: 'uppercase',
+    letterSpacing: -0.5,
+    marginBottom: 4,
+  },
+  pageSubtitle: {
+    fontSize: 14,
+    fontFamily: 'HelveticaMedium',
+    color: '#6B7280',
+  },
+
+  // Stats
   statsRow: {
     flexDirection: 'row',
-    gap: 12,
+    paddingHorizontal: 20,
+    gap: 10,
+    marginBottom: 24,
   },
   statCard: {
     flex: 1,
-    borderRadius: 20,
-    overflow: 'hidden',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.1,
-    shadowRadius: 12,
-    elevation: 5,
-  },
-  statCardGradient: {
-    padding: 18,
-    alignItems: 'center',
-    borderRadius: 20,
-  },
-  statIcon: {
-    width: 44,
-    height: 44,
-    borderRadius: 14,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 10,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.2,
-    shadowRadius: 4,
-    elevation: 3,
-  },
-  statValue: {
-    fontSize: 28,
-    fontFamily: 'Outfit',
-    fontWeight: '800',
-    color: '#111827',
-    marginBottom: 4,
-    letterSpacing: -1,
-  },
-  statLabel: {
-    fontSize: 12,
-    fontFamily: 'Outfit',
-    color: '#6B7280',
-    fontWeight: '600',
-  },
-  welcomeSection: {
-    alignItems: 'center',
-    marginBottom: 36,
-    marginTop: 12,
-  },
-  welcomeIconContainer: {
-    width: 72,
-    height: 72,
-    borderRadius: 20,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 16,
-    shadowColor: '#3B82F6',
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.2,
-    shadowRadius: 12,
-    elevation: 6,
-  },
-  welcomeTitle: {
-    fontSize: 24,
-    fontFamily: 'Outfit',
-    fontWeight: '700',
-    color: '#111827',
-    marginBottom: 8,
-    textAlign: 'center',
-    letterSpacing: -0.5,
-  },
-  welcomeSubtitle: {
-    fontSize: 15,
-    fontFamily: 'Outfit',
-    color: '#6B7280',
-    textAlign: 'center',
-    fontWeight: '500',
-  },
-  section: {
-    marginBottom: 36,
-  },
-  sectionHeader: {
-    marginBottom: 18,
-    gap: 8,
-  },
-  sectionTitle: {
-    fontSize: 20,
-    fontFamily: 'Outfit',
-    fontWeight: '700',
-    color: '#111827',
-    letterSpacing: -0.5,
-  },
-  sectionTitleLine: {
-    width: 40,
-    height: 3,
-    backgroundColor: '#3B82F6',
-    borderRadius: 2,
-  },
-  quickActionsGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 12,
-  },
-  quickActionCard: {
-    width: (width - 52) / 2,
     backgroundColor: '#FFFFFF',
-    borderRadius: 20,
-    padding: 18,
-    alignItems: 'center',
-    borderWidth: 1.5,
-    borderColor: '#F3F4F6',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.08,
-    shadowRadius: 12,
-    elevation: 4,
-    position: 'relative',
-  },
-  quickActionIcon: {
-    width: 56,
-    height: 56,
     borderRadius: 16,
+    padding: 14,
     alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 14,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.2,
-    shadowRadius: 8,
-    elevation: 5,
-  },
-  quickActionTitle: {
-    fontSize: 15,
-    fontFamily: 'Outfit',
-    fontWeight: '700',
-    marginBottom: 6,
-    textAlign: 'center',
-    letterSpacing: -0.3,
-  },
-  quickActionSubtitle: {
-    fontSize: 12,
-    fontFamily: 'Outfit',
-    color: '#6B7280',
-    textAlign: 'center',
-    fontWeight: '500',
-    marginBottom: 8,
-  },
-  quickActionArrow: {
-    position: 'absolute',
-    top: 12,
-    right: 12,
-    width: 24,
-    height: 24,
-    borderRadius: 12,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  mainActionsContainer: {
-    gap: 14,
-  },
-  mainActionCard: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 20,
-    padding: 20,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 18,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.08,
-    shadowRadius: 16,
-    elevation: 5,
-    borderWidth: 1,
-    borderColor: '#F3F4F6',
-  },
-  mainActionIconBg: {
-    width: 64,
-    height: 64,
-    borderRadius: 18,
-    alignItems: 'center',
-    justifyContent: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.15,
-    shadowRadius: 8,
-    elevation: 4,
-  },
-  mainActionContent: {
-    flex: 1,
-    gap: 6,
-  },
-  mainActionTitle: {
-    fontSize: 17,
-    fontFamily: 'Outfit',
-    fontWeight: '700',
-    color: '#111827',
-    letterSpacing: -0.3,
-  },
-  mainActionDescription: {
-    fontSize: 13,
-    fontFamily: 'Outfit',
-    color: '#6B7280',
-    lineHeight: 20,
-    fontWeight: '500',
-  },
-  mainActionArrow: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: '#F9FAFB',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  additionalOptionsContainer: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 20,
-    overflow: 'hidden',
     borderWidth: 1,
     borderColor: '#F3F4F6',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05,
+    shadowOpacity: 0.06,
     shadowRadius: 8,
-    elevation: 3,
+    elevation: 2,
   },
-  additionalOption: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    padding: 18,
-    gap: 14,
-  },
-  additionalOptionDivider: {
-    height: 1,
-    backgroundColor: '#F3F4F6',
-    marginLeft: 18,
-    marginRight: 18,
-  },
-  additionalOptionIcon: {
+  statIconWrap: {
     width: 40,
     height: 40,
     borderRadius: 12,
     alignItems: 'center',
     justifyContent: 'center',
+    marginBottom: 8,
   },
-  additionalOptionText: {
-    flex: 1,
-    fontSize: 16,
-    fontFamily: 'Outfit',
-    fontWeight: '600',
+  statValue: {
+    fontSize: 22,
+    fontFamily: 'HelveticaMedium',
+    fontWeight: '800',
     color: '#111827',
+    marginBottom: 2,
   },
-  badge: {
-    borderRadius: 14,
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    minWidth: 28,
+  statLabel: {
+    fontSize: 11,
+    fontFamily: 'HelveticaMedium',
+    color: '#6B7280',
+    fontWeight: '600',
+    textTransform: 'uppercase',
+  },
+
+  // Sections
+  section: {
+    paddingHorizontal: 20,
+    marginBottom: 24,
+  },
+  sectionTitle: {
+    fontSize: 18,
+    fontFamily: 'HelveticaMedium',
+    fontWeight: '700',
+    color: '#111827',
+    textTransform: 'uppercase',
+    letterSpacing: -0.3,
+    marginBottom: 14,
+  },
+
+  // Quick Actions Grid
+  quickGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 10,
+  },
+  quickCard: {
+    width: (screenWidth - 50) / 2,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
+    padding: 18,
     alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#F3F4F6',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.2,
-    shadowRadius: 4,
-    elevation: 3,
+    shadowOpacity: 0.06,
+    shadowRadius: 8,
+    elevation: 2,
   },
-  badgeText: {
-    color: '#FFFFFF',
-    fontSize: 12,
-    fontFamily: 'Outfit',
+  quickIconWrap: {
+    width: 52,
+    height: 52,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 12,
+  },
+  quickTitle: {
+    fontSize: 13,
+    fontFamily: 'HelveticaMedium',
     fontWeight: '700',
+    color: '#111827',
+    textTransform: 'uppercase',
+    textAlign: 'center',
+  },
+
+  // List Items
+  listContainer: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: '#F3F4F6',
+    overflow: 'hidden',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.06,
+    shadowRadius: 8,
+    elevation: 2,
+  },
+  listItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 16,
+    gap: 14,
+  },
+  listDivider: {
+    height: 1,
+    backgroundColor: '#F3F4F6',
+    marginHorizontal: 16,
+  },
+  listIconWrap: {
+    width: 44,
+    height: 44,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  listContent: {
+    flex: 1,
+    gap: 2,
+  },
+  listTitle: {
+    fontSize: 15,
+    fontFamily: 'HelveticaMedium',
+    fontWeight: '700',
+    color: '#111827',
+    textTransform: 'uppercase',
+  },
+  listSubtitle: {
+    fontSize: 12,
+    fontFamily: 'HelveticaMedium',
+    color: '#6B7280',
+  },
+
+  // Partner Banner
+  partnerBanner: {
+    borderRadius: 18,
+    padding: 20,
+    overflow: 'hidden',
+  },
+  partnerBannerContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  partnerBannerLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 14,
+    flex: 1,
+  },
+  partnerBannerIcon: {
+    width: 48,
+    height: 48,
+    borderRadius: 14,
+    backgroundColor: 'rgba(255,255,255,0.15)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  partnerBannerTitle: {
+    fontSize: 16,
+    fontFamily: 'HelveticaMedium',
+    fontWeight: '800',
+    color: '#FFFFFF',
+    textTransform: 'uppercase',
+    marginBottom: 4,
+  },
+  partnerBannerSubtitle: {
+    fontSize: 12,
+    fontFamily: 'HelveticaMedium',
+    color: '#D1D5DB',
+    lineHeight: 16,
+  },
+  partnerBannerArrow: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: 'rgba(255,255,255,0.12)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.15)',
   },
 });

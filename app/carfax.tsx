@@ -23,12 +23,12 @@ import SubscriptionModal from '../components/ui/SubscriptionModal';
 import { carfaxApi, CarFAXReport } from '../services/carfaxApi';
 
 const PRIMARY = '#2563EB';
-const DARK = '#0F172A';
-const MUTED = '#475569';
-const BORDER = '#E2E8F0';
-const SOFT = '#F8FAFC';
-const FONT = 'Outfit';
-const FONT_BOLD = 'Outfit_700Bold';
+const DARK = '#111827';
+const MUTED = '#6B7280';
+const BORDER = '#E5E7EB';
+const SOFT = '#F3F4F6';
+const FONT = 'HelveticaMedium';
+const FONT_BOLD = 'HelveticaMedium';
 
 export default function CarFAXScreen() {
   const router = useRouter();
@@ -192,7 +192,7 @@ export default function CarFAXScreen() {
         try {
           const updatedUsage = await carfaxApi.getCarFAXUsage(user.id);
           setCarfaxUsage(updatedUsage);
-          Alert.alert('წარმატება', '5 CarFAX შემოწმება წარმატებით დაემატა!');
+          Alert.alert('წარმატება', '1 CarFAX შემოწმება წარმატებით დაემატა!');
         } catch (error) {
           console.error('Usage განახლების შეცდომა:', error);
           // Network error-ის შემთხვევაში, ვცდილობთ retry-ს (მაქს 3-ჯერ)
@@ -309,13 +309,11 @@ export default function CarFAXScreen() {
 
     const trimmedVin = vinNumber.trim().toUpperCase();
 
-    // Premium მომხმარებლებისთვის პირდაპირ მოძებნა
     if (isPremiumUser) {
-      // შევამოწმოთ დარჩენილი შემოწმება
       if (carfaxUsage && carfaxUsage.remaining <= 0) {
         Alert.alert(
           'ლიმიტი ამოწურულია',
-          'თქვენ გამოიყენეთ ყველა შემოწმება. შეიძინეთ დამატებითი პაკეტი 5 CarFAX შემოწმება 30 ლარად.',
+          'თქვენ გამოიყენეთ ყველა შემოწმება. შეიძინეთ დამატებითი CarFAX შემოწმება 4.99₾-ად.',
           [
             { text: 'გაუქმება', style: 'cancel' },
             {
@@ -324,15 +322,15 @@ export default function CarFAXScreen() {
                 router.push({
                   pathname: '/payment-card',
                   params: {
-                    amount: '30',
-                    description: 'CarFAX პაკეტი - 5 შემოწმება',
+                    amount: '4.99',
+                    description: 'CarFAX პაკეტი - 1 შემოწმება',
                     context: 'carfax-package',
                     orderId: `carfax_package_${user?.id || 'guest'}_${Date.now()}`,
                     successUrl: `/carfax?packagePaid=1`,
                     metadata: JSON.stringify({
                       packageType: 'package',
                       reportType: 'carfax',
-                      credits: 5,
+                      credits: 1
                     }),
                   },
                 });
@@ -349,7 +347,7 @@ export default function CarFAXScreen() {
     router.push({
       pathname: '/payment-card',
       params: {
-        amount: '14.99',
+        amount: '4.99',
         description: 'CarFAX ერთჯერადი მოხსენება',
         context: 'carfax',
         orderId: `carfax_subscription_${user?.id || 'guest'}_${Date.now()}`,
@@ -393,12 +391,14 @@ export default function CarFAXScreen() {
               },
             ]}
           >
-            <View style={styles.header}>
-              <TouchableOpacity style={styles.backButton} onPress={() => router.back()}>
-                <Ionicons name="arrow-back" size={22} color={PRIMARY} />
-              </TouchableOpacity>
-              <Text style={styles.headerTitle}>CarFAX</Text>
-              <View style={styles.headerSpacer} />
+            <View style={styles.topBar}>
+              <View style={styles.topBarContent}>
+                <TouchableOpacity style={styles.topBarButton} onPress={() => router.back()}>
+                  <Ionicons name="arrow-back" size={24} color="#111827" />
+                </TouchableOpacity>
+                <Text style={styles.topBarTitle}>CarFAX</Text>
+                <View style={styles.topBarSpacer} />
+              </View>
             </View>
 
             <View style={styles.heroCard}>
@@ -426,20 +426,20 @@ export default function CarFAXScreen() {
               </View>
             </View>
 
-            <View style={styles.tabsWrapper}>
+            <View style={styles.segmentControl}>
               <TouchableOpacity
-                style={[styles.tab, activeTab === 'search' && styles.activeTab]}
+                style={[styles.segmentItem, activeTab === 'search' && styles.segmentItemActive]}
                 onPress={() => setActiveTab('search')}
               >
                 <Ionicons name="search" size={18} color={activeTab === 'search' ? '#FFFFFF' : MUTED} />
-                <Text style={[styles.tabText, activeTab === 'search' && styles.activeTabText]}>ძებნა</Text>
+                <Text style={[styles.segmentText, activeTab === 'search' && styles.segmentTextActive]}>ძებნა</Text>
               </TouchableOpacity>
               <TouchableOpacity
-                style={[styles.tab, activeTab === 'history' && styles.activeTab]}
+                style={[styles.segmentItem, activeTab === 'history' && styles.segmentItemActive]}
                 onPress={() => setActiveTab('history')}
               >
                 <Ionicons name="time" size={18} color={activeTab === 'history' ? '#FFFFFF' : MUTED} />
-                <Text style={[styles.tabText, activeTab === 'history' && styles.activeTabText]}>ისტორია</Text>
+                <Text style={[styles.segmentText, activeTab === 'history' && styles.segmentTextActive]}>ისტორია</Text>
               </TouchableOpacity>
             </View>
 
@@ -526,7 +526,7 @@ export default function CarFAXScreen() {
                     </Text>
                   </View>
                   <Text style={styles.primaryButtonPrice}>
-                    {isPremiumUser ? 'უფასო' : '14.99₾'}
+                    {isPremiumUser ? 'უფასო' : '4.99₾'}
                   </Text>
                 </TouchableOpacity>
 
@@ -719,40 +719,54 @@ const styles = StyleSheet.create({
     backgroundColor: '#FFFFFF',
   },
   content: {
-    padding: 20,
-    gap: 18,
+    paddingHorizontal: 20,
+    paddingTop: 16,
+    paddingBottom: 20,
+    gap: 16,
   },
-  header: {
+  topBar: {
+    backgroundColor: '#FFFFFF',
+    paddingBottom: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#E5E7EB',
+    marginBottom: 16,
+  },
+  topBarContent: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginTop: 4,
+    paddingHorizontal: 20,
+    paddingTop: 8,
   },
-  backButton: {
-    padding: 8,
-    backgroundColor: 'rgba(37, 99, 235, 0.08)',
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: 'rgba(37, 99, 235, 0.18)',
+  topBarButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: '#F3F4F6',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  headerTitle: {
+  topBarTitle: {
     fontSize: 18,
+    fontFamily: 'HelveticaMedium',
+    textTransform: 'uppercase',
     fontWeight: '700',
-    color: DARK,
-    letterSpacing: 0.2,
-    fontFamily: FONT_BOLD,
+    color: '#111827',
+    flex: 1,
+    textAlign: 'center',
   },
-  headerSpacer: { width: 40 },
+  topBarSpacer: { width: 40 },
   heroCard: {
-    borderRadius: 16,
-    padding: 18,
+    borderRadius: 12,
+    padding: 20,
     borderWidth: 1,
-    borderColor: BORDER,
-    backgroundColor: '#F6F8FF',
-    shadowColor: '#CBD5E1',
-    shadowOpacity: 0.15,
+    borderColor: '#E5E7EB',
+    backgroundColor: '#FFFFFF',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
     shadowRadius: 8,
-    shadowOffset: { width: 0, height: 4 },
+    elevation: 2,
     gap: 8,
   },
   heroBadge: {
@@ -767,20 +781,26 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
     borderRadius: 999,
   },
-  heroBadgeText: { color: DARK, fontSize: 12, fontWeight: '600', fontFamily: FONT },
+  heroBadgeText: { 
+    color: '#111827', 
+    fontSize: 12, 
+    fontWeight: '600', 
+    fontFamily: 'HelveticaMedium',
+    textTransform: 'uppercase',
+  },
   heroTitle: {
-    fontSize: 20,
-    fontWeight: '800',
-    color: DARK,
-    lineHeight: 26,
-    letterSpacing: 0.2,
-    fontFamily: FONT_BOLD,
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#111827',
+    lineHeight: 24,
+    fontFamily: 'HelveticaMedium',
+    textTransform: 'uppercase',
   },
   heroSubtitle: {
-    color: MUTED,
+    color: '#6B7280',
     fontSize: 13,
     lineHeight: 18,
-    fontFamily: FONT,
+    fontFamily: 'HelveticaMedium',
   },
   heroChips: {
     flexDirection: 'row',
@@ -799,81 +819,94 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: BORDER,
   },
-  chipText: { color: DARK, fontSize: 12, fontWeight: '600', fontFamily: FONT },
-  tabsWrapper: {
-    flexDirection: 'row',
-    backgroundColor: '#F1F5F9',
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: BORDER,
-    padding: 4,
-    gap: 6,
+  chipText: { 
+    color: '#111827', 
+    fontSize: 12, 
+    fontWeight: '600', 
+    fontFamily: 'HelveticaMedium',
+    textTransform: 'uppercase',
   },
-  tab: {
+  segmentControl: {
+    flexDirection: 'row',
+    backgroundColor: '#F3F4F6',
+    borderRadius: 12,
+    padding: 4,
+    marginBottom: 16,
+  },
+  segmentItem: {
     flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: 6,
     paddingVertical: 10,
-    borderRadius: 10,
+    paddingHorizontal: 16,
+    borderRadius: 8,
   },
-  activeTab: {
-    backgroundColor: PRIMARY,
-    shadowColor: PRIMARY,
-    shadowOpacity: 0.2,
-    shadowRadius: 6,
-    shadowOffset: { width: 0, height: 2 },
+  segmentItemActive: {
+    backgroundColor: '#111827',
   },
-  tabText: {
-    color: MUTED,
+  segmentText: {
     fontSize: 14,
+    fontFamily: 'HelveticaMedium',
+    textTransform: 'uppercase',
+    color: '#6B7280',
     fontWeight: '600',
-    fontFamily: FONT,
   },
-  activeTabText: {
+  segmentTextActive: {
     color: '#FFFFFF',
-    fontFamily: FONT_BOLD,
   },
   card: {
     backgroundColor: '#FFFFFF',
-    borderRadius: 16,
-    padding: 16,
+    borderRadius: 12,
+    padding: 20,
     borderWidth: 1,
-    borderColor: BORDER,
-    gap: 14,
-    shadowColor: '#CBD5E1',
-    shadowOpacity: 0.12,
-    shadowRadius: 6,
+    borderColor: '#E5E7EB',
+    gap: 16,
+    shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 8,
+    elevation: 2,
   },
   cardHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
   },
-  cardTitle: { color: DARK, fontSize: 18, fontWeight: '700', letterSpacing: 0.2, fontFamily: FONT_BOLD },
-  cardSubtitle: { color: '#64748B', fontSize: 13, marginTop: 2, fontFamily: FONT },
+  cardTitle: { 
+    color: '#111827', 
+    fontSize: 18, 
+    fontWeight: '700', 
+    fontFamily: 'HelveticaMedium',
+    textTransform: 'uppercase',
+  },
+  cardSubtitle: { 
+    color: '#6B7280', 
+    fontSize: 13, 
+    marginTop: 4, 
+    fontFamily: 'HelveticaMedium',
+  },
   inputContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: SOFT,
+    backgroundColor: '#F3F4F6',
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: BORDER,
+    borderColor: '#E5E7EB',
     paddingHorizontal: 12,
     gap: 8,
   },
   vinInput: {
     flex: 1,
-    color: DARK,
+    color: '#111827',
     fontSize: 16,
     paddingVertical: 14,
     letterSpacing: 1,
-    fontFamily: FONT,
+    fontFamily: 'HelveticaMedium',
   },
   checkButton: {
-    backgroundColor: PRIMARY,
+    backgroundColor: '#111827',
     paddingHorizontal: 14,
     paddingVertical: 10,
     borderRadius: 10,
@@ -887,31 +920,45 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   helperText: {
-    color: MUTED,
+    color: '#6B7280',
     fontSize: 12,
     flex: 1,
     lineHeight: 16,
-    fontFamily: FONT,
+    fontFamily: 'HelveticaMedium',
   },
   primaryButton: {
     marginTop: 4,
-    backgroundColor: PRIMARY,
+    backgroundColor: '#111827',
     borderRadius: 12,
-    paddingVertical: 14,
-    paddingHorizontal: 14,
+    paddingVertical: 16,
+    paddingHorizontal: 16,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    borderWidth: 1,
-    borderColor: '#1D4ED8',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    elevation: 4,
   },
   primaryButtonLeft: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 10,
   },
-  primaryButtonText: { color: '#FFFFFF', fontSize: 15, fontWeight: '700', fontFamily: FONT_BOLD },
-  primaryButtonPrice: { color: '#FFFFFF', fontSize: 15, fontWeight: '500', fontFamily: FONT_BOLD },
+  primaryButtonText: { 
+    color: '#FFFFFF', 
+    fontSize: 15, 
+    fontWeight: '600', 
+    fontFamily: 'HelveticaMedium',
+    textTransform: 'uppercase',
+  },
+  primaryButtonPrice: { 
+    color: '#FFFFFF', 
+    fontSize: 15, 
+    fontWeight: '600', 
+    fontFamily: 'HelveticaMedium',
+  },
   infoGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
@@ -927,8 +974,19 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: BORDER,
   },
-  infoTitle: { color: DARK, fontWeight: '500', fontSize: 13, fontFamily: FONT },
-  infoText: { color: MUTED, fontSize: 12, lineHeight: 16, fontFamily: FONT },
+  infoTitle: { 
+    color: '#111827', 
+    fontWeight: '600', 
+    fontSize: 13, 
+    fontFamily: 'HelveticaMedium',
+    textTransform: 'uppercase',
+  },
+  infoText: { 
+    color: '#6B7280', 
+    fontSize: 12, 
+    lineHeight: 16, 
+    fontFamily: 'HelveticaMedium',
+  },
   historyList: { gap: 10 },
   historyRow: {
     flexDirection: 'row',
@@ -950,15 +1008,37 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#C7DBFF',
   },
-  historyTitle: { color: DARK, fontWeight: '700', fontSize: 15, fontFamily: FONT_BOLD },
-  historyMeta: { color: MUTED, fontSize: 12, marginTop: 2, fontFamily: FONT },
+  historyTitle: { 
+    color: '#111827', 
+    fontWeight: '700', 
+    fontSize: 15, 
+    fontFamily: 'HelveticaMedium',
+    textTransform: 'uppercase',
+  },
+  historyMeta: { 
+    color: '#6B7280', 
+    fontSize: 12, 
+    marginTop: 2, 
+    fontFamily: 'HelveticaMedium',
+  },
   emptyState: {
     alignItems: 'center',
     gap: 8,
     paddingVertical: 24,
   },
-  emptyTitle: { color: DARK, fontWeight: '700', fontSize: 16, fontFamily: FONT_BOLD },
-  emptySubtitle: { color: MUTED, fontSize: 13, textAlign: 'center', fontFamily: FONT },
+  emptyTitle: { 
+    color: '#111827', 
+    fontWeight: '700', 
+    fontSize: 16, 
+    fontFamily: 'HelveticaMedium',
+    textTransform: 'uppercase',
+  },
+  emptySubtitle: { 
+    color: '#6B7280', 
+    fontSize: 13, 
+    textAlign: 'center', 
+    fontFamily: 'HelveticaMedium',
+  },
   modalOverlay: {
     flex: 1,
     backgroundColor: 'rgba(0, 0, 0, 0.28)',
@@ -991,7 +1071,14 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#C7DBFF',
   },
-  modalTitle: { flex: 1, color: DARK, fontSize: 18, fontWeight: '700', fontFamily: FONT_BOLD },
+  modalTitle: { 
+    flex: 1, 
+    color: '#111827', 
+    fontSize: 18, 
+    fontWeight: '700', 
+    fontFamily: 'HelveticaMedium',
+    textTransform: 'uppercase',
+  },
   modalCloseButton: {
     width: 32,
     height: 32,
@@ -1003,9 +1090,24 @@ const styles = StyleSheet.create({
     borderColor: BORDER,
   },
   modalBody: { padding: 20, gap: 12 },
-  reportTitle: { color: DARK, fontSize: 19, fontWeight: '700', fontFamily: FONT_BOLD },
-  reportVin: { color: MUTED, fontSize: 13, fontFamily: FONT },
-  reportDate: { color: '#94A3B8', fontSize: 12, marginTop: -4, fontFamily: FONT },
+  reportTitle: { 
+    color: '#111827', 
+    fontSize: 19, 
+    fontWeight: '700', 
+    fontFamily: 'HelveticaMedium',
+    textTransform: 'uppercase',
+  },
+  reportVin: { 
+    color: '#6B7280', 
+    fontSize: 13, 
+    fontFamily: 'HelveticaMedium',
+  },
+  reportDate: { 
+    color: '#9CA3AF', 
+    fontSize: 12, 
+    marginTop: -4, 
+    fontFamily: 'HelveticaMedium',
+  },
   reportStats: { gap: 10, marginTop: 6 },
   statItem: {
     flexDirection: 'row',
@@ -1028,8 +1130,19 @@ const styles = StyleSheet.create({
     borderColor: '#C7DBFF',
   },
   statContent: { flex: 1 },
-  statLabel: { color: DARK, fontWeight: '600', fontSize: 13, fontFamily: FONT },
-  statValue: { color: '#111827', fontWeight: '700', fontSize: 15, fontFamily: FONT_BOLD },
+  statLabel: { 
+    color: '#111827', 
+    fontWeight: '600', 
+    fontSize: 13, 
+    fontFamily: 'HelveticaMedium',
+    textTransform: 'uppercase',
+  },
+  statValue: { 
+    color: '#111827', 
+    fontWeight: '700', 
+    fontSize: 15, 
+    fontFamily: 'HelveticaMedium',
+  },
   modalActions: {
     flexDirection: 'row',
     gap: 10,
@@ -1046,7 +1159,13 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: BORDER,
   },
-  modalSecondaryButtonText: { color: MUTED, fontWeight: '700', fontSize: 15, fontFamily: FONT_BOLD },
+  modalSecondaryButtonText: { 
+    color: '#6B7280', 
+    fontWeight: '700', 
+    fontSize: 15, 
+    fontFamily: 'HelveticaMedium',
+    textTransform: 'uppercase',
+  },
   modalPrimaryButton: {
     flex: 1.2,
     flexDirection: 'row',
@@ -1054,10 +1173,19 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     gap: 8,
     paddingVertical: 12,
-    borderRadius: 10,
-    backgroundColor: PRIMARY,
-    borderWidth: 1,
-    borderColor: '#1D4ED8',
+    borderRadius: 12,
+    backgroundColor: '#111827',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    elevation: 4,
   },
-  modalPrimaryButtonText: { color: '#FFFFFF', fontWeight: '700', fontSize: 15, fontFamily: FONT_BOLD },
+  modalPrimaryButtonText: { 
+    color: '#FFFFFF', 
+    fontWeight: '600', 
+    fontSize: 15, 
+    fontFamily: 'HelveticaMedium',
+    textTransform: 'uppercase',
+  },
 });

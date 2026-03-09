@@ -26,7 +26,7 @@ const getApiUrl = () => {
     const lanIp = getLanIpFromHost();
     const localUrl = lanIp ? `http://${lanIp}:3000` : 'http://localhost:3000';
     console.log('🌐 Using Local API (DEV):', localUrl);
-    return localUrl;
+    return localUrl;78
   }
 
   // Production-ზე Railway

@@ -213,14 +213,14 @@ export default function AllCommunityScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#111827' },
   loadingContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#111827' },
-  loadingText: { marginTop: 16, fontSize: 16, color: '#9CA3AF', fontFamily: 'FiraGO-Regular' },
+  loadingText: { marginTop: 16, fontSize: 16, color: '#9CA3AF', fontFamily: 'Firago-Regular' },
   
   // Header
   header: { paddingBottom: 20 },
   headerContent: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 20, paddingTop: 10 },
   backButton: { width: 44, height: 44, borderRadius: 22, overflow: 'hidden' },
   backButtonBlur: { flex: 1, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: 'rgba(255,255,255,0.15)' },
-  headerText: { fontSize: 20, fontWeight: '700', color: '#FFF', fontFamily: 'FiraGO-Bold' },
+  headerText: { fontSize: 20, fontWeight: '700', color: '#FFF', fontFamily: 'Firago-Bold' },
   headerButton: { width: 44, height: 44, borderRadius: 22, overflow: 'hidden' },
   
   // Filters
@@ -229,8 +229,8 @@ const styles = StyleSheet.create({
   filterButton: { borderRadius: 16, overflow: 'hidden' },
   filterButtonActive: { borderWidth: 1, borderColor: 'rgba(59,130,246,0.5)' },
   filterBlur: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 16, paddingVertical: 10, borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)' },
-  filterText: { fontSize: 14, color: '#9CA3AF', fontFamily: 'FiraGO-Medium' },
-  filterTextActive: { color: '#FFF', fontFamily: 'FiraGO-Bold' },
+  filterText: { fontSize: 14, color: '#9CA3AF', fontFamily: 'Firago-Medium' },
+  filterTextActive: { color: '#FFF', fontFamily: 'Firago-Bold' },
   
   // Posts
   scrollView: { flex: 1 },
@@ -240,18 +240,18 @@ const styles = StyleSheet.create({
   postHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 },
   authorInfo: { flexDirection: 'row', alignItems: 'center', gap: 12 },
   avatar: { width: 40, height: 40, borderRadius: 20, backgroundColor: '#3B82F6', alignItems: 'center', justifyContent: 'center' },
-  avatarText: { fontSize: 16, fontWeight: '700', color: '#FFF', fontFamily: 'FiraGO-Bold' },
-  authorName: { fontSize: 15, fontWeight: '600', color: '#E5E7EB', fontFamily: 'FiraGO-SemiBold' },
-  postTime: { fontSize: 12, color: '#9CA3AF', fontFamily: 'FiraGO-Regular' },
-  postContent: { fontSize: 15, lineHeight: 22, color: '#E5E7EB', marginBottom: 12, fontFamily: 'FiraGO-Regular' },
+  avatarText: { fontSize: 16, fontWeight: '700', color: '#FFF', fontFamily: 'Firago-Bold' },
+  authorName: { fontSize: 15, fontWeight: '600', color: '#E5E7EB', fontFamily: 'Firago-SemiBold' },
+  postTime: { fontSize: 12, color: '#9CA3AF', fontFamily: 'Firago-Regular' },
+  postContent: { fontSize: 15, lineHeight: 22, color: '#E5E7EB', marginBottom: 12, fontFamily: 'Firago-Regular' },
   postImageContainer: { height: 200, borderRadius: 12, overflow: 'hidden', marginBottom: 12, backgroundColor: '#1E293B' },
   postImagePlaceholder: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   postActions: { flexDirection: 'row', gap: 20, paddingTop: 12, borderTopWidth: 1, borderTopColor: 'rgba(255,255,255,0.08)' },
   actionButton: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  actionText: { fontSize: 14, color: '#9CA3AF', fontFamily: 'FiraGO-Medium' },
+  actionText: { fontSize: 14, color: '#9CA3AF', fontFamily: 'Firago-Medium' },
   
   // Empty State
   emptyState: { alignItems: 'center', justifyContent: 'center', paddingVertical: 60, gap: 12 },
-  emptyText: { fontSize: 18, fontWeight: '700', color: '#E5E7EB', fontFamily: 'FiraGO-Bold' },
-  emptySubtext: { fontSize: 14, color: '#9CA3AF', fontFamily: 'FiraGO-Regular' },
+  emptyText: { fontSize: 18, fontWeight: '700', color: '#E5E7EB', fontFamily: 'Firago-Bold' },
+  emptySubtext: { fontSize: 14, color: '#9CA3AF', fontFamily: 'Firago-Regular' },
 });
