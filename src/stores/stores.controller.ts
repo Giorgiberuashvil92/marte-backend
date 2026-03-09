@@ -46,12 +46,18 @@ export class StoresController {
     @Query('location') location?: string,
     @Query('includeAll') includeAll?: string,
     @Query('type') type?: string,
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
   ) {
+    const pageNum = page ? parseInt(page, 10) : 1;
+    const limitNum = limit ? parseInt(limit, 10) : 20;
     const stores = await this.storesService.findAll(
       ownerId,
       location,
       includeAll === 'true',
       type,
+      pageNum,
+      limitNum,
     );
     return {
       success: true,

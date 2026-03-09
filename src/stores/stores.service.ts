@@ -44,35 +44,34 @@ export class StoresService {
     location?: string,
     includeAll: boolean = false,
     type?: string,
+    page: number = 1,
+    limit: number = 20,
   ): Promise<Store[]> {
     console.log('🔍 [STORES SERVICE] findAll called with:', {
       ownerId,
       location,
       includeAll,
       type,
+      page,
+      limit,
     });
     const filter: Record<string, any> = {};
     if (ownerId) {
-      // თუ ownerId არის მითითებული (პარტნიორის დეშბორდი), ყველა მაღაზია ჩანდეს
       filter.ownerId = ownerId;
     } else if (!includeAll) {
-      // თუ ownerId არ არის მითითებული და includeAll არ არის true (ზოგადი სია), მხოლოდ active მაღაზიები ჩანდეს
       filter.status = 'active';
     }
-    // თუ includeAll არის true (admin panel), ყველა მაღაზია ჩანდეს (ყველა status-ით)
     if (location) filter.location = location;
     if (type) {
       console.log('🔍 [STORES SERVICE] Filtering by type:', type);
       filter.type = type;
     }
-    console.log(
-      '🔍 [STORES SERVICE] Final filter:',
-      JSON.stringify(filter, null, 2),
-    );
-    const stores = await this.storeModel
-      .find(filter)
-      .sort({ createdAt: -1 })
-      .exec();
+    const query = this.storeModel.find(filter).sort({ createdAt: -1 });
+    if (!ownerId) {
+      const skip = (page - 1) * limit;
+      query.skip(skip).limit(limit);
+    }
+    const stores = await query.exec();
     console.log('🔍 [STORES SERVICE] Found stores:', stores.length);
     if (stores.length > 0 && type) {
       console.log(
