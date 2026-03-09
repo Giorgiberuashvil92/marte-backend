@@ -71,4 +71,16 @@ export class CreateDismantlerDto {
   @IsOptional()
   @IsString()
   bogCardToken?: string; // BOG order_id recurring payments-ისთვის
+
+  @IsOptional()
+  @IsString()
+  address?: string;
+
+  @IsOptional()
+  @IsNumber()
+  latitude?: number;
+
+  @IsOptional()
+  @IsNumber()
+  longitude?: number;
 }

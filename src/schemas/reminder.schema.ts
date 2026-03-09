@@ -34,6 +34,18 @@ export class Reminder {
   @Prop()
   reminderTime?: string;
 
+  @Prop()
+  reminderTime2?: string; // მეორე დრო "ყოველდღე"-სთვის (დღეში 2 ჯერ)
+
+  @Prop()
+  startDate?: string; // დაწყების თარიღი recurring-ისთვის (YYYY-MM-DD)
+
+  @Prop()
+  endDate?: string; // დასრულების თარიღი recurring-ისთვის (YYYY-MM-DD)
+
+  @Prop()
+  recurringInterval?: string; // 'daily' | 'weekly' | 'monthly' | 'yearly'
+
   @Prop({ default: false })
   isCompleted: boolean;
 

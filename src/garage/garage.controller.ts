@@ -16,6 +16,8 @@ import { UpdateCarDto } from './dto/update-car.dto';
 import { CreateReminderDto } from './dto/create-reminder.dto';
 import { UpdateReminderDto } from './dto/update-reminder.dto';
 import { CreateFuelEntryDto } from './dto/create-fuel-entry.dto';
+import { CreateServiceHistoryDto } from './dto/create-service-history.dto';
+import { UpdateServiceHistoryDto } from './dto/update-service-history.dto';
 
 @Controller('garage')
 export class GarageController {
@@ -173,5 +175,61 @@ export class GarageController {
   @Post('reminders/notifications/run')
   async runReminderNotifications(@Query('test') test?: string) {
     return this.garageService.sendReminderNotifications(test === 'true');
+  }
+
+  // Service History API
+  @Post('services')
+  async createServiceHistory(
+    @Request() req: ExpressRequest,
+    @Body() createDto: CreateServiceHistoryDto,
+  ) {
+    const userId = (req.headers['x-user-id'] as string) || 'demo-user';
+    return this.garageService.createServiceHistory(userId, createDto);
+  }
+
+  @Get('services')
+  async getServiceHistories(
+    @Request() req: ExpressRequest,
+    @Query('carId') carId?: string,
+  ) {
+    const userId = (req.headers['x-user-id'] as string) || 'demo-user';
+    return this.garageService.getServiceHistories(userId, carId);
+  }
+
+  @Get('services/car/:carId')
+  async getServiceHistoriesByCar(
+    @Request() req: ExpressRequest,
+    @Param('carId') carId: string,
+  ) {
+    const userId = (req.headers['x-user-id'] as string) || 'demo-user';
+    return this.garageService.getServiceHistories(userId, carId);
+  }
+
+  @Get('services/:id')
+  async getServiceHistory(
+    @Request() req: ExpressRequest,
+    @Param('id') id: string,
+  ) {
+    const userId = (req.headers['x-user-id'] as string) || 'demo-user';
+    return this.garageService.getServiceHistory(userId, id);
+  }
+
+  @Patch('services/:id')
+  async updateServiceHistory(
+    @Request() req: ExpressRequest,
+    @Param('id') id: string,
+    @Body() updateDto: UpdateServiceHistoryDto,
+  ) {
+    const userId = (req.headers['x-user-id'] as string) || 'demo-user';
+    return this.garageService.updateServiceHistory(userId, id, updateDto);
+  }
+
+  @Delete('services/:id')
+  async deleteServiceHistory(
+    @Request() req: ExpressRequest,
+    @Param('id') id: string,
+  ) {
+    const userId = (req.headers['x-user-id'] as string) || 'demo-user';
+    return this.garageService.deleteServiceHistory(userId, id);
   }
 }

@@ -137,6 +137,9 @@ export class Store {
 
   @Prop({ type: Date })
   expiryDate?: Date; // განცხადების ვადის გასვლის თარიღი (1 თვე შექმნის თარიღიდან)
+
+  @Prop()
+  bogCardToken?: string; // BOG order_id recurring payments-ისთვის
 }
 
 export const StoreSchema = SchemaFactory.createForClass(Store);

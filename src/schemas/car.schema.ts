@@ -42,6 +42,9 @@ export class Car {
   @Prop()
   vin?: string;
 
+  @Prop()
+  techPassport?: string;
+
   @Prop({ default: true })
   isActive: boolean;
 }

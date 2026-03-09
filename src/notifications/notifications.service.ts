@@ -221,7 +221,6 @@ export class NotificationsService {
 
     const messaging = admin.messaging();
 
-    // Send multicast message (up to 500 tokens per request)
     const message = {
       notification: {
         title: payload.title,
@@ -242,8 +241,48 @@ export class NotificationsService {
           },
         },
       },
-      tokens: tokens.slice(0, 500),
+      tokens: tokens.slice(0, 2000),
     };
+
+    // მცირე რაოდენობის ტოკენებისთვის პირდაპირ per-token (FCM /batch 404-ის გამოტოვება)
+    const usePerTokenFirst = tokens.length <= 50;
+    if (usePerTokenFirst) {
+      let successCount = 0;
+      let failureCount = 0;
+      const invalidTokens: string[] = [];
+      for (const token of tokens) {
+        try {
+          await messaging.send({
+            notification: message.notification,
+            data: message.data,
+            android: message.android,
+            apns: message.apns,
+            token,
+          });
+          successCount++;
+        } catch (e: any) {
+          failureCount++;
+          const code = e?.errorInfo?.code || e?.code;
+          const msg = e?.errorInfo?.message || e?.message || '';
+          if (
+            code === 'messaging/registration-token-not-registered' ||
+            code === 'messaging/invalid-registration-token' ||
+            msg.toLowerCase().includes('not registered')
+          ) {
+            invalidTokens.push(token);
+          }
+        }
+      }
+      if (invalidTokens.length > 0) {
+        await this.deviceTokenModel.deleteMany({
+          token: { $in: invalidTokens },
+        });
+      }
+      if (tokens.length > 2000) {
+        await this.sendFcm(tokens.slice(2000), payload);
+      }
+      return;
+    }
 
     try {
       const response = await messaging.sendMulticast(message);
@@ -264,9 +303,9 @@ export class NotificationsService {
         }
       }
 
-      // Send remaining tokens if more than 500
-      if (tokens.length > 500) {
-        await this.sendFcm(tokens.slice(500), payload);
+      // Send remaining tokens if more than 2000
+      if (tokens.length > 2000) {
+        await this.sendFcm(tokens.slice(2000), payload);
       }
     } catch (error: any) {
       console.error('❌ FCM sendMulticast error:', error);

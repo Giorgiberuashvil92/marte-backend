@@ -19,7 +19,7 @@ export class CarFAXService {
   private readonly logger = new Logger(CarFAXService.name);
   private readonly CARFAX_API_URL = 'https://cai.autoimports.ge/api/report/';
   private readonly CARFAX_API_KEY = '23f57611-7a25-4be3-9ade-a311f7c016c3';
-  private readonly DEFAULT_CARFAX_LIMIT = 5;
+  private readonly DEFAULT_CARFAX_LIMIT = 1;
 
   constructor(
     @InjectModel(CarFAXReport.name)

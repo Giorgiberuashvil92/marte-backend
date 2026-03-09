@@ -1,6 +1,7 @@
 import { Module, MiddlewareConsumer, NestModule } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { MongooseModule } from '@nestjs/mongoose';
+import { ScheduleModule } from '@nestjs/schedule';
 import { AuthMiddleware } from './middleware/auth.middleware';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
@@ -41,6 +42,8 @@ import { ReferralsModule } from './referrals/referrals.module';
 import { AnalyticsModule } from './analytics/analytics.module';
 import { RadarsModule } from './radars/radars.module';
 import { EcommerceProductsModule } from './ecommerce-products/ecommerce-products.module';
+import { FinesModule } from './fines/fines.module';
+import { NewsFeedModule } from './news-feed/news-feed.module';
 import databaseConfig from './config/database.config';
 
 // Schemas
@@ -97,13 +100,19 @@ import {
   EcommerceProduct,
   EcommerceProductSchema,
 } from './schemas/ecommerce-product.schema';
+import {
+  FinesVehicle,
+  FinesVehicleSchema,
+} from './schemas/fines-vehicle.schema';
 
 @Module({
   imports: [
     ConfigModule.forRoot({
       isGlobal: true,
+      envFilePath: '.env', // Explicitly specify .env file path
       load: [databaseConfig],
     }),
+    ScheduleModule.forRoot(),
     MongooseModule.forRootAsync({
       useFactory: () => ({
         uri:
@@ -138,6 +147,7 @@ import {
       { name: CarBrand.name, schema: CarBrandSchema },
       { name: Radar.name, schema: RadarSchema },
       { name: EcommerceProduct.name, schema: EcommerceProductSchema },
+      { name: FinesVehicle.name, schema: FinesVehicleSchema },
     ]),
     GarageModule,
     AuthModule,
@@ -176,6 +186,8 @@ import {
     AnalyticsModule,
     RadarsModule,
     EcommerceProductsModule,
+    FinesModule,
+    NewsFeedModule,
   ],
   controllers: [AppController],
   providers: [AppService],

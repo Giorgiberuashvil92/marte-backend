@@ -57,6 +57,11 @@ export class CreatePaymentDto {
     planCurrency?: string;
     planPeriod?: string;
     credits?: number;
+    // CarFinesSubscription-ისთვის
+    carFinesSubscriptionId?: string;
+    carId?: string;
+    vehicleNumber?: string;
+    techPassportNumber?: string;
   };
 
   @IsOptional()

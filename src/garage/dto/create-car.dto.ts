@@ -40,4 +40,8 @@ export class CreateCarDto {
   @IsOptional()
   @IsString()
   vin?: string;
+
+  @IsOptional()
+  @IsString()
+  techPassport?: string;
 }

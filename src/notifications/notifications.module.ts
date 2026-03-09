@@ -1,6 +1,5 @@
 import { Module } from '@nestjs/common';
 import { MongooseModule } from '@nestjs/mongoose';
-import { ScheduleModule } from '@nestjs/schedule';
 import { NotificationsService } from './notifications.service';
 import { NotificationsController } from './notifications.controller';
 import {
@@ -14,7 +13,6 @@ import { User, UserSchema } from '../schemas/user.schema';
 
 @Module({
   imports: [
-    ScheduleModule.forRoot(),
     MongooseModule.forFeature([
       { name: Notification.name, schema: NotificationSchema },
       { name: Store.name, schema: StoreSchema },

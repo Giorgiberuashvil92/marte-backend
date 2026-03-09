@@ -47,11 +47,14 @@ export class MessagesController {
   }
 
   @Get('chat/:requestId')
-  async getChatHistory(@Param('requestId') requestId: string) {
+  async getChatHistory(
+    @Param('requestId') requestId: string,
+    @Query('partnerId') partnerId?: string,
+  ) {
     if (!requestId) {
       throw new BadRequestException('Request ID is required');
     }
-    return this.messagesService.getChatHistory(requestId);
+    return this.messagesService.getChatHistory(requestId, partnerId);
   }
 
   @Get('recent')
@@ -76,8 +79,11 @@ export class MessagesController {
         'Request ID and either userId or partnerId is required',
       );
     }
-    // Service ითხოვს მხოლოდ userId-ს; partnerId-ს არსებობა ნიშნავს რომ ვთვლით როგორც partner-სადმი წასაკითხს
-    return this.messagesService.getUnreadCount(requestId, userId || '');
+    return this.messagesService.getUnreadCount(
+      requestId,
+      userId || '',
+      partnerId,
+    );
   }
 
   @Patch('read/:requestId')
@@ -90,7 +96,10 @@ export class MessagesController {
         'Request ID and either userId or partnerId is required',
       );
     }
-    // Service ითხოვს მხოლოდ userId-ს; თუ partner კითხულობს, გადავცემთ ცარიელს, რომ მოხდეს სწორი მხარის აღნიშვნა
-    return this.messagesService.markAsRead(requestId, body.userId || '');
+    return this.messagesService.markAsRead(
+      requestId,
+      body.userId || '',
+      body.partnerId,
+    );
   }
 }

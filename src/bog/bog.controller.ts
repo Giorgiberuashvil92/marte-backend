@@ -34,6 +34,7 @@ import { Dismantler, DismantlerDocument } from '../schemas/dismantler.schema';
 import { SubscriptionsService } from '../subscriptions/subscriptions.service';
 import { CarFAXService } from '../carfax/carfax.service';
 import { StoresService } from '../stores/stores.service';
+import { FinesService } from '../fines/fines.service';
 
 @Controller('bog')
 export class BOGController {
@@ -46,6 +47,7 @@ export class BOGController {
     private readonly subscriptionsService: SubscriptionsService,
     private readonly carfaxService: CarFAXService,
     private readonly storesService: StoresService,
+    private readonly finesService: FinesService,
     @InjectModel(Payment.name) private paymentModel: Model<PaymentDocument>,
     @InjectModel(Subscription.name)
     private subscriptionModel: Model<SubscriptionDocument>,
@@ -1404,6 +1406,109 @@ export class BOGController {
                     : 'Unknown error',
                 );
                 // არ ვაბრუნებთ error-ს, რადგან payment-ი უკვე შენახულია
+              }
+            }
+
+            // CarFinesSubscription-ის აქტივაცია (თუ context არის 'car_fines_subscription')
+            if (
+              paymentContext === 'car_fines_subscription' ||
+              context === 'car_fines_subscription'
+            ) {
+              try {
+                this.logger.log(
+                  '═══════════════════════════════════════════════════════',
+                );
+                this.logger.log(
+                  '🚗 CarFinesSubscription-ის აქტივაცია payment-ის შემდეგ',
+                );
+                this.logger.log(
+                  '═══════════════════════════════════════════════════════',
+                );
+
+                const carFinesSubId = payment.metadata?.carFinesSubscriptionId;
+                const carId = payment.metadata?.carId;
+
+                this.logger.log(
+                  `   • CarFinesSubscription ID: ${carFinesSubId || 'N/A'}`,
+                );
+                this.logger.log(`   • Car ID: ${carId || 'N/A'}`);
+                this.logger.log(`   • Order ID: ${order_id}`);
+
+                if (carFinesSubId) {
+                  // გადახდის დადასტურება და bogCardToken-ის შენახვა
+                  const activatedSub =
+                    await this.finesService.confirmCarFinesPayment(
+                      carFinesSubId,
+                      order_id, // transactionId
+                      order_id, // bogCardToken — recurring payments-ისთვის
+                    );
+
+                  this.logger.log(
+                    `✅ CarFinesSubscription აქტივირებულია: ${String(activatedSub._id)}`,
+                  );
+                  this.logger.log(
+                    `   • Vehicle: ${activatedSub.vehicleNumber}`,
+                  );
+                  this.logger.log(
+                    `   • bogCardToken: ${activatedSub.bogCardToken || 'N/A'}`,
+                  );
+                  this.logger.log(
+                    `   • Next Billing: ${activatedSub.nextBillingDate?.toISOString() || 'N/A'}`,
+                  );
+
+                  // ბარათის დამახსოვრება recurring payments-ისთვის
+                  try {
+                    await this.bogPaymentService.saveCardForRecurringPayments(
+                      order_id,
+                    );
+                    this.logger.log(
+                      `✅ ბარათი დამახსოვრებულია CarFinesSubscription recurring payments-ისთვის`,
+                    );
+                  } catch (saveCardError) {
+                    this.logger.warn(
+                      `⚠️ ბარათის დამახსოვრება ვერ მოხერხდა CarFinesSubscription-ისთვის: ${
+                        saveCardError instanceof Error
+                          ? saveCardError.message
+                          : 'Unknown error'
+                      }`,
+                    );
+                  }
+                } else if (carId) {
+                  // თუ subscriptionId არ არის, მაგრამ carId-ით ვპოულობთ
+                  const existingSub =
+                    await this.finesService.findCarFinesSubscriptionByCarId(
+                      carId,
+                    );
+                  if (existingSub) {
+                    await this.finesService.confirmCarFinesPayment(
+                      String(existingSub._id),
+                      order_id,
+                      order_id,
+                    );
+                    this.logger.log(
+                      `✅ CarFinesSubscription აქტივირებულია carId-ით: ${carId}`,
+                    );
+                  } else {
+                    this.logger.warn(
+                      `⚠️ CarFinesSubscription ვერ მოიძებნა carId-ით: ${carId}`,
+                    );
+                  }
+                } else {
+                  this.logger.warn(
+                    '⚠️ CarFinesSubscription ID ან Car ID არ არის metadata-ში',
+                  );
+                }
+
+                this.logger.log(
+                  '═══════════════════════════════════════════════════════',
+                );
+              } catch (carFinesError) {
+                this.logger.error(
+                  '❌ CarFinesSubscription-ის აქტივაციის შეცდომა:',
+                  carFinesError instanceof Error
+                    ? carFinesError.message
+                    : 'Unknown error',
+                );
               }
             }
           } else {

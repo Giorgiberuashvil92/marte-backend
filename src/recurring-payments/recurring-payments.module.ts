@@ -1,6 +1,5 @@
 import { Module } from '@nestjs/common';
 import { MongooseModule } from '@nestjs/mongoose';
-import { ScheduleModule } from '@nestjs/schedule';
 import { RecurringPaymentsService } from './recurring-payments.service';
 import { RecurringPaymentsController } from './recurring-payments.controller';
 import {
@@ -13,15 +12,22 @@ import { Dismantler, DismantlerSchema } from '../schemas/dismantler.schema';
 import { BOGModule } from '../bog/bog.module';
 import { PaymentsModule } from '../payments/payments.module';
 import { SubscriptionsModule } from '../subscriptions/subscriptions.module';
+import {
+  CarFinesSubscription,
+  CarFinesSubscriptionSchema,
+} from '../schemas/car-fines-subscription.schema';
 
 @Module({
   imports: [
-    ScheduleModule.forRoot(),
     MongooseModule.forFeature([
       { name: Subscription.name, schema: SubscriptionSchema },
       { name: Payment.name, schema: PaymentSchema },
       { name: User.name, schema: UserSchema },
       { name: Dismantler.name, schema: DismantlerSchema },
+      {
+        name: CarFinesSubscription.name,
+        schema: CarFinesSubscriptionSchema,
+      },
     ]),
     BOGModule,
     PaymentsModule,

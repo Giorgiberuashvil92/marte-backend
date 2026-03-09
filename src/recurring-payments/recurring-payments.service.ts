@@ -9,6 +9,10 @@ import {
 import { Payment, PaymentDocument } from '../schemas/payment.schema';
 import { User, UserDocument } from '../schemas/user.schema';
 import { Dismantler, DismantlerDocument } from '../schemas/dismantler.schema';
+import {
+  CarFinesSubscription,
+  CarFinesSubscriptionDocument,
+} from '../schemas/car-fines-subscription.schema';
 import { BOGPaymentService } from '../bog/bog-payment.service';
 import { PaymentsService } from '../payments/payments.service';
 import { SubscriptionsService } from '../subscriptions/subscriptions.service';
@@ -26,6 +30,8 @@ export class RecurringPaymentsService {
     private userModel: Model<UserDocument>,
     @InjectModel(Dismantler.name)
     private dismantlerModel: Model<DismantlerDocument>,
+    @InjectModel(CarFinesSubscription.name)
+    private carFinesSubscriptionModel: Model<CarFinesSubscriptionDocument>,
     private bogPaymentService: BOGPaymentService,
     private paymentsService: PaymentsService,
     private subscriptionsService: SubscriptionsService,
@@ -167,11 +173,42 @@ export class RecurringPaymentsService {
         }
       }
 
-      // 5. გადახდების დამუშავება
+      // 5. CarFinesSubscription-ების მოძებნა რეკურინგ გადახდისთვის
+      this.logger.log(
+        `🔍 ვეძებ CarFinesSubscription-ებს რეკურინგ გადახდისთვის...`,
+      );
+      const carFinesSubsToCharge = await this.carFinesSubscriptionModel
+        .find({
+          status: 'active',
+          isPaid: true,
+          isFirstCar: false, // პირველი უფასოა, მხოლოდ დამატებითებს ვაჭრით
+          nextBillingDate: { $lte: now },
+          bogCardToken: { $exists: true, $ne: null },
+        })
+        .exec();
+
+      this.logger.log(
+        `📊 ნაპოვნია ${carFinesSubsToCharge.length} CarFinesSubscription რეკურინგ გადახდისთვის`,
+      );
+
+      if (carFinesSubsToCharge.length > 0) {
+        this.logger.log(
+          `📋 ნაპოვნი CarFinesSubscription-ები რეკურინგ გადახდისთვის:`,
+        );
+        for (const carSub of carFinesSubsToCharge) {
+          this.logger.log(
+            `   • CarFinesSub ID: ${String(carSub._id)}, User: ${carSub.userId}, Vehicle: ${carSub.vehicleNumber}, Price: ${carSub.price}₾`,
+          );
+        }
+      }
+
+      // 6. გადახდების დამუშავება
       let successCount = 0;
       let failureCount = 0;
       let dismantlerSuccessCount = 0;
       let dismantlerFailureCount = 0;
+      let carFinesSuccessCount = 0;
+      let carFinesFailureCount = 0;
 
       // Subscription-ების გადახდა
       for (const subscription of subscriptionsToCharge) {
@@ -209,6 +246,30 @@ export class RecurringPaymentsService {
         }
       }
 
+      // CarFinesSubscription-ების გადახდა
+      for (const carFinesSub of carFinesSubsToCharge) {
+        try {
+          await this.processCarFinesSubscriptionPayment(carFinesSub);
+          carFinesSuccessCount++;
+        } catch (error: unknown) {
+          const carFinesSubId = String(carFinesSub._id);
+          this.logger.error(
+            `❌ CarFinesSubscription ${carFinesSubId} გადახდის შეცდომა:`,
+            error instanceof Error ? error.message : 'Unknown error',
+          );
+          carFinesFailureCount++;
+
+          // თუ გადახდა ვერ მოხერხდა, isPaid = false ვაყენებთ
+          await this.carFinesSubscriptionModel.findByIdAndUpdate(
+            carFinesSubId,
+            {
+              isPaid: false,
+              status: 'expired',
+            },
+          );
+        }
+      }
+
       this.logger.log(`✅ რეკურინგ გადახდების დამუშავება დასრულდა:`);
       this.logger.log(
         `   • Subscriptions: ${successCount} წარმატებული, ${failureCount} წარუმატებელი`,
@@ -217,7 +278,10 @@ export class RecurringPaymentsService {
         `   • Dismantlers: ${dismantlerSuccessCount} წარმატებული, ${dismantlerFailureCount} წარუმატებელი`,
       );
       this.logger.log(
-        `📊 სტატისტიკა: ${subscriptionsToCharge.length} subscription დამუშავებული, ${dismantlersToCharge.length} დაშლილი დამუშავებული, ${upcomingSubscriptions.length} subscription მომდევნო საათში, ${next24HoursSubscriptions.length} subscription მომდევნო 24 საათში`,
+        `   • CarFinesSubs: ${carFinesSuccessCount} წარმატებული, ${carFinesFailureCount} წარუმატებელი`,
+      );
+      this.logger.log(
+        `📊 სტატისტიკა: ${subscriptionsToCharge.length} subscription, ${dismantlersToCharge.length} დაშლილი, ${carFinesSubsToCharge.length} მანქანის გამოწერა, ${upcomingSubscriptions.length} subscription მომდევნო საათში, ${next24HoursSubscriptions.length} subscription მომდევნო 24 საათში`,
       );
     } catch (error) {
       this.logger.error(
@@ -379,6 +443,76 @@ export class RecurringPaymentsService {
     );
     this.logger.log(
       `   • Subscription-ის nextBillingDate განახლდება BOG callback-ში, მხოლოდ მაშინ, როცა payment-ი წარმატებულია`,
+    );
+  }
+
+  /**
+   * ერთი CarFinesSubscription-ის გადახდის დამუშავება (1₾/თვე)
+   */
+  private async processCarFinesSubscriptionPayment(
+    carFinesSub: CarFinesSubscriptionDocument,
+  ): Promise<void> {
+    const carFinesSubId = String(carFinesSub._id);
+    this.logger.log(
+      `💳 CarFinesSubscription ${carFinesSubId} გადახდის დამუშავება (${carFinesSub.vehicleNumber})...`,
+    );
+
+    if (!carFinesSub.bogCardToken) {
+      throw new Error(
+        'BOG payment token არ არის მოწოდებული CarFinesSubscription-ისთვის',
+      );
+    }
+
+    const shopOrderId = `car_fines_recurring_${carFinesSubId}_${Date.now()}_${carFinesSub.userId}`;
+
+    const recurringPaymentResult =
+      await this.bogPaymentService.processRecurringPayment({
+        parent_order_id: carFinesSub.bogCardToken,
+        external_order_id: shopOrderId,
+        order_id: carFinesSub.bogCardToken,
+        amount: carFinesSub.price,
+        currency: 'GEL',
+        shop_order_id: shopOrderId,
+        purchase_description: `ჯარიმების მონიტორინგი - ${carFinesSub.vehicleNumber} (${carFinesSub.price}₾/თვე)`,
+      });
+
+    const paymentResult = recurringPaymentResult as {
+      id?: string;
+      order_id?: string;
+      message?: string;
+    };
+    const newOrderId = paymentResult.id || paymentResult.order_id;
+
+    if (!newOrderId) {
+      throw new Error(
+        `BOG recurring payment ვერ მოხერხდა CarFinesSubscription-ისთვის: ${paymentResult.message || 'Unknown error'}`,
+      );
+    }
+
+    // Payment-ის შენახვა
+    await this.paymentsService.createPayment({
+      userId: carFinesSub.userId,
+      orderId: newOrderId,
+      amount: carFinesSub.price,
+      currency: 'GEL',
+      paymentMethod: 'BOG',
+      status: 'pending',
+      context: 'car_fines_subscription',
+      description: `ჯარიმების მონიტორინგი - ${carFinesSub.vehicleNumber} (Billing Cycle ${carFinesSub.billingCycles + 1})`,
+      paymentDate: new Date().toISOString(),
+      isRecurring: true,
+      recurringPaymentId: carFinesSubId,
+      externalOrderId: shopOrderId,
+      metadata: {
+        carFinesSubscriptionId: carFinesSubId,
+        carId: carFinesSub.carId,
+        vehicleNumber: carFinesSub.vehicleNumber,
+        serviceName: `ჯარიმების მონიტორინგი - ${carFinesSub.vehicleNumber}`,
+      },
+    });
+
+    this.logger.log(
+      `✅ CarFinesSubscription recurring payment გაგზავნილია: ${newOrderId}`,
     );
   }
 

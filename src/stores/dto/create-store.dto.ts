@@ -53,9 +53,9 @@ export class CreateStoreDto {
   @IsNotEmpty()
   location: string;
 
+  @IsOptional()
   @IsString()
-  @IsNotEmpty()
-  address: string;
+  address?: string;
 
   @IsString()
   @IsNotEmpty()
@@ -172,4 +172,8 @@ export class CreateStoreDto {
   @IsOptional()
   @IsBoolean()
   isVip?: boolean;
+
+  @IsOptional()
+  @IsString()
+  bogCardToken?: string; // BOG order_id recurring payments-ისთვის
 }

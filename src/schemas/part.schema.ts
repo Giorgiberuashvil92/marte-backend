@@ -64,6 +64,9 @@ export class Part {
 
   @Prop({ default: Date.now })
   updatedAt: Date;
+
+  @Prop()
+  bogCardToken?: string; // BOG order_id recurring payments-ისთვის
 }
 
 export const PartSchema = SchemaFactory.createForClass(Part);

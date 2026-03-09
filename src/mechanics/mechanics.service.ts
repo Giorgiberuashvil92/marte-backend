@@ -24,6 +24,8 @@ export interface Mechanic {
   description?: string;
   phone?: string;
   address?: string;
+  createdAt?: Date;
+  expiryDate?: Date;
 }
 
 @Injectable()
@@ -83,6 +85,8 @@ export class MechanicsService {
       address: (d as any).address,
       latitude: (d as any).latitude,
       longitude: (d as any).longitude,
+      createdAt: (d as any).createdAt,
+      expiryDate: (d as any).expiryDate,
     }));
   }
 
@@ -107,6 +111,8 @@ export class MechanicsService {
       address: (d as any).address,
       latitude: (d as any).latitude,
       longitude: (d as any).longitude,
+      createdAt: (d as any).createdAt,
+      expiryDate: (d as any).expiryDate,
     };
   }
 
@@ -143,6 +149,9 @@ export class MechanicsService {
       isFeatured: dto.isFeatured || false,
       expiryDate: expiryDate,
       status: 'pending',
+      ...((dto as { bogCardToken?: string }).bogCardToken && {
+        bogCardToken: (dto as { bogCardToken?: string }).bogCardToken,
+      }), // BOG order_id recurring payments-ისთვის
     });
     return {
       id: String(doc._id),

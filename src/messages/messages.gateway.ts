@@ -11,6 +11,7 @@ import {
 } from '@nestjs/websockets';
 import { Server, Socket } from 'socket.io';
 import { MessagesService } from './messages.service';
+import { RequestsService } from '../requests/requests.service';
 
 interface ChatMessage {
   id: string;
@@ -23,12 +24,27 @@ interface ChatMessage {
   isRead: boolean;
 }
 
+/** One room per conversation so both sides receive message:new */
+function chatRoom(
+  requestId: string,
+  userId: string,
+  partnerId: string,
+): string {
+  const a = String(userId || '').trim();
+  const b = String(partnerId || '').trim();
+  const pair = [a, b].sort();
+  return `chat:${requestId}:${pair[0]}:${pair[1]}`;
+}
+
 @WebSocketGateway({ namespace: '/chat', cors: { origin: '*' } })
 export class MessagesGateway {
   @WebSocketServer() server: Server;
   private readonly logger = new Logger(MessagesGateway.name);
 
-  constructor(private readonly messagesService: MessagesService) {}
+  constructor(
+    private readonly messagesService: MessagesService,
+    private readonly requestsService: RequestsService,
+  ) {}
 
   handleConnection(client: Socket) {
     const userId = (client.handshake.headers['x-user-id'] as string) || 'anon';
@@ -57,10 +73,11 @@ export class MessagesGateway {
   ) {
     if (!data?.requestId) return;
 
-    const room = `chat:${data.requestId}`;
-    client.join(room);
+    const userId = data.userId || '';
+    const partnerId = data.partnerId || '';
+    const room = chatRoom(data.requestId, userId, partnerId);
+    await client.join(room);
 
-    // Store user info in socket data
     client.data = {
       ...client.data,
       requestId: data.requestId,
@@ -68,57 +85,103 @@ export class MessagesGateway {
       partnerId: data.partnerId,
     };
 
+    this.logger.log(
+      `[CHAT] join_chat client=${client.id} room=${room} userId=${data.userId} partnerId=${partnerId}`,
+    );
+
     try {
-      // Load chat history and send to client
       const chatHistory = await this.messagesService.getChatHistory(
         data.requestId,
+        partnerId || undefined,
       );
       client.emit('chat:history', chatHistory);
+      this.logger.log(
+        `[CHAT] chat:history sent to ${client.id} messages=${chatHistory?.length ?? 0}`,
+      );
     } catch (error) {
       this.logger.error('Error loading chat history:', error);
     }
-
-    this.logger.log(
-      `client ${client.id} joined chat room ${room} for request ${data.requestId}`,
-    );
   }
 
   @SubscribeMessage('send_message')
   async onSendMessage(
     @ConnectedSocket() client: Socket,
     @MessageBody()
-    data: { requestId: string; message: string; sender: 'user' | 'partner' },
+    data: { requestId: string; message: string; sender?: 'user' | 'partner' },
   ) {
     if (!data?.requestId || !data?.message) return;
 
-    const room = `chat:${data.requestId}`;
+    const senderId = (client.data.userId as string) || '';
+    const otherUserId = (client.data.partnerId as string) || '';
+    const room = chatRoom(data.requestId, senderId, otherUserId);
+
+    this.logger.log(
+      `[CHAT] send_message senderId=${senderId} otherUserId=${otherUserId} text=${data.message.substring(0, 30)}...`,
+    );
+
+    // ორი მონაწილე: requestOwnerId = ვინც შეთავაზებას იღებს, offererId = ვინც თავაზობს. sender ყოველთვის დერივირდება (არ ვეყრდნობით client.sender-ს).
+    let requestOwnerId: string;
+    let offererId: string;
+
+    const conv = await this.messagesService.getConversationByParticipant(
+      data.requestId,
+      senderId,
+    );
+    if (conv) {
+      requestOwnerId = conv.userId;
+      offererId = conv.partnerId;
+      this.logger.log(
+        `[CHAT] from conversation: requestOwnerId=${requestOwnerId} offererId=${offererId}`,
+      );
+    } else {
+      try {
+        const request = await this.requestsService.findOne(data.requestId);
+        if (request?.userId) {
+          requestOwnerId = String(request.userId);
+          offererId = requestOwnerId === senderId ? otherUserId : senderId;
+          this.logger.log(
+            `[CHAT] from request (no conv): requestOwnerId=${requestOwnerId} offererId=${offererId}`,
+          );
+        } else {
+          requestOwnerId = otherUserId || senderId;
+          offererId = senderId === requestOwnerId ? otherUserId : senderId;
+          this.logger.log(
+            `[CHAT] no conv/request – from join: requestOwnerId=${requestOwnerId} offererId=${offererId}`,
+          );
+        }
+      } catch (err) {
+        this.logger.warn(`[CHAT] request lookup failed`, err);
+        requestOwnerId = otherUserId || senderId;
+        offererId = senderId === requestOwnerId ? otherUserId : senderId;
+      }
+    }
+
+    const userIdSave = requestOwnerId;
+    const partnerIdSave = offererId;
+    const senderSave: 'user' | 'partner' =
+      senderId === requestOwnerId ? 'user' : 'partner';
 
     try {
-      // Save message to database
       const savedMessage = await this.messagesService.create({
         requestId: data.requestId,
-        userId: client.data.userId as string,
-        partnerId: (client.data.partnerId as string) || undefined,
-        sender: data.sender,
+        userId: userIdSave,
+        partnerId: partnerIdSave || undefined,
+        sender: senderSave,
         message: data.message,
       });
 
-      // Create message object for broadcast
       const message: ChatMessage = {
         id: (savedMessage._id as any).toString(),
         requestId: data.requestId,
-        userId: client.data.userId as string,
-        partnerId: client.data.partnerId as string,
-        sender: data.sender,
+        userId: userIdSave,
+        partnerId: partnerIdSave,
+        sender: senderSave,
         message: data.message,
         timestamp: savedMessage.timestamp,
         isRead: false,
       };
 
-      // Broadcast message to all clients in the room
       this.server.to(room).emit('message:new', message);
-      // Also notify recent list updates (optional event)
-      // fire and forget
       void this.server.to(room).emit('conversation:updated', {
         requestId: data.requestId,
         lastMessage: data.message,
@@ -126,18 +189,17 @@ export class MessagesGateway {
       });
 
       this.logger.log(
-        `Message saved and broadcasted in room ${room}: ${data.message.substring(0, 50)}...`,
+        `[CHAT] message saved & broadcast room=${room} sender=${senderSave} msgId=${(savedMessage._id as any)?.toString?.()}`,
       );
     } catch (error) {
-      this.logger.error('Error saving message to database:', error);
+      this.logger.error('[CHAT] Error saving message to database:', error);
 
-      // Still broadcast the message even if database save fails
       const message: ChatMessage = {
         id: Date.now().toString(),
         requestId: data.requestId,
-        userId: client.data.userId as string,
-        partnerId: client.data.partnerId as string,
-        sender: data.sender,
+        userId: userIdSave,
+        partnerId: partnerIdSave,
+        sender: senderSave,
         message: data.message,
         timestamp: Date.now(),
         isRead: false,
@@ -154,7 +216,9 @@ export class MessagesGateway {
   ) {
     if (!data?.requestId) return;
 
-    const room = `chat:${data.requestId}`;
+    const userId = (client.data.userId as string) || '';
+    const partnerId = (client.data.partnerId as string) || '';
+    const room = chatRoom(data.requestId, userId, partnerId);
     client.to(room).emit('typing:start', {
       sender: data.sender,
       userId: client.data.userId as string,
@@ -169,7 +233,9 @@ export class MessagesGateway {
   ) {
     if (!data?.requestId) return;
 
-    const room = `chat:${data.requestId}`;
+    const userId = (client.data.userId as string) || '';
+    const partnerId = (client.data.partnerId as string) || '';
+    const room = chatRoom(data.requestId, userId, partnerId);
     client.to(room).emit('typing:stop', {
       sender: data.sender,
       userId: client.data.userId as string,
@@ -184,27 +250,28 @@ export class MessagesGateway {
   ) {
     if (!data?.requestId || !data?.messageId) return;
 
-    const room = `chat:${data.requestId}`;
+    const userId = (client.data.userId as string) || '';
+    const partnerId = (client.data.partnerId as string) || '';
+    const room = chatRoom(data.requestId, userId, partnerId);
     client.to(room).emit('message:read', {
       messageId: data.messageId,
       readBy: (client.data.userId || client.data.partnerId) as string,
     });
   }
 
-  // Helper method to emit new message to specific room
-  emitMessageNew(requestId: string, message: ChatMessage) {
-    const room = `chat:${requestId}`;
+  emitMessageNew(requestId: string, partnerId: string, message: ChatMessage) {
+    const userId = message.userId || '';
+    const room = chatRoom(requestId, userId, partnerId || '');
     this.server.to(room).emit('message:new', message);
   }
 
-  // Helper method to emit typing indicator
   emitTypingIndicator(
     requestId: string,
+    partnerId: string,
     sender: 'user' | 'partner',
     userId: string,
-    partnerId?: string,
   ) {
-    const room = `chat:${requestId}`;
+    const room = chatRoom(requestId, userId, partnerId || '');
     this.server.to(room).emit('typing:start', {
       sender,
       userId,

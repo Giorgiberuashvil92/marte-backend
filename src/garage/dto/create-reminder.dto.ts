@@ -33,4 +33,21 @@ export class CreateReminderDto {
   @IsOptional()
   @IsString()
   reminderTime?: string;
+
+  @IsOptional()
+  @IsString()
+  reminderTime2?: string; // მეორე დრო "ყოველდღე"-სთვის (დღეში 2 ჯერ)
+
+  @IsOptional()
+  @IsString()
+  startDate?: string; // დაწყების თარიღი recurring-ისთვის (YYYY-MM-DD)
+
+  @IsOptional()
+  @IsString()
+  endDate?: string; // დასრულების თარიღი recurring-ისთვის (YYYY-MM-DD)
+
+  @IsOptional()
+  @IsString()
+  @IsIn(['daily', 'weekly', 'monthly', 'yearly'])
+  recurringInterval?: string; // 'daily' | 'weekly' | 'monthly' | 'yearly'
 }

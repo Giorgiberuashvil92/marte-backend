@@ -8,8 +8,8 @@ export class CarFAXUsage {
   @Prop({ required: true, unique: true })
   userId: string;
 
-  @Prop({ default: 5 })
-  totalLimit: number; // მთლიანი ლიმიტი (5 ცალი)
+  @Prop({ default: 1 })
+  totalLimit: number; // მთლიანი ლიმიტი (1 ცალი)
 
   @Prop({ default: 0 })
   used: number; // გამოყენებული რაოდენობა

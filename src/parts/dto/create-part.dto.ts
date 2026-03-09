@@ -16,4 +16,8 @@ export class CreatePartDto {
   partNumber?: string;
   warranty?: string;
   status?: string;
+  address?: string;
+  latitude?: number;
+  longitude?: number;
+  bogCardToken?: string; // BOG order_id recurring payments-ისთვის
 }

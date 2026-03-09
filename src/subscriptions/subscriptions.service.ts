@@ -341,6 +341,83 @@ export class SubscriptionsService {
    * @param forceUpdate - თუ true, ყოველთვის ვეძებთ payment-ს, თუნდაც bogCardToken valid UUID იყოს
    */
   /**
+   * maxFinesCars-ის განახლება (upgrade)
+   * ყოველი დამატებითი მანქანისთვის +5 ლარი თვეში
+   */
+  async upgradeFinesCarsLimit(
+    userId: string,
+    additionalCars: number = 1,
+  ): Promise<SubscriptionDocument | null> {
+    try {
+      this.logger.log(
+        `🚗 Upgrading fines cars limit for user ${userId}: +${additionalCars} cars`,
+      );
+
+      const subscription = await this.subscriptionModel
+        .findOne({ userId, status: 'active' })
+        .exec();
+
+      if (!subscription) {
+        throw new HttpException(
+          'აქტიური გამოწერა ვერ მოიძებნა',
+          HttpStatus.NOT_FOUND,
+        );
+      }
+
+      if (subscription.planId !== 'premium') {
+        throw new HttpException(
+          'მანქანების ლიმიტის გაზრდა მხოლოდ პრემიუმ იუზერებისთვისაა',
+          HttpStatus.FORBIDDEN,
+        );
+      }
+
+      const currentMax: number = subscription.maxFinesCars ?? 1;
+      const newMax = currentMax + additionalCars;
+      const additionalPrice = additionalCars * 1; // 5 ლარი ყოველი დამატებითი მანქანისთვის
+
+      subscription.maxFinesCars = newMax;
+      subscription.updatedAt = new Date();
+      const updated = await subscription.save();
+
+      this.logger.log(
+        `✅ Fines cars limit upgraded: ${currentMax} → ${newMax} (+${additionalPrice} ₾/თვე)`,
+      );
+
+      // Notification
+      try {
+        await this.notificationsService.sendPushToUsers(
+          [userId],
+          {
+            title: '🚗 მანქანების ლიმიტი გაიზარდა!',
+            body: `ახლა შეგიძლიათ ${newMax} მანქანის ჯარიმების მონიტორინგი.`,
+            data: {
+              type: 'fines_limit_upgraded',
+              newLimit: newMax,
+              screen: 'Fines',
+            },
+            sound: 'default',
+            badge: 1,
+          },
+          'system',
+        );
+      } catch (notificationError) {
+        this.logger.warn('Notification-ის გაგზავნა ვერ მოხერხდა');
+      }
+
+      return updated;
+    } catch (error) {
+      this.logger.error(`❌ Failed to upgrade fines cars limit: ${error}`);
+      if (error instanceof HttpException) {
+        throw error;
+      }
+      throw new HttpException(
+        'მანქანების ლიმიტის განახლება ვერ მოხერხდა',
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
+  }
+
+  /**
    * CarFAX counter-ის განახლება
    */
   async updateCarfaxCounter(

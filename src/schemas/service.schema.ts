@@ -76,6 +76,9 @@ export class Service {
 
   @Prop({ default: Date.now })
   updatedAt: Date;
+
+  @Prop()
+  bogCardToken?: string; // BOG order_id recurring payments-ისთვის
 }
 
 export const ServiceSchema = SchemaFactory.createForClass(Service);

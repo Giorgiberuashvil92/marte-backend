@@ -62,6 +62,9 @@ export class Subscription {
   @Prop({ default: 0 })
   carfaxRequestsUsed: number; // პრემიუმ იუზერებისთვის გამოყენებული CarFAX მოთხოვნების რაოდენობა (მაქს 5)
 
+  @Prop({ default: 1 })
+  maxFinesCars: number; // პრემიუმ: 1 მანქანა ჩათვლილია, დამატებითი მანქანებისთვის ცალკე გადახდა
+
   @Prop({ default: Date.now })
   createdAt: Date;
 

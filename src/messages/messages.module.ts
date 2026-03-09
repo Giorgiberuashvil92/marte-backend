@@ -9,6 +9,7 @@ import { MessagesController } from './messages.controller';
 import { MessagesService } from './messages.service';
 import { MessagesGateway } from './messages.gateway';
 import { NotificationsModule } from '../notifications/notifications.module';
+import { RequestsModule } from '../requests/requests.module';
 
 @Module({
   imports: [
@@ -17,6 +18,7 @@ import { NotificationsModule } from '../notifications/notifications.module';
       { name: Conversation.name, schema: ConversationSchema },
     ]),
     NotificationsModule,
+    RequestsModule,
   ],
   controllers: [MessagesController],
   providers: [MessagesService, MessagesGateway],

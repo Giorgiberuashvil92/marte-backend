@@ -5,7 +5,7 @@ export type ConversationDocument = Conversation & Document;
 
 @Schema({ timestamps: true })
 export class Conversation {
-  @Prop({ required: true, unique: true })
+  @Prop({ required: true })
   requestId: string;
 
   @Prop({ required: true })
@@ -30,4 +30,4 @@ export class Conversation {
 export const ConversationSchema = SchemaFactory.createForClass(Conversation);
 ConversationSchema.index({ userId: 1, lastMessageAt: -1 });
 ConversationSchema.index({ partnerId: 1, lastMessageAt: -1 });
-// requestId already has unique index from @Prop({ unique: true })
+ConversationSchema.index({ requestId: 1, partnerId: 1 }, { unique: true });

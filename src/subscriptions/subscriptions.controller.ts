@@ -6,7 +6,6 @@ import {
   Body,
   Logger,
   HttpException,
-  HttpStatus,
 } from '@nestjs/common';
 import { SubscriptionsService } from './subscriptions.service';
 
@@ -69,6 +68,68 @@ export class SubscriptionsController {
         success: false,
         message: 'Failed to update subscription token',
         error: error instanceof Error ? error.message : 'Unknown error',
+      };
+    }
+  }
+
+  /**
+   * მანქანების ლიმიტის გაზრდა (upgrade)
+   * POST /subscriptions/upgrade-fines-cars
+   * Body: { userId: string, additionalCars?: number }
+   */
+  @Post('upgrade-fines-cars')
+  async upgradeFinesCarsLimit(
+    @Body() body: { userId: string; additionalCars?: number },
+  ) {
+    try {
+      if (!body.userId || body.userId.trim().length === 0) {
+        return {
+          success: false,
+          message: 'userId აუცილებელია',
+        };
+      }
+
+      this.logger.log(`🚗 Fines cars limit upgrade for user: ${body.userId}`);
+
+      const subscription =
+        await this.subscriptionsService.upgradeFinesCarsLimit(
+          body.userId.trim(),
+          body.additionalCars || 1,
+        );
+
+      if (!subscription) {
+        return {
+          success: false,
+          message: 'გამოწერა ვერ მოიძებნა',
+        };
+      }
+
+      const additionalPrice = (body.additionalCars || 1) * 1;
+
+      return {
+        success: true,
+        message: `მანქანების ლიმიტი გაიზარდა (+${additionalPrice} ₾/თვე)`,
+        data: {
+          subscriptionId: String(subscription._id),
+          maxFinesCars: subscription.maxFinesCars,
+          additionalMonthlyPrice: additionalPrice,
+        },
+      };
+    } catch (error) {
+      this.logger.error('❌ Fines cars limit upgrade error:', error);
+
+      if (error instanceof HttpException) {
+        return {
+          success: false,
+          message: error.message,
+          statusCode: error.getStatus(),
+        };
+      }
+
+      return {
+        success: false,
+        message: 'მანქანების ლიმიტის განახლებისას მოხდა შეცდომა',
+        error: error instanceof Error ? error.message : 'უცნობი შეცდომა',
       };
     }
   }

@@ -14,6 +14,7 @@ import { Dismantler, DismantlerSchema } from '../schemas/dismantler.schema';
 import { SubscriptionsModule } from '../subscriptions/subscriptions.module';
 import { CarFAXModule } from '../carfax/carfax.module';
 import { StoresModule } from '../stores/stores.module';
+import { FinesModule } from '../fines/fines.module';
 
 @Module({
   imports: [
@@ -26,6 +27,7 @@ import { StoresModule } from '../stores/stores.module';
     SubscriptionsModule,
     CarFAXModule,
     StoresModule,
+    FinesModule,
   ],
   controllers: [BOGController],
   providers: [BOGPaymentService, BOGOAuthService, PaymentsService],

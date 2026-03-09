@@ -56,6 +56,15 @@ export class Mechanic {
 
   @Prop({ default: 'active' })
   status?: string; // active, pending, expired
+
+  @Prop()
+  bogCardToken?: string; // BOG order_id recurring payments-ისთვის
+
+  @Prop({ type: Date })
+  createdAt?: Date; // Mongoose timestamps: true
+
+  @Prop({ type: Date })
+  updatedAt?: Date; // Mongoose timestamps: true
 }
 
 export type MechanicDocument = HydratedDocument<Mechanic>;

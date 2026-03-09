@@ -27,9 +27,9 @@ export class CreateServiceDto {
   @IsNotEmpty()
   location: string;
 
+  @IsOptional()
   @IsString()
-  @IsNotEmpty()
-  address: string;
+  address?: string;
 
   @IsString()
   @IsNotEmpty()
@@ -102,4 +102,8 @@ export class CreateServiceDto {
   @IsOptional()
   @IsBoolean()
   isFeatured?: boolean;
+
+  @IsOptional()
+  @IsString()
+  bogCardToken?: string; // BOG order_id recurring payments-ისთვის
 }
