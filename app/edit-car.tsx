@@ -12,6 +12,8 @@ import {
   KeyboardAvoidingView,
   Platform,
   Alert,
+  Modal,
+  Pressable,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -52,7 +54,7 @@ export default function EditCarScreen() {
     techPassport: '',
   });
 
-  const [showDropdown, setShowDropdown] = useState<string | null>(null);
+  const [bottomSheet, setBottomSheet] = useState<{ key: string; label: string; options: string[] } | null>(null);
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
   const [originalImageUri, setOriginalImageUri] = useState<string | undefined>(undefined);
   const [validationErrors, setValidationErrors] = useState<{ [key: string]: string }>({});
@@ -229,62 +231,45 @@ export default function EditCarScreen() {
     }
   };
 
-  const renderDropdown = (key: string, options: string[], label: string, index: number) => {
-    const isOpen = showDropdown === key;
+  const openBottomSheet = (key: string, label: string, options: string[]) => {
+    setBottomSheet({ key, label, options });
+    if (validationErrors[key]) {
+      setValidationErrors(prev => {
+        const next = { ...prev };
+        delete next[key];
+        return next;
+      });
+    }
+  };
+  const closeBottomSheet = () => setBottomSheet(null);
+  const onSelectOption = (key: string, option: string) => {
+    setFormData(prev => ({ ...prev, [key]: option }));
+    closeBottomSheet();
+    if (validationErrors[key]) {
+      setValidationErrors(prev => {
+        const next = { ...prev };
+        delete next[key];
+        return next;
+      });
+    }
+  };
+  const renderPickerTrigger = (key: string, options: string[], label: string) => {
     const value = formData[key as keyof typeof formData] || '';
     const err = validationErrors[key];
-
     return (
-      <View style={[styles.inputContainer, { zIndex: isOpen ? 1000 - index : 1 }]}>
+      <View style={styles.inputContainer}>
         <Text style={styles.inputLabel}>{label}</Text>
         <TouchableOpacity
           style={[styles.dropdown, err && styles.inputError]}
-          onPress={() => {
-            setShowDropdown(isOpen ? null : key);
-            if (err) {
-              setValidationErrors(prev => {
-                const newErrors = { ...prev };
-                delete newErrors[key];
-                return newErrors;
-              });
-            }
-          }}
+          onPress={() => openBottomSheet(key, label, options)}
           activeOpacity={0.7}
         >
           <Text style={[styles.dropdownText, !value && styles.dropdownPlaceholder]}>
             {value || `აირჩიეთ ${label.toLowerCase()}`}
           </Text>
-          <Ionicons name={isOpen ? 'chevron-up' : 'chevron-down'} size={20} color="#9CA3AF" />
+          <Ionicons name="chevron-down" size={20} color="#9CA3AF" />
         </TouchableOpacity>
-        {err && (
-          <Text style={styles.errorText}>{err}</Text>
-        )}
-        {isOpen && (
-          <View style={[styles.dropdownList, { zIndex: 10000 }]}>
-            <ScrollView style={styles.dropdownScroll} nestedScrollEnabled>
-              {options.map((option) => (
-                <TouchableOpacity
-                  key={option}
-                  style={styles.dropdownItem}
-                  onPress={() => {
-                    setFormData(prev => ({ ...prev, [key]: option }));
-                    setShowDropdown(null);
-                    if (validationErrors[key]) {
-                      setValidationErrors(prev => {
-                        const newErrors = { ...prev };
-                        delete newErrors[key];
-                        return newErrors;
-                      });
-                    }
-                  }}
-                  activeOpacity={0.7}
-                >
-                  <Text style={styles.dropdownItemText}>{option}</Text>
-                </TouchableOpacity>
-              ))}
-            </ScrollView>
-          </View>
-        )}
+        {err && <Text style={styles.errorText}>{err}</Text>}
       </View>
     );
   };
@@ -349,13 +334,32 @@ export default function EditCarScreen() {
           <View style={styles.formSection}>
             <Text style={styles.sectionTitle}>მწარმოებელი და მანქანის მოდელი</Text>
 
-            {renderDropdown('make', carBrands, 'მწარმოებელი', 0)}
-            {renderDropdown('model', carModels, 'მოდელი', 1)}
-            {renderDropdown('year', CAR_YEARS, 'წელი', 2)}
-            {renderDropdown('category', CATEGORIES, 'კატეგორია', 3)}
-            {renderDropdown('fuelType', FUEL_TYPES, 'საწვავის ტიპი', 4)}
-            {renderDropdown('color', COLORS, 'ფერი', 5)}
-            {renderDropdown('engine', ['1.0L', '1.2L', '1.4L', '1.6L', '1.8L', '2.0L', '2.2L', '2.5L', '3.0L', '3.5L', '4.0L', '5.0L'], 'ძრავი', 6)}
+            {renderPickerTrigger('make', carBrands, 'მწარმოებელი')}
+            {renderPickerTrigger('model', carModels, 'მოდელი')}
+            {renderPickerTrigger('year', CAR_YEARS, 'წელი')}
+            {renderPickerTrigger('category', CATEGORIES, 'კატეგორია')}
+            {renderPickerTrigger('fuelType', FUEL_TYPES, 'საწვავის ტიპი')}
+            {renderPickerTrigger('color', COLORS, 'ფერი')}
+            {renderPickerTrigger('engine', [
+'0.8L',
+'1.0L',
+'1.2L',
+'1.3L',
+'1.4L',
+'1.5L',
+'1.6L',
+'1.8L',
+'2.0L',
+'2.2L',
+'2.4L',
+'2.5L',
+'3.0L',
+'3.5L',
+'4.0L',
+'4.4L',
+'5.0L',
+'6.0L'
+], 'ძრავი')}
 
             <View style={styles.inputContainer}>
               <Text style={styles.inputLabel}>VIN კოდი</Text>
@@ -420,6 +424,35 @@ export default function EditCarScreen() {
           </TouchableOpacity>
         </ScrollView>
       </KeyboardAvoidingView>
+
+      <Modal visible={!!bottomSheet} transparent animationType="slide" onRequestClose={closeBottomSheet}>
+        <Pressable style={styles.bottomSheetOverlay} onPress={closeBottomSheet}>
+          <Pressable style={styles.bottomSheetPane} onPress={() => {}}>
+            <View style={styles.bottomSheetHandle} />
+            <Text style={styles.bottomSheetTitle}>{bottomSheet?.label || ''}</Text>
+            <ScrollView
+              style={styles.bottomSheetScroll}
+              contentContainerStyle={styles.bottomSheetScrollContent}
+              showsVerticalScrollIndicator={true}
+              keyboardShouldPersistTaps="handled"
+            >
+              {bottomSheet?.options.map((option) => (
+                <TouchableOpacity
+                  key={option}
+                  style={styles.bottomSheetItem}
+                  onPress={() => bottomSheet && onSelectOption(bottomSheet.key, option)}
+                  activeOpacity={0.7}
+                >
+                  <Text style={styles.bottomSheetItemText}>{option}</Text>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+            <TouchableOpacity style={styles.bottomSheetCancel} onPress={closeBottomSheet} activeOpacity={0.7}>
+              <Text style={styles.bottomSheetCancelText}>გაუქმება</Text>
+            </TouchableOpacity>
+          </Pressable>
+        </Pressable>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -552,37 +585,67 @@ const styles = StyleSheet.create({
   dropdownPlaceholder: {
     color: '#9CA3AF',
   },
-  dropdownList: {
-    position: 'absolute',
-    top: '100%',
-    left: 0,
-    right: 0,
+  bottomSheetOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.4)',
+    justifyContent: 'flex-end',
+  },
+  bottomSheetPane: {
     backgroundColor: '#FFFFFF',
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: '#E5E7EB',
-    marginTop: 4,
-    maxHeight: 200,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.1,
-    shadowRadius: 12,
-    elevation: 10,
-    zIndex: 10000,
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    paddingTop: 12,
+    paddingBottom: Platform.OS === 'ios' ? 34 : 24,
+    maxHeight: '70%',
   },
-  dropdownScroll: {
-    maxHeight: 200,
+  bottomSheetHandle: {
+    width: 40,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: '#E5E7EB',
+    alignSelf: 'center',
+    marginBottom: 16,
   },
-  dropdownItem: {
+  bottomSheetTitle: {
+    fontSize: 18,
+    fontFamily: 'HelveticaMedium',
+    textTransform: 'uppercase',
+    fontWeight: '700',
+    color: '#111827',
+    textAlign: 'center',
+    marginBottom: 12,
+    paddingHorizontal: 20,
+  },
+  bottomSheetScroll: { maxHeight: 320 },
+  bottomSheetScrollContent: { paddingHorizontal: 20, paddingBottom: 12 },
+  bottomSheetItem: {
+    paddingVertical: 14,
     paddingHorizontal: 16,
-    paddingVertical: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: '#F3F4F6',
+    borderRadius: 12,
+    marginBottom: 4,
+    backgroundColor: '#F9FAFB',
   },
-  dropdownItemText: {
-    fontSize: 16,
+  bottomSheetItemText: {
+    fontSize: 15,
     color: '#111827',
     fontWeight: '500',
+    fontFamily: 'HelveticaMedium',
+  },
+  bottomSheetCancel: {
+    marginTop: 12,
+    marginHorizontal: 20,
+    paddingVertical: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 12,
+    backgroundColor: '#F3F4F6',
+  },
+  bottomSheetCancelText: {
+    fontSize: 15,
+    fontFamily: 'HelveticaMedium',
+    fontWeight: '600',
+    color: '#6B7280',
+    textTransform: 'uppercase',
   },
   textInput: {
     backgroundColor: '#F9FAFB',

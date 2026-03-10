@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, Platform } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, Platform, Dimensions } from 'react-native';
 import { BottomTabBarProps } from '@react-navigation/bottom-tabs';
 import FontAwesome from '@expo/vector-icons/FontAwesome';
 import { Ionicons } from '@expo/vector-icons';
@@ -12,7 +12,10 @@ import { aiApi } from '@/services/aiApi';
 export default function CustomTabBar({ state, descriptors, navigation }: BottomTabBarProps) {
   const colorScheme = useColorScheme() ?? 'light';
   const theme = Colors[colorScheme];
-  const styles = createStyles(theme);
+  const { width } = Dimensions.get('window');
+  const isSmallDevice = width < 360;
+  const isCompact = isSmallDevice || (Platform.OS === 'android' && width < 400);
+  const styles = createStyles(theme, isCompact);
   const router = useRouter();
   const { user } = useUser();
   const [sellerStatus, setSellerStatus] = useState<any>(null);
@@ -83,11 +86,12 @@ export default function CustomTabBar({ state, descriptors, navigation }: BottomT
     const originalIndex = state.routes.findIndex(r => r.key === route.key);
     const isFocused = state.index === originalIndex;
     const iconName = (options.tabBarIcon as any)?.({ color: '#000' })?.props?.name as React.ComponentProps<typeof FontAwesome>['name'] | undefined;
+    const iconSize = isCompact ? 15 : 18;
 
     // Center slot is reserved for the floating action button
     return (
       <TouchableOpacity key={route.key} accessibilityRole="button" activeOpacity={0.9} style={styles.tabItem} onPress={() => goTo(route.name, originalIndex)}>
-        {iconName && <FontAwesome name={iconName} size={18} color={isFocused ? theme.text : theme.secondary} />}
+        {iconName && <FontAwesome name={iconName} size={iconSize} color={isFocused ? theme.text : theme.secondary} />}
         <Text style={[styles.tabText, { color: isFocused ? theme.text : theme.secondary }]} numberOfLines={1}>
           {String(label)}
         </Text>
@@ -103,13 +107,13 @@ export default function CustomTabBar({ state, descriptors, navigation }: BottomT
         <View style={styles.side}>{tabItems.slice(2)}</View>
       </View>
       <TouchableOpacity activeOpacity={0.9} style={styles.fab} onPress={handleNewsFeedPress}>
-        <Ionicons name="newspaper" size={24} color="#FFFFFF" />
+        <Ionicons name="newspaper" size={isCompact ? 20 : 24} color="#FFFFFF" />
       </TouchableOpacity>
     </View>
   );
 }
 
-function createStyles(theme: typeof Colors.light) {
+function createStyles(theme: typeof Colors.light, isCompact: boolean) {
   return StyleSheet.create({
     wrapper: {
       position: 'absolute',
@@ -126,8 +130,8 @@ function createStyles(theme: typeof Colors.light) {
       borderRadius: 24,
       borderWidth: 1,
       borderColor: theme.border,
-      paddingHorizontal: 16,
-      height: 70,
+      paddingHorizontal: isCompact ? 10 : 16,
+      height: isCompact ? 54 : 70,
       width: '92%',
       shadowColor: '#000',
       shadowOffset: { width: 0, height: 8 },
@@ -135,16 +139,21 @@ function createStyles(theme: typeof Colors.light) {
       shadowRadius: 16,
       elevation: 6,
     },
-    side: { flexDirection: 'row', gap: 24, alignItems: 'center' },
-    fabHole: { width: 64 },
+    side: { flexDirection: 'row', gap: isCompact ? 12 : 24, alignItems: 'center' },
+    fabHole: { width: isCompact ? 50 : 64 },
     tabItem: { alignItems: 'center', justifyContent: 'center' },
-    tabText: { fontFamily: 'HelveticaMedium', textTransform: 'uppercase', fontSize: 11, marginTop: 4 },
+    tabText: {
+      fontFamily: 'HelveticaMedium',
+      textTransform: 'uppercase',
+      fontSize: isCompact ? 8 : 11,
+      marginTop: isCompact ? 1 : 4,
+    },
     fab: {
       position: 'absolute',
       bottom: 24,
-      width: 56,
-      height: 56,
-      borderRadius: 28,
+      width: isCompact ? 46 : 56,
+      height: isCompact ? 46 : 56,
+      borderRadius: isCompact ? 23 : 28,
       backgroundColor: '#111827',
       alignItems: 'center',
       justifyContent: 'center',

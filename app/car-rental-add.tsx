@@ -11,6 +11,8 @@ import {
   KeyboardAvoidingView,
   Platform,
   TouchableWithoutFeedback,
+  Modal,
+  Pressable,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -69,10 +71,7 @@ export default function CarRentalAddScreen() {
   const [features, setFeatures] = useState<string[]>([]);
   const [featureInput, setFeatureInput] = useState('');
   const [photos, setPhotos] = useState<{ uri: string; isLocal: boolean; cloudinaryUrl?: string }[]>([]);
-  const [showCategoryDropdown, setShowCategoryDropdown] = useState(false);
-  const [showLocationDropdown, setShowLocationDropdown] = useState(false);
-  const [showTransmissionDropdown, setShowTransmissionDropdown] = useState(false);
-  const [showFuelTypeDropdown, setShowFuelTypeDropdown] = useState(false);
+  const [bottomSheet, setBottomSheet] = useState<{ label: string; options: string[]; fieldKey: string } | null>(null);
 
   // Check BOG OAuth status on mount
   useEffect(() => {
@@ -300,61 +299,34 @@ export default function CarRentalAddScreen() {
     }
   };
 
-  const closeAllDropdowns = () => {
-    setShowCategoryDropdown(false);
-    setShowLocationDropdown(false);
-    setShowTransmissionDropdown(false);
-    setShowFuelTypeDropdown(false);
+  const openBottomSheet = (label: string, options: string[], fieldKey: string) => {
+    setBottomSheet({ label, options, fieldKey });
+  };
+  const closeBottomSheet = () => setBottomSheet(null);
+  const onSelectOption = (value: string) => {
+    if (!bottomSheet) return;
+    setForm(prev => ({ ...prev, [bottomSheet.fieldKey]: value }));
+    closeBottomSheet();
   };
 
-  const renderDropdown = (
+  const renderPickerTrigger = (
     options: string[],
     selected: string,
-    onSelect: (value: string) => void,
-    visible: boolean,
-    setVisible: (visible: boolean) => void,
+    fieldKey: string,
+    label: string,
     placeholder: string
   ) => (
     <View style={styles.dropdownContainer}>
       <TouchableOpacity
         style={styles.dropdownButton}
-        onPress={() => {
-          closeAllDropdowns();
-          setVisible(!visible);
-        }}
+        onPress={() => openBottomSheet(label, options, fieldKey)}
         activeOpacity={0.7}
       >
         <Text style={[styles.dropdownText, !selected && styles.placeholder]}>
           {selected || placeholder}
         </Text>
-        <Ionicons
-          name={visible ? 'chevron-up' : 'chevron-down'}
-          size={20}
-          color="#6B7280"
-        />
+        <Ionicons name="chevron-down" size={20} color="#6B7280" />
       </TouchableOpacity>
-      {visible && (
-        <View style={styles.dropdownList}>
-          <ScrollView nestedScrollEnabled>
-            {options.map((option) => (
-              <TouchableOpacity
-                key={option}
-                style={styles.dropdownItem}
-                onPress={() => {
-                  onSelect(option);
-                  setVisible(false);
-                }}
-                activeOpacity={0.7}
-              >
-                <Text style={styles.dropdownItemText}>{option}</Text>
-                {selected === option && (
-                  <Ionicons name="checkmark" size={18} color="#111827" />
-                )}
-              </TouchableOpacity>
-            ))}
-          </ScrollView>
-        </View>
-      )}
     </View>
   );
 
@@ -374,7 +346,7 @@ export default function CarRentalAddScreen() {
           <View style={{ width: 40 }} />
         </View>
 
-        <TouchableWithoutFeedback onPress={closeAllDropdowns}>
+        <TouchableWithoutFeedback onPress={closeBottomSheet}>
           <ScrollView
             style={styles.scrollView}
             contentContainerStyle={styles.scrollContent}
@@ -435,14 +407,7 @@ export default function CarRentalAddScreen() {
 
             <View style={styles.inputContainer}>
               <Text style={styles.label}>კატეგორია *</Text>
-              {renderDropdown(
-                CATEGORIES,
-                form.category,
-                (value) => setForm({ ...form, category: value }),
-                showCategoryDropdown,
-                setShowCategoryDropdown,
-                'აირჩიეთ კატეგორია'
-              )}
+              {renderPickerTrigger(CATEGORIES, form.category, 'category', 'კატეგორია', 'აირჩიეთ კატეგორია')}
             </View>
           </View>
 
@@ -507,26 +472,12 @@ export default function CarRentalAddScreen() {
 
             <View style={styles.inputContainer}>
               <Text style={styles.label}>ტრანსმისია *</Text>
-              {renderDropdown(
-                TRANSMISSIONS,
-                form.transmission,
-                (value) => setForm({ ...form, transmission: value }),
-                showTransmissionDropdown,
-                setShowTransmissionDropdown,
-                'აირჩიეთ ტრანსმისია'
-              )}
+              {renderPickerTrigger(TRANSMISSIONS, form.transmission, 'transmission', 'ტრანსმისია', 'აირჩიეთ ტრანსმისია')}
             </View>
 
             <View style={styles.inputContainer}>
               <Text style={styles.label}>საწვავის ტიპი *</Text>
-              {renderDropdown(
-                FUEL_TYPES,
-                form.fuelType,
-                (value) => setForm({ ...form, fuelType: value }),
-                showFuelTypeDropdown,
-                setShowFuelTypeDropdown,
-                'აირჩიეთ საწვავის ტიპი'
-              )}
+              {renderPickerTrigger(FUEL_TYPES, form.fuelType, 'fuelType', 'საწვავის ტიპი', 'აირჩიეთ საწვავის ტიპი')}
             </View>
 
             <View style={styles.inputContainer}>
@@ -548,14 +499,7 @@ export default function CarRentalAddScreen() {
 
             <View style={styles.inputContainer}>
               <Text style={styles.label}>ქალაქი *</Text>
-              {renderDropdown(
-                LOCATIONS,
-                form.location,
-                (value) => setForm({ ...form, location: value }),
-                showLocationDropdown,
-                setShowLocationDropdown,
-                'აირჩიეთ ქალაქი'
-              )}
+              {renderPickerTrigger(LOCATIONS, form.location, 'location', 'ქალაქი', 'აირჩიეთ ქალაქი')}
             </View>
 
             <View style={styles.inputContainer}>
@@ -745,6 +689,38 @@ export default function CarRentalAddScreen() {
           setBogPaymentUrl('');
         }}
       />
+
+      <Modal visible={!!bottomSheet} transparent animationType="slide" onRequestClose={closeBottomSheet}>
+        <Pressable style={styles.bottomSheetOverlay} onPress={closeBottomSheet}>
+          <Pressable style={styles.bottomSheetPane} onPress={() => {}}>
+            <View style={styles.bottomSheetHandle} />
+            <Text style={styles.bottomSheetTitle}>{bottomSheet ? `აირჩიეთ ${bottomSheet.label}` : ''}</Text>
+            <ScrollView
+              style={styles.bottomSheetScroll}
+              contentContainerStyle={styles.bottomSheetScrollContent}
+              showsVerticalScrollIndicator={true}
+              keyboardShouldPersistTaps="handled"
+            >
+              {bottomSheet?.options.map((option) => (
+                <TouchableOpacity
+                  key={option}
+                  style={styles.bottomSheetItem}
+                  onPress={() => onSelectOption(option)}
+                  activeOpacity={0.7}
+                >
+                  <Text style={styles.bottomSheetItemText}>{option}</Text>
+                  {bottomSheet && form[bottomSheet.fieldKey as keyof typeof form] === option && (
+                    <Ionicons name="checkmark" size={18} color="#111827" />
+                  )}
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+            <TouchableOpacity style={styles.bottomSheetCancel} onPress={closeBottomSheet} activeOpacity={0.7}>
+              <Text style={styles.bottomSheetCancelText}>გაუქმება</Text>
+            </TouchableOpacity>
+          </Pressable>
+        </Pressable>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -852,37 +828,67 @@ const styles = StyleSheet.create({
   placeholder: {
     color: '#9CA3AF',
   },
-  dropdownList: {
-    position: 'absolute',
-    top: '100%',
-    left: 0,
-    right: 0,
-    backgroundColor: '#FFFFFF',
-    borderRadius: 12,
-    marginTop: 4,
-    maxHeight: 200,
-    borderWidth: 1,
-    borderColor: '#E5E7EB',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
-    elevation: 5,
-    zIndex: 1000,
+  bottomSheetOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.4)',
+    justifyContent: 'flex-end',
   },
-  dropdownItem: {
-    paddingHorizontal: 16,
-    paddingVertical: 12,
+  bottomSheetPane: {
+    backgroundColor: '#FFFFFF',
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    paddingTop: 12,
+    paddingBottom: Platform.OS === 'ios' ? 34 : 24,
+    maxHeight: '70%',
+  },
+  bottomSheetHandle: {
+    width: 40,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: '#E5E7EB',
+    alignSelf: 'center',
+    marginBottom: 16,
+  },
+  bottomSheetTitle: {
+    fontSize: 18,
+    fontFamily: 'Outfit',
+    fontWeight: '700',
+    color: '#111827',
+    textAlign: 'center',
+    marginBottom: 12,
+    paddingHorizontal: 20,
+  },
+  bottomSheetScroll: { maxHeight: 320 },
+  bottomSheetScrollContent: { paddingHorizontal: 20, paddingBottom: 12 },
+  bottomSheetItem: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    borderBottomWidth: 1,
-    borderBottomColor: '#F3F4F6',
+    paddingVertical: 14,
+    paddingHorizontal: 16,
+    borderRadius: 12,
+    marginBottom: 4,
+    backgroundColor: '#F9FAFB',
   },
-  dropdownItemText: {
+  bottomSheetItemText: {
     fontSize: 15,
     fontFamily: 'Outfit',
     color: '#111827',
+  },
+  bottomSheetCancel: {
+    marginTop: 12,
+    marginHorizontal: 20,
+    paddingVertical: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 12,
+    backgroundColor: '#F3F4F6',
+  },
+  bottomSheetCancelText: {
+    fontSize: 15,
+    fontFamily: 'Outfit',
+    fontWeight: '600',
+    color: '#6B7280',
   },
   featureInputContainer: {
     flexDirection: 'row',

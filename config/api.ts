@@ -15,10 +15,19 @@ const getLanIpFromHost = (): string | undefined => {
   return undefined;
 };
 
+const RAILWAY_URL = 'https://marte-backend-production.up.railway.app';
+
+// დროებით: true = ყოველთვის Railway, false = dev-ში ლოკალი
+const FORCE_RAILWAY = true;
+
 const getApiUrl = () => {
   const override = process.env.EXPO_PUBLIC_API_URL;
   if (override) {
     return override;
+  }
+  if (FORCE_RAILWAY) {
+    console.log('🌐 Using Railway API (forced):', RAILWAY_URL);
+    return RAILWAY_URL;
   }
 
   // Development-ზე localhost, production-ზე Railway
@@ -26,13 +35,11 @@ const getApiUrl = () => {
     const lanIp = getLanIpFromHost();
     const localUrl = lanIp ? `http://${lanIp}:3000` : 'http://localhost:3000';
     console.log('🌐 Using Local API (DEV):', localUrl);
-    return localUrl;78
+    return localUrl;
   }
 
-  // Production-ზე Railway
-  const railwayUrl = 'https://marte-backend-production.up.railway.app';
-  console.log('🌐 Using Railway API (PROD):', railwayUrl);
-  return railwayUrl;
+  console.log('🌐 Using Railway API:', RAILWAY_URL);
+  return RAILWAY_URL;
 };
 
 const API_BASE_URL = getApiUrl();

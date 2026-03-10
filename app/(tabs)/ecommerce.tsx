@@ -106,11 +106,11 @@ export default function EcommerceScreen() {
       route: '/parts-requests' as any,
     },
     {
-      key: 'repairman',
-      title: 'ხელოსნის მოძიება',
-      icon: 'build-outline' as const,
+      key: 'Chats',
+      title: 'ჩატები',
+      icon: 'chatbubbles-outline' as const,
       color: '#10B981',
-      route: '/search-repairmen' as any,
+      route: '/chats' as any,
     },
     {
       key: 'car-rental',
@@ -165,14 +165,14 @@ export default function EcommerceScreen() {
       color: '#F59E0B',
       route: '/offers' as any,
     },
-    {
-      key: 'chats',
-      title: 'ჩატები',
-      subtitle: 'შეტყობინებები',
-      icon: 'chatbubbles-outline' as const,
-      color: '#8B5CF6',
-      route: '/chats' as any,
-    },
+    // {
+    //   key: 'chats',
+    //   title: 'ჩატები',
+    //   subtitle: 'შეტყობინებები',
+    //   icon: 'chatbubbles-outline' as const,
+    //   color: '#8B5CF6',
+    //   route: '/chats' as any,
+    // },
   ];
 
   if (loading) {

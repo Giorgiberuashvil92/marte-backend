@@ -1058,14 +1058,27 @@ export default function SearchRepairmenScreen() {
           </KeyboardAvoidingView>
         </Modal>
 
-        {/* Filter Modal */}
+        {/* Filter Modal - იყენებს იგივე კომპონენტს, მაგრამ make/model/year ვ map-ოთ brand/model/yearFrom */}
         <FilterModal
           visible={showFilterModal}
+          activeTab="დაშლილები"
+          dismantlerFilters={{
+            brand: filterMake,
+            model: filterModel,
+            yearFrom: filterYear,
+            yearTo: '',
+            location: '',
+          }}
+          partsFilters={{
+            brand: '',
+            category: '',
+            priceMin: '',
+            priceMax: '',
+            location: '',
+          }}
           onClose={() => setShowFilterModal(false)}
-          filterMake={filterMake}
-          filterModel={filterModel}
-          filterYear={filterYear}
-          onFilterChange={handleFilterChange}
+          onApply={(d, _p) => handleFilterChange({ make: d.brand, model: d.model, year: d.yearFrom })}
+          onReset={() => handleFilterChange({ make: '', model: '', year: '' })}
         />
 
         {/* Offer Modal */}

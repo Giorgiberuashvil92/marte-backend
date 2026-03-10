@@ -209,6 +209,8 @@ class AddItemApiService {
     location?: string;
     status?: string;
     ownerId?: string;
+    page?: number;
+    limit?: number;
   }): Promise<ApiResponse<any[]>> {
     const queryParams = new URLSearchParams();
     if (filters) {
@@ -218,7 +220,6 @@ class AddItemApiService {
         }
       });
     }
-    
     const endpoint = `/stores${queryParams.toString() ? `?${queryParams.toString()}` : ''}`;
     return this.makeRequest(endpoint, 'GET');
   }

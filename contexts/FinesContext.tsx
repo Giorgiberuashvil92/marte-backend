@@ -104,8 +104,8 @@ export function FinesProvider({ children }: { children: ReactNode }) {
     setFinesDataLoading(true);
     try {
       const [vehicles, limitInfo, carSubs] = await Promise.all([
-        finesApi.getActiveVehicles().catch((err) => {
-          console.log('[FinesContext] Could not load registered vehicles:', err);
+        finesApi.getUserRegisteredVehicles(user.id).catch((err) => {
+          console.log('[FinesContext] Could not load user registered vehicles:', err);
           return [] as VehicleRegistration[];
         }),
         finesApi.getUserFinesCarLimit(user.id).catch((err) => {

@@ -3,7 +3,6 @@ import {
   View,
   Text,
   StyleSheet,
-  ScrollView,
   TouchableOpacity,
   Image,
   StatusBar,
@@ -74,6 +73,7 @@ export type CategoryListScreenProps = {
   // Pagination (optional)
   hasMore?: boolean;
   onLoadMore?: () => void;
+  isLoadingMore?: boolean;
   // Empty state
   emptyText?: string;
   // Section titles
@@ -112,6 +112,7 @@ export default function CategoryListScreen({
   onResetFilters,
   hasMore,
   onLoadMore,
+  isLoadingMore,
   emptyText = 'მონაცემები არ მოიძებნა',
   vipSectionTitle,
   regularSectionTitle,
@@ -129,15 +130,24 @@ export default function CategoryListScreen({
   const [displayedData, setDisplayedData] = useState<any[]>([]);
   const [displayedCount, setDisplayedCount] = useState(10);
 
-  // Initialize data
+  const useServerPagination = hasMore !== undefined && !!onLoadMore;
+
+  // Initialize data (client-side slice only when not using server pagination)
   useEffect(() => {
     setAllData(regularData);
-    setDisplayedData(regularData.slice(0, 10));
-    setDisplayedCount(10);
-  }, [regularData]);
+    if (!useServerPagination) {
+      setDisplayedData(regularData.slice(0, 10));
+      setDisplayedCount(10);
+    }
+  }, [regularData, useServerPagination]);
 
-  // Load more when scrolling
+  const listData = useServerPagination ? regularData : displayedData;
+
   const loadMore = useCallback(() => {
+    if (useServerPagination && onLoadMore) {
+      onLoadMore();
+      return;
+    }
     if (displayedCount < allData.length && onLoadMore) {
       onLoadMore();
     } else if (displayedCount < allData.length) {
@@ -145,7 +155,7 @@ export default function CategoryListScreen({
       setDisplayedData(allData.slice(0, nextCount));
       setDisplayedCount(nextCount);
     }
-  }, [displayedCount, allData.length, onLoadMore]);
+  }, [useServerPagination, displayedCount, allData.length, onLoadMore]);
 
   const handleAddItem = (type: AddModalType, data: any) => {
     if (onAddPress) {
@@ -226,170 +236,163 @@ export default function CategoryListScreen({
         </View>
       )}
 
-      <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
-        {/* VIP Section */}
-        {vipData.length > 0 && (
+      <FlatList
+        style={styles.content}
+        data={loading && !useServerPagination ? [] : listData}
+        keyExtractor={(item: any, index: number) => {
+          const id = item.id || item._id;
+          return id ? `item-${id}` : `item-${index}`;
+        }}
+        renderItem={({ item, index }: { item: any; index: number }) =>
+          renderListItem(item, index)
+        }
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={
+          listLayout === 'grid' ? styles.gridList : styles.verticalList
+        }
+        numColumns={listLayout === 'grid' ? numColumns : 1}
+        columnWrapperStyle={
+          listLayout === 'grid' && numColumns > 1 ? styles.gridRow : undefined
+        }
+        ListHeaderComponent={
           <>
-            {/* Section Title */}
-            {loading ? (
+            {/* VIP Section */}
+            {vipData.length > 0 && (
+              <>
+                {/* Section Title */}
+                {loading && listData.length === 0 ? (
+                  <View style={styles.sectionTitleSkeleton} />
+                ) : (
+                  <View style={styles.sectionTitleContainer}>
+                    <Text style={styles.sectionTitle}>
+                      {vipSectionTitle || 'VIP'}
+                    </Text>
+                  </View>
+                )}
+
+                {/* Horizontal Scroll - VIP Cards */}
+                {loading && vipData.length === 0 ? (
+                  <View style={styles.horizontalScroll}>
+                    <SkeletonCard />
+                    <SkeletonCard />
+                    <SkeletonCard />
+                  </View>
+                ) : (
+                  <FlatList
+                    horizontal
+                    data={vipData}
+                    renderItem={({ item }) => renderVIPCard(item)}
+                    keyExtractor={(item, index) =>
+                      item.id || item._id || `vip-${index}`
+                    }
+                    showsHorizontalScrollIndicator={false}
+                    contentContainerStyle={styles.horizontalScroll}
+                    removeClippedSubviews
+                    initialNumToRender={2}
+                    maxToRenderPerBatch={2}
+                    windowSize={2}
+                    getItemLayout={(data, index) => ({
+                      length: width * 0.65 + 16,
+                      offset: (width * 0.65 + 16) * index,
+                      index,
+                    })}
+                  />
+                )}
+              </>
+            )}
+
+            {/* Special Offers Section */}
+            {specialOffersData &&
+              specialOffersData.length > 0 &&
+              renderSpecialOfferCard && (
+                <>
+                  <View style={styles.sectionTitleContainer}>
+                    <Text style={styles.sectionTitle}>
+                      {specialOffersTitle || 'სპეციალური შეთავაზებები'}
+                    </Text>
+                  </View>
+                  <FlatList
+                    horizontal
+                    data={specialOffersData}
+                    renderItem={({ item, index }) =>
+                      renderSpecialOfferCard(item, index)
+                    }
+                    keyExtractor={(item, index) =>
+                      item.id || item._id || `offer-${index}`
+                    }
+                    showsHorizontalScrollIndicator={false}
+                    contentContainerStyle={styles.horizontalScroll}
+                    removeClippedSubviews
+                    initialNumToRender={2}
+                    maxToRenderPerBatch={2}
+                    windowSize={2}
+                  />
+                </>
+              )}
+
+            {/* Custom Sections */}
+            {customSections &&
+              customSections.map((section, index) => (
+                <View key={`custom-section-${index}`}>{section}</View>
+              ))}
+
+            {/* Regular Section Title */}
+            {loading && listData.length === 0 ? (
               <View style={styles.sectionTitleSkeleton} />
             ) : (
               <View style={styles.sectionTitleContainer}>
                 <Text style={styles.sectionTitle}>
-                  {vipSectionTitle || 'VIP'}
+                  {regularSectionTitle || 'სია'}
                 </Text>
               </View>
             )}
 
-            {/* Horizontal Scroll - VIP Cards */}
-            {loading ? (
-              <View style={styles.horizontalScroll}>
-                <SkeletonCard />
-                <SkeletonCard />
-                <SkeletonCard />
+            {/* Vertical skeleton while loading */}
+            {loading && listData.length === 0 && (
+              <View style={styles.verticalList}>
+                <SkeletonListItem />
+                <SkeletonListItem />
+                <SkeletonListItem />
+                <SkeletonListItem />
               </View>
-            ) : (
-              <FlatList
-                horizontal
-                data={vipData}
-                renderItem={({ item }) => renderVIPCard(item)}
-                keyExtractor={(item, index) => item.id || item._id || `vip-${index}`}
-                showsHorizontalScrollIndicator={false}
-                contentContainerStyle={styles.horizontalScroll}
-                removeClippedSubviews={Platform.OS === 'ios'}
-                initialNumToRender={2}
-                maxToRenderPerBatch={2}
-                windowSize={2}
-                getItemLayout={(data, index) => ({
-                  length: width * 0.65 + 16,
-                  offset: (width * 0.65 + 16) * index,
-                  index,
-                })}
-              />
             )}
           </>
-        )}
-
-        {/* Special Offers Section */}
-        {specialOffersData && specialOffersData.length > 0 && renderSpecialOfferCard && (
-          <>
-            <View style={styles.sectionTitleContainer}>
-              <Text style={styles.sectionTitle}>
-                {specialOffersTitle || 'სპეციალური შეთავაზებები'}
-              </Text>
+        }
+        ListEmptyComponent={
+          !loading && listData.length === 0 ? (
+            <View style={styles.emptyState}>
+              <Text style={styles.emptyText}>{emptyText}</Text>
             </View>
-            <FlatList
-              horizontal
-              data={specialOffersData}
-              renderItem={({ item, index }) => renderSpecialOfferCard(item, index)}
-              keyExtractor={(item, index) => item.id || item._id || `offer-${index}`}
-              showsHorizontalScrollIndicator={false}
-              contentContainerStyle={styles.horizontalScroll}
-              removeClippedSubviews={Platform.OS === 'ios'}
-              initialNumToRender={2}
-              maxToRenderPerBatch={2}
-              windowSize={2}
-            />
+          ) : null
+        }
+        ListFooterComponent={
+          <>
+            {(useServerPagination ? isLoadingMore : (hasMore || displayedCount < allData.length) && !loading) && (
+              <View style={styles.loadingMoreContainer}>
+                <ActivityIndicator size="small" color="#111827" />
+                <Text style={styles.loadingMoreText}>იტვირთება...</Text>
+              </View>
+            )}
+            <View style={{ height: 100 }} />
           </>
-        )}
-
-        {/* Custom Sections */}
-        {customSections && customSections.map((section, index) => (
-          <View key={`custom-section-${index}`}>
-            {section}
-          </View>
-        ))}
-
-        {/* Regular Section */}
-        {/* Section Title */}
-        {loading ? (
-          <View style={styles.sectionTitleSkeleton} />
-        ) : (
-          <View style={styles.sectionTitleContainer}>
-            <Text style={styles.sectionTitle}>
-              {regularSectionTitle || 'სია'}
-            </Text>
-          </View>
-        )}
-
-        {/* Vertical List */}
-        {loading ? (
-          <View style={styles.verticalList}>
-            <SkeletonListItem />
-            <SkeletonListItem />
-            <SkeletonListItem />
-            <SkeletonListItem />
-          </View>
-        ) : displayedData.length > 0 ? (
-          listLayout === 'grid' ? (
-            <FlatList
-              data={displayedData}
-              renderItem={({ item, index }) => renderListItem(item, index)}
-              keyExtractor={(item, index) => {
-                const id = item.id || item._id;
-                return id ? `item-${id}` : `item-${index}`;
-              }}
-              numColumns={numColumns}
-              scrollEnabled={false}
-              nestedScrollEnabled={true}
-              contentContainerStyle={styles.gridList}
-              columnWrapperStyle={numColumns > 1 ? styles.gridRow : undefined}
-              onEndReached={loadMore}
-              onEndReachedThreshold={0.5}
-              ListFooterComponent={
-                hasMore || displayedCount < allData.length ? (
-                  <View style={styles.loadingMoreContainer}>
-                    <ActivityIndicator size="small" color="#111827" />
-                    <Text style={styles.loadingMoreText}>იტვირთება...</Text>
-                  </View>
-                ) : null
-              }
-              removeClippedSubviews={Platform.OS === 'ios'}
-              initialNumToRender={6}
-              maxToRenderPerBatch={4}
-              windowSize={3}
-            />
-          ) : (
-            <FlatList
-              data={displayedData}
-              renderItem={({ item, index }) => renderListItem(item, index)}
-              keyExtractor={(item, index) => {
-                const id = item.id || item._id;
-                return id ? `item-${id}` : `item-${index}`;
-              }}
-              scrollEnabled={false}
-              nestedScrollEnabled={true}
-              contentContainerStyle={styles.verticalList}
-              onEndReached={loadMore}
-              onEndReachedThreshold={0.5}
-              ListFooterComponent={
-                hasMore || displayedCount < allData.length ? (
-                  <View style={styles.loadingMoreContainer}>
-                    <ActivityIndicator size="small" color="#111827" />
-                    <Text style={styles.loadingMoreText}>იტვირთება...</Text>
-                  </View>
-                ) : null
-              }
-              removeClippedSubviews={Platform.OS === 'ios'}
-              initialNumToRender={5}
-              maxToRenderPerBatch={3}
-              windowSize={3}
-              updateCellsBatchingPeriod={100}
-              getItemLayout={(data, index) => ({
+        }
+        onEndReached={useServerPagination ? onLoadMore : (!loading ? loadMore : undefined)}
+        onEndReachedThreshold={0.5}
+        removeClippedSubviews
+        initialNumToRender={listLayout === 'grid' ? 6 : 5}
+        maxToRenderPerBatch={listLayout === 'grid' ? 4 : 3}
+        windowSize={3}
+        updateCellsBatchingPeriod={100}
+        getItemLayout={
+          listLayout === 'vertical'
+            ? (data, index) => ({
                 length: 120,
                 offset: 120 * index,
                 index,
-              })}
-            />
-          )
-        ) : (
-          <View style={styles.emptyState}>
-            <Text style={styles.emptyText}>{emptyText}</Text>
-          </View>
-        )}
-
-        <View style={{ height: 100 }} />
-      </ScrollView>
+              })
+            : undefined
+        }
+      />
 
       {/* Floating Action Button */}
       {showAddButton && (

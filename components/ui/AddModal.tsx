@@ -14,6 +14,7 @@ import {
   Alert,
   ActivityIndicator,
   Platform,
+  Pressable,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
@@ -1242,51 +1243,43 @@ const AddModal: React.FC<AddModalProps> = ({ visible, onClose, onSave, defaultTy
           </SafeAreaView>
         </View>
 
-        {/* Dropdown Modal */}
+        {/* Bottom sheet for select fields (Android-friendly) */}
         {showDropdown && (() => {
           const config = getFormConfig();
           const field = config.fields.find(f => f.key === showDropdown);
           if (!field || !field.options) return null;
+          const options = field.options as any[];
 
           return (
-            <Modal visible={true} transparent animationType="fade">
-              <TouchableOpacity 
-                style={styles.dropdownOverlay}
-                activeOpacity={1}
-                onPress={() => setShowDropdown(null)}
-              >
-                <View style={styles.dropdownModal}>
-                  <View style={styles.dropdownHeader}>
-                    <Text style={styles.dropdownTitle}>აირჩიეთ {field.label}</Text>
-                    <TouchableOpacity onPress={() => setShowDropdown(null)}>
-                      <Ionicons name="close" size={24} color="#111827" />
-                    </TouchableOpacity>
-                  </View>
+            <Modal visible={true} transparent animationType="slide" onRequestClose={() => setShowDropdown(null)}>
+              <Pressable style={styles.bottomSheetOverlay} onPress={() => setShowDropdown(null)}>
+                <Pressable style={styles.bottomSheetPane} onPress={(e) => e.stopPropagation?.()}>
+                  <View style={styles.bottomSheetHandle} />
+                  <Text style={styles.bottomSheetTitle}>აირჩიეთ {field.label}</Text>
                   <ScrollView
-                    style={styles.dropdownList}
-                    showsVerticalScrollIndicator={false}
+                    style={styles.bottomSheetScroll}
+                    contentContainerStyle={styles.bottomSheetScrollContent}
+                    showsVerticalScrollIndicator={true}
                     keyboardShouldPersistTaps="handled"
                   >
-                    {field.options.map((option: any, index: number) => (
+                    {options.map((option: any, index: number) => (
                       <TouchableOpacity
                         key={index}
                         style={[
-                          styles.dropdownOption,
-                          formData[field.key] === option && styles.dropdownOptionSelected
+                          styles.bottomSheetItem,
+                          formData[field.key] === option && styles.bottomSheetItemSelected
                         ]}
                         onPress={() => {
                           const newFormData = { ...formData, [field.key]: option };
-                          // If brand is changed, clear the model
-                          if (field.key === 'brand' && formData.model) {
-                            newFormData.model = '';
-                          }
+                          if (field.key === 'brand' && formData.model) newFormData.model = '';
                           setFormData(newFormData);
                           setShowDropdown(null);
                         }}
+                        activeOpacity={0.7}
                       >
                         <Text style={[
-                          styles.dropdownOptionText,
-                          formData[field.key] === option && styles.dropdownOptionTextSelected
+                          styles.bottomSheetItemText,
+                          formData[field.key] === option && styles.bottomSheetItemTextSelected
                         ]}>
                           {option}
                         </Text>
@@ -1296,8 +1289,15 @@ const AddModal: React.FC<AddModalProps> = ({ visible, onClose, onSave, defaultTy
                       </TouchableOpacity>
                     ))}
                   </ScrollView>
-                </View>
-              </TouchableOpacity>
+                  <TouchableOpacity
+                    style={styles.bottomSheetCancel}
+                    onPress={() => setShowDropdown(null)}
+                    activeOpacity={0.7}
+                  >
+                    <Text style={styles.bottomSheetCancelText}>გაუქმება</Text>
+                  </TouchableOpacity>
+                </Pressable>
+              </Pressable>
             </Modal>
           );
         })()}
@@ -1603,67 +1603,78 @@ const styles = StyleSheet.create({
     color: '#EF4444',
   },
 
-  // Dropdown Modal
-  dropdownOverlay: {
+  // Bottom sheet (select fields, Android-friendly)
+  bottomSheetOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.5)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingHorizontal: 20,
+    backgroundColor: 'rgba(0,0,0,0.4)',
+    justifyContent: 'flex-end',
   },
-  dropdownModal: {
+  bottomSheetPane: {
     backgroundColor: '#FFFFFF',
-    borderRadius: 16,
-    width: '100%',
-    maxHeight: 400,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.25,
-    shadowRadius: 20,
-    elevation: 15,
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    paddingTop: 12,
+    paddingBottom: Platform.OS === 'ios' ? 34 : 24,
+    maxHeight: '70%',
   },
-  dropdownHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 20,
-    paddingVertical: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: '#E5E7EB',
+  bottomSheetHandle: {
+    width: 40,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: '#E5E7EB',
+    alignSelf: 'center',
+    marginBottom: 16,
   },
-  dropdownTitle: {
+  bottomSheetTitle: {
     fontSize: 18,
     fontFamily: 'HelveticaMedium',
     textTransform: 'uppercase',
     fontWeight: '700',
     color: '#111827',
+    textAlign: 'center',
+    marginBottom: 12,
+    paddingHorizontal: 20,
   },
-  dropdownList: {
-    maxHeight: 300,
-  },
-  dropdownOption: {
+  bottomSheetScroll: { maxHeight: 320 },
+  bottomSheetScrollContent: { paddingHorizontal: 20, paddingBottom: 12 },
+  bottomSheetItem: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: 20,
-    paddingVertical: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: '#E5E7EB',
+    paddingVertical: 14,
+    paddingHorizontal: 16,
+    borderRadius: 12,
+    marginBottom: 4,
+    backgroundColor: '#F9FAFB',
   },
-  dropdownOptionSelected: {
-    backgroundColor: '#F3F4F6',
+  bottomSheetItemSelected: {
+    backgroundColor: '#E5E7EB',
   },
-  dropdownOptionText: {
+  bottomSheetItemText: {
     fontSize: 15,
-    fontFamily: 'HelveticaMedium',
-    textTransform: 'uppercase',
     color: '#111827',
     fontWeight: '500',
+    fontFamily: 'HelveticaMedium',
     flex: 1,
   },
-  dropdownOptionTextSelected: {
-    color: '#111827',
+  bottomSheetItemTextSelected: {
     fontWeight: '700',
+  },
+  bottomSheetCancel: {
+    marginTop: 12,
+    marginHorizontal: 20,
+    paddingVertical: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 12,
+    backgroundColor: '#F3F4F6',
+  },
+  bottomSheetCancelText: {
+    fontSize: 15,
+    fontFamily: 'HelveticaMedium',
+    fontWeight: '600',
+    color: '#6B7280',
+    textTransform: 'uppercase',
   },
 
   // Map Modal

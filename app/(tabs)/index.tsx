@@ -13,6 +13,7 @@ import {
   Modal,
   Linking,
   Alert,
+  FlatList,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Location from 'expo-location';
@@ -475,41 +476,6 @@ export default function TabOneScreen() {
   );
 
   // Test payment handler (1 ლარი)
-  const handleTestPayment = async () => {
-    if (!user?.id) {
-      Alert.alert('შეცდომა', 'გთხოვთ შეხვიდეთ სისტემაში');
-      return;
-    }
-
-    if (!bogOAuthStatus?.isTokenValid) {
-      Alert.alert('შეცდომა', 'BOG გადახდის სერვისი არ არის ხელმისაწვდომი');
-      return;
-    }
-
-    setIsProcessingTestPayment(true);
-
-    try {
-      const orderData = {
-        callback_url: `${API_BASE_URL}/bog/callback`,
-        external_order_id: `test_payment_${Date.now()}_${user.id}`,
-        total_amount: 1.0,
-        currency: 'GEL',
-        product_id: 'test',
-        description: 'ტესტ გადახდა - 1 ლარი',
-        success_url: `${API_BASE_URL}/payment/success`,
-        fail_url: `${API_BASE_URL}/payment/fail`,
-      };
-
-      const result = await bogApi.createOrder(orderData);
-      setBogPaymentUrl(result.redirect_url);
-      setShowBOGPaymentModal(true);
-    } catch (error) {
-      Alert.alert('შეცდომა', 'გადახდის ინიციალიზაცია ვერ მოხერხდა');
-      console.error('Test payment error:', error);
-    } finally {
-      setIsProcessingTestPayment(false);
-    }
-  };
 
   React.useEffect(() => {
     let active = true;
@@ -1805,23 +1771,25 @@ export default function TabOneScreen() {
             <Text style={styles.sectionAction}>ყველა</Text>
           </TouchableOpacity>
         </View>
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          snapToAlignment="start"
-          snapToInterval={RENTAL_CARD_WIDTH + H_GAP}
-          decelerationRate="fast"
-          contentOffset={{ x: 0, y: 0 }}
-          contentContainerStyle={styles.rentalContent}
-        >
-          {rentalCarsLoading ? (
-            <View style={{ padding: 20, alignItems: 'center' }}>
-              <Text style={{ color: colors.secondary, fontFamily: 'HelveticaMedium', textTransform: 'uppercase' }}>მანქანების ჩატვირთვა...</Text>
-            </View>
-          ) : (
-            rentalCars.map((car) => (
+        {rentalCarsLoading ? (
+          <View style={{ padding: 20, alignItems: 'center' }}>
+            <Text
+              style={{
+                color: colors.secondary,
+                fontFamily: 'HelveticaMedium',
+                textTransform: 'uppercase',
+              }}
+            >
+              მანქანების ჩატვირთვა...
+            </Text>
+          </View>
+        ) : (
+          <FlatList 
+            horizontal
+            data={rentalCars}
+            keyExtractor={(car, index) => String(car.id || car._id || `rental-${index}`)}
+            renderItem={({ item: car }) => (
               <CarRentalCard
-                key={car.id || car._id}
                 id={car.id || car._id}
                 brand={car.brand}
                 model={car.model}
@@ -1839,13 +1807,28 @@ export default function TabOneScreen() {
                 available={car.available}
                 features={car.features}
                 onPress={() => {
-                  analyticsService.logButtonClick('მანქანის ქირავნობა', 'მთავარი', { carId: car.id || car._id }, user?.id);
+                  analyticsService.logButtonClick(
+                    'მანქანის ქირავნობა',
+                    'მთავარი',
+                    { carId: car.id || car._id },
+                    user?.id
+                  );
                   router.push(`/car-rental/${car.id || car._id}` as any);
                 }}
               />
-            ))
-          )}
-        </ScrollView>
+            )}
+            showsHorizontalScrollIndicator={false}
+            snapToAlignment="start"
+            snapToInterval={RENTAL_CARD_WIDTH + H_GAP}
+            decelerationRate="fast"
+            contentOffset={{ x: 0, y: 0 }}
+            contentContainerStyle={styles.rentalContent}
+            initialNumToRender={3}
+            maxToRenderPerBatch={4}
+            windowSize={5}
+            removeClippedSubviews
+          />
+        )}
       </View>
 
       {/* Quick filter chips moved to Carwash screen */}
@@ -1859,38 +1842,50 @@ export default function TabOneScreen() {
             <Text style={styles.sectionAction}>ყველა</Text>
           </TouchableOpacity>
         </View>
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          snapToAlignment="start"
-          snapToInterval={POPULAR_CARD_WIDTH + H_GAP}
-          decelerationRate="fast"
-          contentOffset={{ x: 0, y: 0 }}
-          contentContainerStyle={styles.popularContent}
-        >
-          {loading ? (
-            <View style={{ padding: 20, alignItems: 'center' }}>
-              <Text style={{ color: colors.secondary, fontFamily: 'HelveticaMedium', textTransform: 'uppercase' }}>სერვისების ჩატვირთვა...</Text>
-            </View>
-          ) : (
-            popularServices.map((service) => (
+        {loading ? (
+          <View style={{ padding: 20, alignItems: 'center' }}>
+            <Text
+              style={{
+                color: colors.secondary,
+                fontFamily: 'HelveticaMedium',
+                textTransform: 'uppercase',
+              }}
+            >
+              სერვისების ჩატვირთვა...
+            </Text>
+          </View>
+        ) : (
+          <FlatList
+            horizontal
+            data={popularServices}
+            keyExtractor={(service, index) => String(service.id || `popular-${index}`)}
+            renderItem={({ item: service }) => (
               <ServiceCard
-                key={service.id}
                 image={service.image}
                 title={service.name}
                 category={service.category}
                 rating={service.rating}
                 location={service.location}
                 price={service.price}
-                type={service.type} // ახალი ველი - სერვისის ტიპი
+                type={service.type}
                 onPress={() => {
                   setSelectedService(service);
                   setShowServiceModal(true);
                 }}
               />
-            ))
-          )}
-        </ScrollView>
+            )}
+            showsHorizontalScrollIndicator={false}
+            snapToAlignment="start"
+            snapToInterval={POPULAR_CARD_WIDTH + H_GAP}
+            decelerationRate="fast"
+            contentOffset={{ x: 0, y: 0 }}
+            contentContainerStyle={styles.popularContent}
+            initialNumToRender={3}
+            maxToRenderPerBatch={4}
+            windowSize={5}
+            removeClippedSubviews
+          />
+        )}
       </View>
 
 

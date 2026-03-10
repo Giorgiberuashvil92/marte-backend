@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   StyleSheet,
   View,
@@ -82,6 +82,9 @@ export default function FinesScreen() {
       setLoading(carFinesData.loading);
     }
   }, [selectedCarId, getCarFines]);
+
+  // სხვა დივაისზე შესვლისას: როცა კონტექსტში ჯარიმების დატა ჯერ არ არის, ავტომატურად გავუშვათ შემოწმება
+  const autoCheckedCarRef = useRef<string | null>(null);
 
   const formatDate = (dateString: string) => {
     if (!dateString) return 'N/A';
@@ -249,6 +252,17 @@ export default function FinesScreen() {
     ? isCarMonitoringActive(selectedCarId, licensePlate)
     : false;
   const canCheckFines = isPremiumUser && isCurrentCarRegistered && currentCarHasSubscription;
+
+  // სხვა დივაისზე შესვლისას: როცა კონტექსტში ჯარიმების დატა ჯერ არ არის, ავტომატურად გავუშვათ შემოწმება
+  useEffect(() => {
+    if (finesDataLoading || !selectedCarId || !canCheckFines) return;
+    if (!licensePlate?.trim() || !techPassportNumber?.trim()) return;
+    const carFinesData = getCarFines(selectedCarId);
+    if (carFinesData?.lastChecked != null) return;
+    if (autoCheckedCarRef.current === selectedCarId) return;
+    autoCheckedCarRef.current = selectedCarId;
+    checkFinesForCar(selectedCarId, licensePlate.trim().toUpperCase(), techPassportNumber.trim());
+  }, [finesDataLoading, selectedCarId, canCheckFines, licensePlate, techPassportNumber, getCarFines, checkFinesForCar]);
 
   const handleCheckFines = async () => {
     if (!isPremiumUser) {
@@ -458,10 +472,10 @@ export default function FinesScreen() {
                       isSelected && styles.carSelectorCardActive,
                     ]}
                     onPress={() => {
+                      autoCheckedCarRef.current = null;
                       setSelectedCarId(car.id);
                       setLicensePlate(car.plateNumber || '');
                       setTechPassportNumber(car.techPassport || '');
-                      // FinesContext-იდან ჯარიმები ავტომატურად ჩაიტვირთება
                       const existingFines = getCarFines(car.id);
                       if (existingFines && existingFines.lastChecked) {
                         setFines(existingFines.penalties);

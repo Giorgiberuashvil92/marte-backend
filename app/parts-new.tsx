@@ -3,7 +3,6 @@ import {
   View,
   Text,
   StyleSheet,
-  ScrollView,
   TouchableOpacity,
   Image,
   ImageBackground,
@@ -86,14 +85,16 @@ export default function PartsNewScreen() {
   const [parts, setParts] = useState<any[]>([]);
   const [vipDismantlers, setVipDismantlers] = useState<any[]>([]);
   const [vipParts, setVipParts] = useState<any[]>([]);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(false); // საწყისი ჩატვირთვა / ტაბის ან ფილტრების შეცვლა
+  const [isLoadingMore, setIsLoadingMore] = useState(false); // "load more" pagination
   const [dismantlersLikes, setDismantlersLikes] = useState<Record<string, { likesCount: number; isLiked: boolean }>>({});
   const [partsLikes, setPartsLikes] = useState<Record<string, { likesCount: number; isLiked: boolean }>>({});
 
   const ITEMS_PER_PAGE = 3;
-  const [allDismantlersData, setAllDismantlersData] = useState<any[]>([]);
   const [displayedDismantlers, setDisplayedDismantlers] = useState<any[]>([]);
-  const [displayedDismantlersCount, setDisplayedDismantlersCount] = useState(10); // Start with 10 items
+  const [dismantlersPage, setDismantlersPage] = useState(1);
+  const [dismantlersHasMore, setDismantlersHasMore] = useState(true);
+  const DISMANTLERS_PAGE_SIZE = 20;
   const [specialOffers, setSpecialOffers] = useState<any[]>([]);
   const [showSpecialOfferModal, setShowSpecialOfferModal] = useState(false);
   const [selectedOffer, setSelectedOffer] = useState<SpecialOfferModalData | null>(null);
@@ -130,13 +131,23 @@ export default function PartsNewScreen() {
     }, [user?.id])
   );
 
+  // Debug: current device screen size (Android/iOS)
+  useEffect(() => {
+    const { width: deviceWidth, height: deviceHeight } = Dimensions.get('window');
+    console.log('📱 Device size -> width:', deviceWidth, 'height:', deviceHeight);
+  }, []);
+
   // Load data
-  const loadDismantlers = async () => {
+  const loadDismantlers = async (page: number = 1, append: boolean = false) => {
     try {
-      setLoading(true);
+      if (append) {
+        setIsLoadingMore(true);
+      } else {
+        setLoading(true);
+      }
       const filters: any = {
-        limit: 1000, // დიდი limit რომ ყველა მოვიდეს
-        page: 1,
+        limit: DISMANTLERS_PAGE_SIZE,
+        page,
       };
       if (dismantlerFilters.brand) filters.brand = dismantlerFilters.brand;
       if (dismantlerFilters.model) filters.model = dismantlerFilters.model;
@@ -148,26 +159,38 @@ export default function PartsNewScreen() {
       const response = await addItemApi.getDismantlers(filters);
       console.log('📡 API Response:', response);
       if (response.success && response.data) {
-        const allDismantlers = response.data;
-        console.log('📊 Total dismantlers received:', allDismantlers.length);
+        const pageDismantlers = response.data;
+        console.log('📊 Dismantlers page received:', pageDismantlers.length);
         
-        const vip = allDismantlers.filter((d: any) => d.isVip === true);
-        const regular = allDismantlers.filter((d: any) => d.isVip !== true);
+        const vip = page === 1
+          ? pageDismantlers.filter((d: any) => d.isVip === true)
+          : vipDismantlers;
+        const regular = pageDismantlers.filter((d: any) => d.isVip !== true);
         
         console.log('⭐ VIP dismantlers:', vip.length);
         console.log('📋 Regular dismantlers:', regular.length);
         
-        setVipDismantlers(vip);
-        setAllDismantlersData(regular);
-        // Start with first 10 items
-        setDisplayedDismantlers(regular.slice(0, 10));
-        setDisplayedDismantlersCount(10);
-        console.log('👁️ Displayed dismantlers (initial):', 10);
+        if (append) {
+          setVipDismantlers(vip);
+          setDisplayedDismantlers((prev) => [...prev, ...regular]);
+        } else {
+          setVipDismantlers(vip);
+          setDisplayedDismantlers(regular);
+        }
+
+        // თუ საერთოდ გვერდზე რამე მაინც მოვიდა, კიდევ ვცდილობთ შემდეგ გვერდს
+        // (hasMore გახდება false მხოლოდ მაშინ, როცა გვერდი ცარიელია)
+        setDismantlersHasMore(pageDismantlers.length === DISMANTLERS_PAGE_SIZE);
+        setDismantlersPage(page);
       }
     } catch (error) {
       console.error('Error loading dismantlers:', error);
     } finally {
-      setLoading(false);
+      if (append) {
+        setIsLoadingMore(false);
+      } else {
+        setLoading(false);
+      }
     }
   };
 
@@ -198,7 +221,10 @@ export default function PartsNewScreen() {
 
   useEffect(() => {
     if (activeTab === 'დაშლილები') {
-      loadDismantlers();
+      // reset pagination when switching back to dismantlers
+      setDismantlersPage(1);
+      setDismantlersHasMore(true);
+      loadDismantlers(1, false);
     } else {
       loadParts();
     }
@@ -223,7 +249,9 @@ export default function PartsNewScreen() {
     setPartsFilters(newPartsFilters);
     // Reload data with filters
     if (activeTab === 'დაშლილები') {
-      loadDismantlers();
+      setDismantlersPage(1);
+      setDismantlersHasMore(true);
+      loadDismantlers(1, false);
     } else {
       loadParts();
     }
@@ -466,12 +494,10 @@ export default function PartsNewScreen() {
   
   // Load more dismantlers when scrolling
   const loadMoreDismantlers = () => {
-    if (displayedDismantlersCount < allDismantlersData.length) {
-      const nextCount = Math.min(displayedDismantlersCount + 10, allDismantlersData.length);
-      setDisplayedDismantlers(allDismantlersData.slice(0, nextCount));
-      setDisplayedDismantlersCount(nextCount);
-      console.log('📜 Loading more dismantlers. Displayed:', nextCount, '/ Total:', allDismantlersData.length);
-    }
+    if (loading || isLoadingMore || !dismantlersHasMore) return;
+    const nextPage = dismantlersPage + 1;
+    console.log('📜 Loading more dismantlers. Next page:', nextPage);
+    loadDismantlers(nextPage, true);
   };
 
   return (
@@ -558,139 +584,143 @@ export default function PartsNewScreen() {
         </View>
       </View>
 
-      <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
-        {/* Section Title - Skeleton */}
-        {loading ? (
-          <View style={styles.sectionTitleSkeleton} />
-        ) : (
-          <View style={styles.sectionTitleContainer}>
-            <Text style={styles.sectionTitle}>
-              {activeTab === 'დაშლილები' ? 'VIP დაშლილები' : 'VIP ნაწილები'}
-            </Text>
-          </View>
-        )}
-
-        {/* Horizontal Scroll - VIP Cards */}
-        {loading ? (
-          <View style={styles.horizontalScroll}>
-            <SkeletonCard />
-            <SkeletonCard />
-            <SkeletonCard />
-          </View>
-        ) : currentVipData.length > 0 ? (
-            <FlatList
-              horizontal
-              data={currentVipData}
-              renderItem={renderVIPCard}
-              keyExtractor={(item, index) => item.id || item._id || `vip-${index}`}
-              showsHorizontalScrollIndicator={false}
-              contentContainerStyle={styles.horizontalScroll}
-              removeClippedSubviews={Platform.OS === 'ios'}
-              initialNumToRender={2}
-              maxToRenderPerBatch={2}
-              windowSize={2}
-              onViewableItemsChanged={onViewableVipItemsChanged}
-              viewabilityConfig={vipViewabilityConfigRef.current}
-              getItemLayout={(data, index) => ({
-                length: width * 0.65 + 16,
-                offset: (width * 0.65 + 16) * index,
-                index,
-              })}
-            />
-        ) : null}
-
-        {/* სპეციალური შეთავაზებები */}
-        {specialOffers.length > 0 && (
+      <FlatList
+        style={styles.content}
+        data={currentData}
+        keyExtractor={(item: any, index: number) => {
+          const id = item.id || item._id;
+          const prefix = activeTab === 'დაშლილები' ? 'dismantler' : 'part';
+          return id ? `${prefix}-${id}` : `${prefix}-${index}`;
+        }}
+        renderItem={({ item, index }: { item: any; index: number }) =>
+          renderListItem({ item, index })
+        }
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={styles.verticalList}
+        ListHeaderComponent={
           <>
-            <View style={styles.sectionTitleContainer}>
-              <Text style={styles.sectionTitle}>სპეციალური შეთავაზებები</Text>
-            </View>
-            <FlatList
-              horizontal
-              data={specialOffers}
-              renderItem={renderSpecialOfferCard}
-              keyExtractor={(item, index) => item.id || item._id || `offer-${index}`}
-              showsHorizontalScrollIndicator={false}
-              contentContainerStyle={styles.horizontalScroll}
-              removeClippedSubviews={Platform.OS === 'ios'}
-              initialNumToRender={2}
-              maxToRenderPerBatch={2}
-              windowSize={2}
-            />
+            {/* Section Title - Skeleton */}
+            {loading && currentData.length === 0 ? (
+              <View style={styles.sectionTitleSkeleton} />
+            ) : (
+              <View style={styles.sectionTitleContainer}>
+                <Text style={styles.sectionTitle}>
+                  {activeTab === 'დაშლილები' ? 'VIP დაშლილები' : 'VIP ნაწილები'}
+                </Text>
+              </View>
+            )}
+
+            {/* Horizontal Scroll - VIP Cards */}
+            {loading && currentVipData.length === 0 ? (
+              <View style={styles.horizontalScroll}>
+                <SkeletonCard />
+                <SkeletonCard />
+                <SkeletonCard />
+              </View>
+            ) : currentVipData.length > 0 ? (
+              <FlatList
+                horizontal
+                data={currentVipData}
+                renderItem={renderVIPCard}
+                keyExtractor={(item, index) => item.id || item._id || `vip-${index}`}
+                showsHorizontalScrollIndicator={false}
+                contentContainerStyle={styles.horizontalScroll}
+                removeClippedSubviews={Platform.OS === 'ios'}
+                initialNumToRender={2}
+                maxToRenderPerBatch={2}
+                windowSize={2}
+                onViewableItemsChanged={onViewableVipItemsChanged}
+                viewabilityConfig={vipViewabilityConfigRef.current}
+                getItemLayout={(data, index) => ({
+                  length: width * 0.65 + 16,
+                  offset: (width * 0.65 + 16) * index,
+                  index,
+                })}
+              />
+            ) : null}
+
+            {/* სპეციალური შეთავაზებები */}
+            {specialOffers.length > 0 && (
+              <>
+                <View style={styles.sectionTitleContainer}>
+                  <Text style={styles.sectionTitle}>სპეციალური შეთავაზებები</Text>
+                </View>
+                <FlatList
+                  horizontal
+                  data={specialOffers}
+                  renderItem={renderSpecialOfferCard}
+                  keyExtractor={(item, index) => item.id || item._id || `offer-${index}`}
+                  showsHorizontalScrollIndicator={false}
+                  contentContainerStyle={styles.horizontalScroll}
+                  removeClippedSubviews={Platform.OS === 'ios'}
+                  initialNumToRender={2}
+                  maxToRenderPerBatch={2}
+                  windowSize={2}
+                />
+              </>
+            )}
+
+            {/* Section Title - List */}
+            {loading && currentData.length === 0 ? (
+              <View style={styles.sectionTitleSkeleton} />
+            ) : (
+              <View style={styles.sectionTitleContainer}>
+                <Text style={styles.sectionTitle}>
+                  {activeTab === 'დაშლილები' ? 'დაშლილების მაღაზიები' : 'პოპულარული ნაწილები'}
+                </Text>
+              </View>
+            )}
+
+            {/* Vertical skeleton while loading */}
+            {loading && currentData.length === 0 && (
+              <View style={styles.verticalList}>
+                <SkeletonListItem />
+                <SkeletonListItem />
+                <SkeletonListItem />
+                <SkeletonListItem />
+              </View>
+            )}
           </>
-        )}
-
-        {/* Section Title - List */}
-        {loading ? (
-          <View style={styles.sectionTitleSkeleton} />
-        ) : (
-          <View style={styles.sectionTitleContainer}>
-            <Text style={styles.sectionTitle}>
-              {activeTab === 'დაშლილები' ? 'დაშლილების მაღაზიები' : 'პოპულარული ნაწილები'}
-            </Text>
-          </View>
-        )}
-
-        {/* Vertical List */}
-        {loading ? (
-          <View style={styles.verticalList}>
-            <SkeletonListItem />
-            <SkeletonListItem />
-            <SkeletonListItem />
-            <SkeletonListItem />
-          </View>
-        ) : currentData.length > 0 ? (
-          activeTab === 'დაშლილები' ? (
-            <FlatList
-              data={currentData}
-              renderItem={renderListItem}
-              keyExtractor={(item, index) => {
-                const id = item.id || item._id;
-                return id ? `dismantler-${id}` : `dismantler-${index}`;
-              }}
-              scrollEnabled={false}
-              nestedScrollEnabled={true}
-              contentContainerStyle={styles.verticalList}
-              onEndReached={loadMoreDismantlers}
-              onEndReachedThreshold={0.5}
-              ListFooterComponent={
-                displayedDismantlersCount < allDismantlersData.length ? (
-                  <View style={styles.loadingMoreContainer}>
-                    <ActivityIndicator size="small" color="#111827" />
-                    <Text style={styles.loadingMoreText}>იტვირთება...</Text>
-                  </View>
-                ) : null
-              }
-              removeClippedSubviews={Platform.OS === 'ios'} // Android-ზე false
-              initialNumToRender={5} // შემცირებული Android-ისთვის
-              maxToRenderPerBatch={3} // შემცირებული
-              windowSize={3} // შემცირებული
-              updateCellsBatchingPeriod={100} // გაზრდილი
-              getItemLayout={(data, index) => ({
-                length: 120, // Approximate height of list item
+        }
+        ListEmptyComponent={
+          !loading && currentData.length === 0 ? (
+            <View style={styles.emptyState}>
+              <Text style={styles.emptyText}>
+                {activeTab === 'დაშლილები' ? 'დაშლილები არ მოიძებნა' : 'ნაწილები არ მოიძებნა'}
+              </Text>
+            </View>
+          ) : null
+        }
+        ListFooterComponent={
+          <>
+            {activeTab === 'დაშლილები' && isLoadingMore && (
+              <View style={styles.loadingMoreContainer}>
+                <ActivityIndicator size="small" color="#111827" />
+                <Text style={styles.loadingMoreText}>იტვირთება...</Text>
+              </View>
+            )}
+            <View style={{ height: 100 }} />
+          </>
+        }
+        onEndReached={
+          activeTab === 'დაშლილები' ? loadMoreDismantlers : undefined
+        }
+        onEndReachedThreshold={0.5}
+        removeClippedSubviews
+        initialNumToRender={activeTab === 'დაშლილები' ? 5 : 8}
+        maxToRenderPerBatch={activeTab === 'დაშლილები' ? 3 : 6}
+        windowSize={5}
+        updateCellsBatchingPeriod={100}
+        getItemLayout={
+          activeTab === 'დაშლილები'
+            ? (data, index) => ({
+                length: 120,
                 offset: 120 * index,
                 index,
-              })}
-            />
-          ) : (
-            <View style={styles.verticalList}>
-              {currentData.map((item, index) => (
-                <View key={item.id || item._id || index}>
-                  {renderListItem({ item, index })}
-                </View>
-              ))}
-            </View>
-          )
-        ) : (
-          <View style={styles.emptyState}>
-            <Text style={styles.emptyText}>
-              {activeTab === 'დაშლილები' ? 'დაშლილები არ მოიძებნა' : 'ნაწილები არ მოიძებნა'}
-            </Text>
-          </View>
-        )}
-
-        <View style={{ height: 100 }} />
-      </ScrollView>
+              })
+            : undefined
+        }
+      />
 
       {/* Floating Action Button */}
       <TouchableOpacity

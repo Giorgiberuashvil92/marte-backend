@@ -31,11 +31,15 @@ export default function StoresNewScreen() {
   const { user } = useUser();
   const { success, error } = useToast();
   const [loading, setLoading] = useState(false);
+  const [isLoadingMore, setIsLoadingMore] = useState(false);
   const [stores, setStores] = useState<any[]>([]);
   const [vipStores, setVipStores] = useState<any[]>([]);
   const [specialOffers, setSpecialOffers] = useState<any[]>([]);
   const [userStores, setUserStores] = useState<any[]>([]);
   const [hasUserStores, setHasUserStores] = useState(false);
+  const STORES_PAGE_SIZE = 20;
+  const [storesPage, setStoresPage] = useState(1);
+  const [storesHasMore, setStoresHasMore] = useState(true);
   
   // Modals
   const [showAddModal, setShowAddModal] = useState(false);
@@ -64,48 +68,67 @@ export default function StoresNewScreen() {
     return () => pulse.stop();
   }, [pulseAnim]);
 
-  const loadStores = useCallback(async () => {
+  const loadStores = useCallback(async (page: number = 1, append: boolean = false) => {
     try {
-      setLoading(true);
-      
+      if (append) {
+        setIsLoadingMore(true);
+      } else {
+        setLoading(true);
+      }
+
+      const filters: Record<string, string | number> = {
+        page,
+        limit: STORES_PAGE_SIZE,
+      };
       const [storesResponse, offersResponse] = await Promise.all([
-        addItemApi.getStores({}),
-        specialOffersApi.getSpecialOffers(true),
+        addItemApi.getStores(filters),
+        append ? Promise.resolve(null) : specialOffersApi.getSpecialOffers(true),
       ]);
-      
-      if (storesResponse.success && storesResponse.data) {
-        const allStores = storesResponse.data;
-        const vip = allStores.filter((s: any) => s.isVip === true);
-        const regular = allStores.filter((s: any) => s.isVip !== true);
-        
-        setVipStores(vip);
-        setStores(regular);
-        
-        if (offersResponse && offersResponse.length > 0) {
-          const offersWithStores = offersResponse.map((offer: SpecialOffer) => {
-            const store = allStores.find(
-              (s: any) => (s.id || s._id) === offer.storeId,
-            );
-            if (store) {
-              return {
-                ...store,
-                ...offer,
-                image: offer.image || store.photos?.[0] || store.images?.[0],
-              };
-            }
-            return null;
-          }).filter(Boolean);
-          
-          setSpecialOffers(offersWithStores);
+
+      if (storesResponse?.success && storesResponse.data) {
+        const pageStores = storesResponse.data;
+        const vip = page === 1
+          ? pageStores.filter((s: any) => s.isVip === true)
+          : vipStores;
+        const regular = pageStores.filter((s: any) => s.isVip !== true);
+
+        if (append) {
+          setStores((prev) => [...prev, ...regular]);
         } else {
-          setSpecialOffers([]);
+          setVipStores(vip);
+          setStores(regular);
+          if (offersResponse && Array.isArray(offersResponse) && offersResponse.length > 0) {
+            const allStores = pageStores;
+            const offersWithStores = offersResponse.map((offer: SpecialOffer) => {
+              const store = allStores.find(
+                (s: any) => (s.id || s._id) === offer.storeId,
+              );
+              if (store) {
+                return {
+                  ...store,
+                  ...offer,
+                  image: offer.image || store.photos?.[0] || store.images?.[0],
+                };
+              }
+              return null;
+            }).filter(Boolean);
+            setSpecialOffers(offersWithStores);
+          } else {
+            setSpecialOffers([]);
+          }
         }
+        setStoresHasMore(pageStores.length === STORES_PAGE_SIZE);
+        setStoresPage(page);
       }
     } catch (err) {
       console.error('Error loading stores:', err);
-      setSpecialOffers([]);
+      if (!append) setSpecialOffers([]);
     } finally {
-      setLoading(false);
+      if (append) {
+        setIsLoadingMore(false);
+      } else {
+        setLoading(false);
+      }
     }
   }, []);
 
@@ -343,9 +366,14 @@ export default function StoresNewScreen() {
     );
   };
 
+  const loadMoreStores = useCallback(() => {
+    if (loading || isLoadingMore || !storesHasMore) return;
+    loadStores(storesPage + 1, true);
+  }, [loading, isLoadingMore, storesHasMore, storesPage, loadStores]);
+
   const handleAddItem = (type: AddModalType, data: any) => {
     console.log('Store successfully added:', { type, data });
-    loadStores();
+    loadStores(1, false);
     loadUserStores();
   };
 
@@ -357,6 +385,9 @@ export default function StoresNewScreen() {
         vipData={vipStores}
         regularData={stores}
         loading={loading}
+        isLoadingMore={isLoadingMore}
+        hasMore={storesHasMore}
+        onLoadMore={loadMoreStores}
         renderVIPCard={renderVIPStore}
         renderListItem={renderStoreItem}
         onAddPress={() => setShowAddModal(true)}
@@ -371,7 +402,6 @@ export default function StoresNewScreen() {
         specialOffersTitle="სპეციალური შეთავაზებები"
         customSections={[
           <ManagementButton key="management" />,
-          
         ]}
       />
 

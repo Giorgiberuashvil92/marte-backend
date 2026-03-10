@@ -11,6 +11,7 @@ import {
   Image,
   ActivityIndicator,
   StyleSheet,
+  Pressable,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
@@ -34,10 +35,7 @@ const CAR_YEARS = Array.from({ length: 25 }, (_, i) => (2024 - i).toString());
 export default function AddCarModal({ visible, onClose, onAddCar }: AddCarModalProps) {
   const insets = useSafeAreaInsets();
   const [isUploadingImage, setIsUploadingImage] = useState(false);
-  const [showBrandDropdown, setShowBrandDropdown] = useState(false);
-  const [showModelDropdown, setShowModelDropdown] = useState(false);
-  const [showYearDropdown, setShowYearDropdown] = useState(false);
-  const [showSubmodelDropdown] = useState(false);
+  const [bottomSheet, setBottomSheet] = useState<{ type: 'brand' | 'model' | 'year'; label: string; options: string[] } | null>(null);
 
   // Car brands and models from API
   const [CAR_BRANDS, setCAR_BRANDS] = useState<string[]>([]);
@@ -103,19 +101,21 @@ export default function AddCarModal({ visible, onClose, onAddCar }: AddCarModalP
     }
   };
 
+  const closeBottomSheet = () => setBottomSheet(null);
+
   const selectBrand = (brand: string) => {
-    setNewCarData({ ...newCarData, brand, model: '', submodel: '' });
-    setShowBrandDropdown(false);
+    setNewCarData(prev => ({ ...prev, brand, model: '', submodel: '' }));
+    closeBottomSheet();
   };
 
   const selectModel = (model: string) => {
-    setNewCarData({ ...newCarData, model, submodel: '' });
-    setShowModelDropdown(false);
+    setNewCarData(prev => ({ ...prev, model, submodel: '' }));
+    closeBottomSheet();
   };
 
   const selectYear = (year: string) => {
-    setNewCarData({ ...newCarData, year });
-    setShowYearDropdown(false);
+    setNewCarData(prev => ({ ...prev, year }));
+    closeBottomSheet();
   };
 
   const submit = async () => {
@@ -188,40 +188,24 @@ export default function AddCarModal({ visible, onClose, onAddCar }: AddCarModalP
             <View style={styles.inputGroup}>
               <Text style={styles.inputLabel}>ბრენდი</Text>
               <View style={styles.dropdownContainer}>
-                <TouchableOpacity 
+                <TouchableOpacity
                   style={styles.dropdownButton}
-                  onPress={() => setShowBrandDropdown(!showBrandDropdown)}
+                  onPress={() => setBottomSheet({ type: 'brand', label: 'ბრენდი', options: CAR_BRANDS })}
                 >
                   <Text style={[styles.dropdownText, !newCarData.brand && styles.dropdownPlaceholder]}>
                     {newCarData.brand || 'აირჩიეთ ბრენდი'}
                   </Text>
                   <Ionicons name="chevron-down" size={20} color="#9CA3AF" />
                 </TouchableOpacity>
-                
-                {showBrandDropdown && (
-                  <View style={styles.dropdownList}>
-                    <ScrollView style={styles.dropdownScroll} showsVerticalScrollIndicator={false}>
-                      {CAR_BRANDS.map((brand) => (
-                        <TouchableOpacity
-                          key={brand}
-                          style={styles.dropdownItem}
-                          onPress={() => selectBrand(brand)}
-                        >
-                          <Text style={styles.dropdownItemText}>{brand}</Text>
-                        </TouchableOpacity>
-                      ))}
-                    </ScrollView>
-                  </View>
-                )}
               </View>
             </View>
-            
+
             <View style={styles.inputGroup}>
               <Text style={styles.inputLabel}>მოდელი</Text>
               <View style={styles.dropdownContainer}>
-                <TouchableOpacity 
+                <TouchableOpacity
                   style={[styles.dropdownButton, !newCarData.brand && styles.dropdownDisabled]}
-                  onPress={() => newCarData.brand && setShowModelDropdown(!showModelDropdown)}
+                  onPress={() => newCarData.brand && setBottomSheet({ type: 'model', label: 'მოდელი', options: getAvailableModels() })}
                   disabled={!newCarData.brand}
                 >
                   <Text style={[styles.dropdownText, !newCarData.model && styles.dropdownPlaceholder]}>
@@ -229,53 +213,21 @@ export default function AddCarModal({ visible, onClose, onAddCar }: AddCarModalP
                   </Text>
                   <Ionicons name="chevron-down" size={20} color="#9CA3AF" />
                 </TouchableOpacity>
-                
-                {showModelDropdown && newCarData.brand && (
-                  <View style={styles.dropdownList}>
-                    <ScrollView style={styles.dropdownScroll} showsVerticalScrollIndicator={false}>
-                      {getAvailableModels().map((model) => (
-                        <TouchableOpacity
-                          key={model}
-                          style={styles.dropdownItem}
-                          onPress={() => selectModel(model)}
-                        >
-                          <Text style={styles.dropdownItemText}>{model}</Text>
-                        </TouchableOpacity>
-                      ))}
-                    </ScrollView>
-                  </View>
-                )}
               </View>
             </View>
 
             <View style={styles.inputGroup}>
               <Text style={styles.inputLabel}>წელი</Text>
               <View style={styles.dropdownContainer}>
-                <TouchableOpacity 
+                <TouchableOpacity
                   style={styles.dropdownButton}
-                  onPress={() => setShowYearDropdown(!showYearDropdown)}
+                  onPress={() => setBottomSheet({ type: 'year', label: 'წელი', options: CAR_YEARS })}
                 >
                   <Text style={[styles.dropdownText, !newCarData.year && styles.dropdownPlaceholder]}>
                     {newCarData.year || 'აირჩიეთ წელი'}
                   </Text>
                   <Ionicons name="chevron-down" size={20} color="#9CA3AF" />
                 </TouchableOpacity>
-                
-                {showYearDropdown && (
-                  <View style={styles.dropdownList}>
-                    <ScrollView style={styles.dropdownScroll} showsVerticalScrollIndicator={false}>
-                      {CAR_YEARS.map((year) => (
-                        <TouchableOpacity
-                          key={year}
-                          style={styles.dropdownItem}
-                          onPress={() => selectYear(year)}
-                        >
-                          <Text style={styles.dropdownItemText}>{year}</Text>
-                        </TouchableOpacity>
-                      ))}
-                    </ScrollView>
-                  </View>
-                )}
               </View>
             </View>
             
@@ -326,6 +278,39 @@ export default function AddCarModal({ visible, onClose, onAddCar }: AddCarModalP
           </ScrollView>
         </View>
       </KeyboardAvoidingView>
+
+      <Modal visible={!!bottomSheet} transparent animationType="slide" onRequestClose={closeBottomSheet}>
+        <Pressable style={styles.bottomSheetOverlay} onPress={closeBottomSheet}>
+          <Pressable style={styles.bottomSheetPane} onPress={() => {}}>
+            <View style={styles.bottomSheetHandle} />
+            <Text style={styles.bottomSheetTitle}>{bottomSheet ? `აირჩიეთ ${bottomSheet.label}` : ''}</Text>
+            <ScrollView
+              style={styles.bottomSheetScroll}
+              contentContainerStyle={styles.bottomSheetScrollContent}
+              showsVerticalScrollIndicator={true}
+              keyboardShouldPersistTaps="handled"
+            >
+              {bottomSheet?.options.map((option) => (
+                <TouchableOpacity
+                  key={option}
+                  style={styles.bottomSheetItem}
+                  onPress={() => {
+                    if (bottomSheet.type === 'brand') selectBrand(option);
+                    else if (bottomSheet.type === 'model') selectModel(option);
+                    else selectYear(option);
+                  }}
+                  activeOpacity={0.7}
+                >
+                  <Text style={styles.bottomSheetItemText}>{option}</Text>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+            <TouchableOpacity style={styles.bottomSheetCancel} onPress={closeBottomSheet} activeOpacity={0.7}>
+              <Text style={styles.bottomSheetCancelText}>გაუქმება</Text>
+            </TouchableOpacity>
+          </Pressable>
+        </Pressable>
+      </Modal>
     </Modal>
   );
 }
@@ -461,36 +446,62 @@ const styles = StyleSheet.create({
   dropdownDisabled: {
     opacity: 0.5,
   },
-  dropdownList: {
-    position: 'absolute',
-    top: 50,
-    left: 0,
-    right: 0,
+  bottomSheetOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.4)',
+    justifyContent: 'flex-end',
+  },
+  bottomSheetPane: {
     backgroundColor: '#FFFFFF',
-    borderWidth: 1,
-    borderColor: '#E5E7EB',
-    borderRadius: 12,
-    maxHeight: 200,
-    zIndex: 1000,
-    elevation: 5,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    paddingTop: 12,
+    paddingBottom: Platform.OS === 'ios' ? 34 : 24,
+    maxHeight: '70%',
   },
-  dropdownScroll: {
-    maxHeight: 200,
+  bottomSheetHandle: {
+    width: 40,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: '#E5E7EB',
+    alignSelf: 'center',
+    marginBottom: 16,
   },
-  dropdownItem: {
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: '#E5E7EB',
-  },
-  dropdownItemText: {
+  bottomSheetTitle: {
+    fontSize: 18,
+    fontWeight: '700',
     color: '#111827',
+    textAlign: 'center',
+    marginBottom: 12,
+    paddingHorizontal: 20,
+  },
+  bottomSheetScroll: { maxHeight: 320 },
+  bottomSheetScrollContent: { paddingHorizontal: 20, paddingBottom: 12 },
+  bottomSheetItem: {
+    paddingVertical: 14,
+    paddingHorizontal: 16,
+    borderRadius: 12,
+    marginBottom: 4,
+    backgroundColor: '#F9FAFB',
+  },
+  bottomSheetItemText: {
     fontSize: 16,
+    color: '#111827',
     fontWeight: '500',
+  },
+  bottomSheetCancel: {
+    marginTop: 12,
+    marginHorizontal: 20,
+    paddingVertical: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 12,
+    backgroundColor: '#F3F4F6',
+  },
+  bottomSheetCancelText: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: '#6B7280',
   },
   modalActions: {
     flexDirection: 'row',
