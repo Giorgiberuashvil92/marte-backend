@@ -232,10 +232,12 @@ export class FinesService {
 
   /**
    * Authenticated request helper
+   * @param timeoutMs - optional timeout. SA API-ს ზოგჯერ დიდი დრო სჭირდება, განსაკუთრებით Railway-დან.
    */
   private async authenticatedRequest<T>(
     endpoint: string,
     options: RequestInit = {},
+    timeoutMs: number = 15000,
   ): Promise<T> {
     const token = await this.getAccessToken();
     const fullUrl = `${SA_PUBLIC_API_URL}${endpoint}`;
@@ -250,14 +252,38 @@ export class FinesService {
       this.logger.debug(`   Body: ${bodyStr.substring(0, 200)}...`);
     }
 
-    const response = await fetch(fullUrl, {
-      ...options,
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${token}`, // სრული token, არა substring!
-        ...options.headers,
-      },
-    });
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+
+    let response: Response;
+    try {
+      response = await fetch(fullUrl, {
+        ...options,
+        signal: controller.signal,
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+          ...options.headers,
+        },
+      });
+    } catch (err: unknown) {
+      clearTimeout(timeoutId);
+      const e = err as {
+        message?: string;
+        cause?: { code?: string; message?: string };
+      };
+      const causeStr = e?.cause
+        ? ` cause: ${e.cause?.code ?? e.cause?.message ?? 'unknown'}`
+        : '';
+      this.logger.error(
+        `❌ SA API fetch failed: ${e?.message ?? String(err)}${causeStr}`,
+      );
+      throw new HttpException(
+        `SA.gov.ge API-ს მიღება ვერ მოხერხდა (ქსელი/დრო). სცადეთ თავიდან.`,
+        HttpStatus.BAD_GATEWAY,
+      );
+    }
+    clearTimeout(timeoutId);
 
     this.logger.debug(
       `📥 API Response: ${response.status} ${response.statusText}`,
@@ -429,66 +455,72 @@ export class FinesService {
     );
     this.logger.debug(`   Request body: ${JSON.stringify(data)}`);
 
-    try {
-      // რეგისტრაცია SA.gov.ge API-ში
-      const response = await this.authenticatedRequest<{ id: number }>(
+    const doRegister = () =>
+      this.authenticatedRequest<{ id: number }>(
         '/patrolpenalties/vehicles',
-        {
-          method: 'POST',
-          body: JSON.stringify(data),
-        },
+        { method: 'POST', body: JSON.stringify(data) },
+        30000, // 30s timeout – Railway → SA.gov.ge ზოგჯერ ნელა პასუხობს
       );
 
-      const saVehicleId = response.id;
+    let response: { id: number };
+    try {
+      response = await doRegister();
+    } catch (err: any) {
+      const isRetryable =
+        err instanceof HttpException && err.getStatus() === 502;
+      if (isRetryable) {
+        this.logger.warn('🔄 Retrying vehicle registration once...');
+        await new Promise((r) => setTimeout(r, 2000));
+        response = await doRegister();
+      } else {
+        throw err;
+      }
+    }
 
-      // შენახვა ჩვენს ბაზაში
-      try {
-        // შევამოწმოთ არის თუ არა უკვე დარეგისტრირებული
-        const existing = await this.finesVehicleModel.findOne({
+    const saVehicleId = response.id;
+
+    // შენახვა ჩვენს ბაზაში
+    try {
+      // შევამოწმოთ არის თუ არა უკვე დარეგისტრირებული
+      const existing = await this.finesVehicleModel.findOne({
+        userId,
+        vehicleNumber: formattedVehicleNumber,
+        techPassportNumber: techPassportNumber.trim(),
+        isActive: true,
+      });
+
+      if (existing) {
+        // განვაახლოთ არსებული ჩანაწერი
+        existing.saVehicleId = saVehicleId;
+        existing.addDate = new Date().toISOString();
+        existing.mediaFile = mediaFile;
+        await existing.save();
+        this.logger.log(
+          `✅ Vehicle updated in database: ${String(existing._id)}`,
+        );
+      } else {
+        // შევქმნათ ახალი ჩანაწერი
+        const newVehicle = new this.finesVehicleModel({
           userId,
           vehicleNumber: formattedVehicleNumber,
           techPassportNumber: techPassportNumber.trim(),
+          saVehicleId,
+          addDate: new Date().toISOString(),
           isActive: true,
+          mediaFile,
         });
-
-        if (existing) {
-          // განვაახლოთ არსებული ჩანაწერი
-          existing.saVehicleId = saVehicleId;
-          existing.addDate = new Date().toISOString();
-          existing.mediaFile = mediaFile;
-          await existing.save();
-          this.logger.log(
-            `✅ Vehicle updated in database: ${String(existing._id)}`,
-          );
-        } else {
-          // შევქმნათ ახალი ჩანაწერი
-          const newVehicle = new this.finesVehicleModel({
-            userId,
-            vehicleNumber: formattedVehicleNumber,
-            techPassportNumber: techPassportNumber.trim(),
-            saVehicleId,
-            addDate: new Date().toISOString(),
-            isActive: true,
-            mediaFile,
-          });
-          await newVehicle.save();
-          this.logger.log(
-            `✅ Vehicle saved to database: ${String(newVehicle._id)}`,
-          );
-        }
-      } catch (dbError) {
-        this.logger.error(`⚠️ Failed to save vehicle to database: ${dbError}`);
-        // არ ვაგდებთ error-ს, რადგან API რეგისტრაცია წარმატებული იყო
+        await newVehicle.save();
+        this.logger.log(
+          `✅ Vehicle saved to database: ${String(newVehicle._id)}`,
+        );
       }
-
-      this.logger.log(`✅ Vehicle registered with SA ID: ${saVehicleId}`);
-      return saVehicleId;
-    } catch (error) {
-      this.logger.error(
-        `❌ Vehicle registration failed for ${formattedVehicleNumber}: ${error}`,
-      );
-      throw error;
+    } catch (dbError) {
+      this.logger.error(`⚠️ Failed to save vehicle to database: ${dbError}`);
+      // არ ვაგდებთ error-ს, რადგან API რეგისტრაცია წარმატებული იყო
     }
+
+    this.logger.log(`✅ Vehicle registered with SA ID: ${saVehicleId}`);
+    return saVehicleId;
   }
 
   /**

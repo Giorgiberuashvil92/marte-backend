@@ -97,6 +97,8 @@ export class FinesController {
       if (error instanceof HttpException) {
         throw error;
       }
+      // უცნობი შეცდომა (DB, ქსელი და ა.შ.) – ლოგი Railway-ზე დიაგნოსტიკისთვის
+      console.error('[FINES] registerVehicle error:', error);
       throw new HttpException(
         'მანქანის რეგისტრაცია ვერ მოხერხდა',
         HttpStatus.INTERNAL_SERVER_ERROR,
