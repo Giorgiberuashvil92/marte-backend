@@ -106,14 +106,10 @@ export class FinesService implements OnModuleInit {
   }
 
   /**
-   * Format vehicle number: MI999SS -> MI-999-SS
+   * Format vehicle number: MI999SS -> MI-999-SS (ჩვენს ბაზაში/UI-ში)
    */
   private formatVehicleNumber(plate: string): string {
-    const cleaned = plate
-      .trim()
-      .toUpperCase()
-      .replace(/[^A-Z0-9]/g, '');
-    // Pattern: 2 letters, 3 digits, 2 letters (e.g., MI999SS -> MI-999-SS)
+    const cleaned = this.normalizeVehicleNumber(plate);
     if (cleaned.length >= 7) {
       const letters1 = cleaned.substring(0, 2);
       const digits = cleaned.substring(2, 5);
@@ -121,6 +117,14 @@ export class FinesService implements OnModuleInit {
       return `${letters1}-${digits}-${letters2}`;
     }
     return cleaned;
+  }
+
+  /** SA API იღებს ნომერს დეშების გარეშე (JU303UU). */
+  private normalizeVehicleNumber(plate: string): string {
+    return plate
+      .trim()
+      .toUpperCase()
+      .replace(/[^A-Z0-9]/g, '');
   }
 
   /**
@@ -490,12 +494,14 @@ export class FinesService implements OnModuleInit {
       );
     }
 
-    // Request body exactly as per Swagger documentation
-    const data = {
-      VehicleNumber: formattedVehicleNumber,
+    // SA API იღებს VehicleNumber დეშების გარეშე (JU303UU), წინააღმდეგ შემთხვევაში 500
+    const vehicleNumberForApi = this.normalizeVehicleNumber(vehicleNumber);
+    const data: Record<string, unknown> = {
+      VehicleNumber: vehicleNumberForApi,
       TechPassportNumber: techPassportNumber.trim(),
       MediaFile: mediaFile,
     };
+    data['FilterDate'] = new Date().toISOString().split('T')[0];
 
     this.logger.debug(
       `🚗 Registering vehicle: ${formattedVehicleNumber} for user ${userId}, MediaFile: ${mediaFile}`,
