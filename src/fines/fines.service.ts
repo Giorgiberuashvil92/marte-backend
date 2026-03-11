@@ -619,16 +619,24 @@ export class FinesService implements OnModuleInit {
   }
 
   /**
-   * კონკრეტული იუზერის დარეგისტრირებული მანქანები
+   * კონკრეტული იუზერის დარეგისტრირებული მანქანები (ბაზიდან — ნებისმიერი მოწყობილობიდან ჩანს)
+   * დააბრუნებს VehicleRegistration[] ფორმატში, რომ ფრონტი ნებისმიერ დივაისზე იმუშაოს.
    */
   async getUserRegisteredVehicles(
     userId: string,
-  ): Promise<FinesVehicleDocument[]> {
+  ): Promise<VehicleRegistration[]> {
     this.logger.debug(`📋 Getting vehicles for user: ${userId}`);
-    return this.finesVehicleModel
+    const docs = await this.finesVehicleModel
       .find({ userId, isActive: true })
       .sort({ createdAt: -1 })
       .exec();
+    return docs.map((d) => ({
+      id: d.saVehicleId,
+      vehicleNumber: d.vehicleNumber,
+      techPassportNumber: d.techPassportNumber,
+      addDate: d.addDate,
+      cancelDate: d.cancelDate,
+    }));
   }
 
   // ==========================================
