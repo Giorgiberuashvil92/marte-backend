@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="ka">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>SA ჯარიმები – ტესტი (fines-backend)</title>
+  <style>
+    * { box-sizing: border-box; }
+    body { font-family: system-ui, sans-serif; max-width: 720px; margin: 0 auto; padding: 20px; background: #f8fafc; }
+    h1 { font-size: 1.25rem; color: #111; }
+    h2 { font-size: 1rem; color: #334; margin-top: 24px; }
+    section { background: #fff; border-radius: 12px; padding: 16px; margin-bottom: 16px; box-shadow: 0 1px 3px rgba(0,0,0,.08); }
+    label { display: block; margin-bottom: 4px; font-weight: 600; color: #374151; }
+    input[type="text"], input[type="url"] { width: 100%; padding: 10px 12px; border: 1px solid #d1d5db; border-radius: 8px; margin-bottom: 12px; }
+    input[type="checkbox"] { margin-right: 8px; }
+    button { padding: 10px 20px; border-radius: 8px; border: none; font-weight: 600; cursor: pointer; }
+    button.primary { background: #2563eb; color: #fff; }
+    button.secondary { background: #e5e7eb; color: #111; }
+    button:hover { opacity: 0.9; }
+    pre { background: #f1f5f9; padding: 12px; border-radius: 8px; overflow: auto; font-size: 13px; white-space: pre-wrap; word-break: break-all; }
+    .error { color: #dc2626; }
+    .success { color: #16a34a; }
+    .muted { color: #6b7280; font-size: 0.875rem; }
+  </style>
+</head>
+<body>
+  <h1>SA ჯარიმები – ტესტი (fines-backend)</h1>
+  <p class="muted">Base URL: proxy-ის მისამართი (ტოკენი proxy თვითონ ამატებს)</p>
+
+  <section>
+    <label for="baseUrl">API Base URL</label>
+    <input type="url" id="baseUrl" value="http://185.247.94.146" placeholder="http://185.247.94.146 ან http://185.247.94.146:3100" />
+  </section>
+
+  <section>
+    <h2>1. აქტიური მანქანები</h2>
+    <button type="button" class="secondary" onclick="loadActive()">ჩატვირთვა GET /api/v1/patrolpenalties/vehicles/active</button>
+    <div id="activeResult" style="margin-top:12px"></div>
+  </section>
+
+  <section>
+    <h2>2. მანქანის რეგისტრაცია</h2>
+    <label for="vehicleNumber">სახელმწიფო ნომერი (VehicleNumber)</label>
+    <input type="text" id="vehicleNumber" placeholder="მაგ: OV-060-OV ან OV060OV" value="OV-060-OV" />
+    <label for="techPassport">ტექ. პასპორტის ნომერი (TechPassportNumber)</label>
+    <input type="text" id="techPassport" placeholder="მაგ: AJA7420151" value="AJA7420151" />
+    <label style="display:flex;align-items:center;margin-bottom:12px;">
+      <input type="checkbox" id="mediaFile" checked />
+      MediaFile (ვიდეო ჯარიმები)
+    </label>
+    <button type="button" class="primary" onclick="registerVehicle()">რეგისტრაცია POST /api/v1/patrolpenalties/vehicles</button>
+    <div id="registerResult" style="margin-top:12px"></div>
+  </section>
+
+  <section>
+    <h2>3. ჯარიმების სია</h2>
+    <button type="button" class="secondary" onclick="loadPenalties()">ჩატვირთვა GET /api/v1/patrolpenalties?...</button>
+    <div id="penaltiesResult" style="margin-top:12px"></div>
+  </section>
+
+  <script>
+    function base() {
+      const url = document.getElementById('baseUrl').value.trim().replace(/\/$/, '');
+      return url || 'http://185.247.94.146';
+    }
+    function show(elId, html, isError) {
+      const el = document.getElementById(elId);
+      el.innerHTML = html;
+      el.className = isError ? 'error' : '';
+    }
+
+    async function loadActive() {
+      const resultId = 'activeResult';
+      show(resultId, 'იტვირთება...');
+      try {
+        const r = await fetch(base() + '/api/v1/patrolpenalties/vehicles/active');
+        const text = await r.text();
+        let data;
+        try { data = JSON.parse(text); } catch { data = text; }
+        if (!r.ok) {
+          show(resultId, '<pre>' + text + '</pre>', true);
+          return;
+        }
+        show(resultId, '<pre>' + JSON.stringify(data, null, 2) + '</pre>');
+      } catch (e) {
+        show(resultId, 'შეცდომა: ' + e.message, true);
+      }
+    }
+
+    async function registerVehicle() {
+      const resultId = 'registerResult';
+      const vehicleNumber = document.getElementById('vehicleNumber').value.trim();
+      const techPassportNumber = document.getElementById('techPassport').value.trim();
+      const mediaFile = document.getElementById('mediaFile').checked;
+      if (!vehicleNumber || !techPassportNumber) {
+        show(resultId, 'შეავსე ნომერი და ტექ. პასპორტი', true);
+        return;
+      }
+      show(resultId, 'იგზავნება...');
+      try {
+        const r = await fetch(base() + '/api/v1/patrolpenalties/vehicles', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            VehicleNumber: vehicleNumber,
+            TechPassportNumber: techPassportNumber,
+            MediaFile: mediaFile,
+          }),
+        });
+        const text = await r.text();
+        let data;
+        try { data = JSON.parse(text); } catch { data = text; }
+        if (!r.ok) {
+          show(resultId, '<pre>Status: ' + r.status + '\n' + text + '</pre>', true);
+          return;
+        }
+        show(resultId, '<span class="success">OK ' + r.status + '</span><pre>' + JSON.stringify(data, null, 2) + '</pre>');
+      } catch (e) {
+        show(resultId, 'შეცდომა: ' + e.message, true);
+      }
+    }
+
+    async function loadPenalties() {
+      const resultId = 'penaltiesResult';
+      const vehicleNumber = document.getElementById('vehicleNumber').value.trim();
+      const techPassportNumber = document.getElementById('techPassport').value.trim();
+      let url = base() + '/api/v1/patrolpenalties';
+      if (vehicleNumber && techPassportNumber) {
+        url += '?AutomobileNumber=' + encodeURIComponent(vehicleNumber) + '&TechPassportNumber=' + encodeURIComponent(techPassportNumber);
+      }
+      show(resultId, 'იტვირთება...');
+      try {
+        const r = await fetch(url);
+        const text = await r.text();
+        let data;
+        try { data = JSON.parse(text); } catch { data = text; }
+        if (!r.ok) {
+          show(resultId, '<pre>' + text + '</pre>', true);
+          return;
+        }
+        show(resultId, '<pre>' + JSON.stringify(data, null, 2) + '</pre>');
+      } catch (e) {
+        show(resultId, 'შეცდომა: ' + e.message, true);
+      }
+    }
+  </script>
+</body>
+</html>
