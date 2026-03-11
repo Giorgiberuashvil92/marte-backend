@@ -171,6 +171,25 @@ export class FinesController {
   }
 
   /**
+   * დარეგისტრირებული მანქანები + მფლობელი (join User) — ადმინ პანელისთვის
+   * GET /fines/vehicles/registered-with-owners
+   */
+  @Get('vehicles/registered-with-owners')
+  async getRegisteredVehiclesWithOwners() {
+    try {
+      return await this.finesService.getRegisteredVehiclesWithOwners();
+    } catch (error) {
+      if (error instanceof HttpException) {
+        throw error;
+      }
+      throw new HttpException(
+        'დარეგისტრირებული მანქანების მოპოვება ვერ მოხერხდა',
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
+  }
+
+  /**
    * მანქანის ამოღება ჯარიმების სისტემიდან
    * POST /fines/vehicles/remove
    */

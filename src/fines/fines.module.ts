@@ -11,6 +11,7 @@ import {
   CarFinesSubscription,
   CarFinesSubscriptionSchema,
 } from '../schemas/car-fines-subscription.schema';
+import { User, UserSchema } from '../schemas/user.schema';
 import { SubscriptionsModule } from '../subscriptions/subscriptions.module';
 
 @Module({
@@ -19,6 +20,7 @@ import { SubscriptionsModule } from '../subscriptions/subscriptions.module';
     MongooseModule.forFeature([
       { name: FinesVehicle.name, schema: FinesVehicleSchema },
       { name: CarFinesSubscription.name, schema: CarFinesSubscriptionSchema },
+      { name: User.name, schema: UserSchema },
     ]),
     SubscriptionsModule,
   ],

@@ -16,6 +16,7 @@ import {
   CarFinesSubscription,
   CarFinesSubscriptionDocument,
 } from '../schemas/car-fines-subscription.schema';
+import { User, UserDocument } from '../schemas/user.schema';
 import { SubscriptionsService } from '../subscriptions/subscriptions.service';
 
 const SA_IDENTITY_URL = 'https://api-identity.sa.gov.ge/connect/token';
@@ -87,6 +88,8 @@ export class FinesService implements OnModuleInit {
     private finesVehicleModel: Model<FinesVehicleDocument>,
     @InjectModel(CarFinesSubscription.name)
     private carFinesSubscriptionModel: Model<CarFinesSubscriptionDocument>,
+    @InjectModel(User.name)
+    private userModel: Model<UserDocument>,
     private subscriptionsService: SubscriptionsService,
   ) {}
 
@@ -634,6 +637,74 @@ export class FinesService implements OnModuleInit {
       .find({ isActive: true })
       .sort({ createdAt: -1 })
       .exec();
+  }
+
+  /**
+   * ჩვენს ბაზაში დარეგისტრირებული მანქანები + მფლობელის ინფორმაცია (join User) — ადმინისთვის
+   */
+  async getRegisteredVehiclesWithOwners(): Promise<
+    (FinesVehicleDocument & {
+      owner?: {
+        id: string;
+        phone: string;
+        firstName?: string;
+        lastName?: string;
+        email?: string;
+      } | null;
+    })[]
+  > {
+    this.logger.debug('📋 Getting registered vehicles with owners');
+    const vehicles = await this.finesVehicleModel
+      .find({ isActive: true })
+      .sort({ createdAt: -1 })
+      .lean()
+      .exec();
+
+    const userIds = [
+      ...new Set(
+        (vehicles as { userId?: string }[])
+          .map((v) => v.userId)
+          .filter(Boolean),
+      ),
+    ] as string[];
+    const users = await this.userModel
+      .find({ id: { $in: userIds } })
+      .select('id phone firstName lastName email')
+      .lean()
+      .exec();
+
+    const userMap = new Map<
+      string,
+      {
+        id: string;
+        phone: string;
+        firstName?: string;
+        lastName?: string;
+        email?: string;
+      }
+    >();
+    users.forEach(
+      (u: {
+        id: string;
+        phone: string;
+        firstName?: string;
+        lastName?: string;
+        email?: string;
+      }) => userMap.set(String(u.id), u),
+    );
+
+    return (vehicles as { userId?: string }[]).map((v) => ({
+      ...v,
+      owner: v.userId ? (userMap.get(String(v.userId)) ?? null) : null,
+    })) as (FinesVehicleDocument & {
+      owner?: {
+        id: string;
+        phone: string;
+        firstName?: string;
+        lastName?: string;
+        email?: string;
+      } | null;
+    })[];
   }
 
   /**
