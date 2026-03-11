@@ -9,6 +9,7 @@ import {
   StatusBar,
   Dimensions,
   ActivityIndicator,
+  Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -114,17 +115,18 @@ export default function EcommerceScreen() {
     },
     {
       key: 'car-rental',
-      title: 'მანქანის ქირავნობა',
+      title: 'მანქანის ქირაობა',
       icon: 'car-sport-outline' as const,
       color: '#8B5CF6',
       route: '/car-rental-list' as any,
+      comingSoon: true,
     },
     {
-      key: 'ai-chat',
+      key: 'help-assistant',
       title: 'AI ასისტენტი',
       icon: 'sparkles-outline' as const,
-      color: '#F59E0B',
-      route: '/ai-chat' as any,
+      color: '#6366F1',
+      route: '/help-assistant' as any,
     },
   ];
 
@@ -258,22 +260,32 @@ export default function EcommerceScreen() {
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>სწრაფი ქმედებები</Text>
           <View style={styles.quickGrid}>
-            {quickActions.map((action) => (
-              <TouchableOpacity
-                key={action.key}
-                style={styles.quickCard}
-                activeOpacity={0.7}
-                onPress={() => {
-                  analyticsService.logButtonClick(action.title, 'მართვა', { key: action.key }, user?.id);
-                  router.push(action.route);
-                }}
-              >
-                <View style={[styles.quickIconWrap, { backgroundColor: `${action.color}15` }]}>
-                  <Ionicons name={action.icon} size={26} color={action.color} />
-                </View>
-                <Text style={styles.quickTitle}>{action.title}</Text>
-              </TouchableOpacity>
-            ))}
+            {quickActions.map((action) => {
+              const comingSoon = (action as { comingSoon?: boolean }).comingSoon;
+              return (
+                <TouchableOpacity
+                  key={action.key}
+                  style={[styles.quickCard, comingSoon && styles.quickCardComingSoon]}
+                  activeOpacity={0.7}
+                  onPress={() => {
+                    analyticsService.logButtonClick(action.title, 'მართვა', { key: action.key }, user?.id);
+                    if (comingSoon) {
+                      Alert.alert('მალე', 'მანქანის ქირაობის ფუნქციონალი მალე დაემატება. 🙂');
+                      return;
+                    }
+                    router.push(action.route);
+                  }}
+                >
+                  <View style={[styles.quickIconWrap, { backgroundColor: `${action.color}15` }]}>
+                    <Ionicons name={action.icon} size={26} color={action.color} />
+                  </View>
+                  <Text style={styles.quickTitle}>{action.title}</Text>
+                  {comingSoon && (
+                    <Text style={styles.quickComingSoon}>მალე დაემატება</Text>
+                  )}
+                </TouchableOpacity>
+              );
+            })}
           </View>
         </View>
 
@@ -484,6 +496,17 @@ const styles = StyleSheet.create({
     color: '#111827',
     textTransform: 'uppercase',
     textAlign: 'center',
+  },
+  quickCardComingSoon: {
+    opacity: 0.92,
+  },
+  quickComingSoon: {
+    fontSize: 10,
+    fontFamily: 'HelveticaMedium',
+    color: '#8B5CF6',
+    marginTop: 4,
+    textTransform: 'uppercase',
+    letterSpacing: 0.3,
   },
 
   // List Items

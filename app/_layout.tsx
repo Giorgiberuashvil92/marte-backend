@@ -391,6 +391,7 @@ function RootLayoutNav() {
               <Stack.Screen name="car-rental-add" options={{headerShown: false}} />
               <Stack.Screen name="radars" options={{headerShown: false}} />
               <Stack.Screen name="review" options={{headerShown: false}} />
+              <Stack.Screen name="help-assistant" options={{headerShown: false}} />
               <Stack.Screen name="edit-car" options={{headerShown: false}} />
               </Stack>
             </ThemeProvider>

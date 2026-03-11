@@ -333,8 +333,9 @@ export default function ReferralScreen() {
       <>
         <Stack.Screen options={{ headerShown: false }} />
         <SafeAreaView style={styles.container}>
+          <LinearGradient colors={['#F8FAFC', '#F1F5F9']} style={StyleSheet.absoluteFillObject} />
           <View style={styles.loadingContainer}>
-            <ActivityIndicator size="large" color="#8B5CF6" />
+            <ActivityIndicator size="large" color="#111827" />
             <Text style={styles.loadingText}>იტვირთება...</Text>
           </View>
         </SafeAreaView>
@@ -346,70 +347,63 @@ export default function ReferralScreen() {
     <>
       <Stack.Screen options={{ headerShown: false }} />
       <SafeAreaView style={styles.container}>
-
+        <LinearGradient
+          colors={['#F8FAFC', '#F1F5F9', '#E2E8F0']}
+          style={StyleSheet.absoluteFillObject}
+        />
         <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
-          {/* Gradient Header Background */}
-          <LinearGradient
-            colors={['#8B5CF6', '#6366F1', '#3B82F6']}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 1 }}
-            style={styles.headerGradient}
-          >
-            <View style={styles.headerGradientOverlay} />
-          </LinearGradient>
-
-          {/* Header */}
+          {/* Header — ჩვენი სტილი */}
           <View style={styles.leaderboardSection}>
             <View style={styles.pageHeader}>
-                <TouchableOpacity onPress={() => router.back()} style={styles.backButtonHeader}>
-                  <View style={styles.backButtonInner}>
-                    <Ionicons name="arrow-back" size={20} color="#FFFFFF" />
-                  </View>
-                </TouchableOpacity>
-                <View style={styles.pageTitleContainer}>
-                  <Text style={styles.pageTitle}>ლიდერბორდი</Text>
-                  {leaderboard.length > 0 && leaderboard[0] && (
-                    <Text style={styles.pageSubtitle}>
-                      {leaderboard[0]?.name || 'მომხმარებელი'} #1 ადგილზე
-                    </Text>
-                  )}
+              <TouchableOpacity onPress={() => router.back()} style={styles.backButtonHeader}>
+                <View style={styles.backButtonInner}>
+                  <Ionicons name="arrow-back" size={22} color="#111827" />
                 </View>
-                <TouchableOpacity onPress={handleShare} style={styles.headerShareButton}>
-                  <View style={styles.shareButtonInner}>
-                    <Ionicons name="share-social-outline" size={20} color="#FFFFFF" />
-                  </View>
-                </TouchableOpacity>
+              </TouchableOpacity>
+              <View style={styles.pageTitleContainer}>
+                <Text style={styles.pageTitle}>ლიდერბორდი</Text>
+                {leaderboard.length > 0 && leaderboard[0] && (
+                  <Text style={styles.pageSubtitle}>
+                    {leaderboard[0]?.name || 'მომხმარებელი'} #1 ადგილზე
+                  </Text>
+                )}
               </View>
+              <TouchableOpacity onPress={handleShare} style={styles.headerShareButton}>
+                <View style={styles.shareButtonInner}>
+                  <Ionicons name="share-social-outline" size={22} color="#111827" />
+                </View>
+              </TouchableOpacity>
+            </View>
 
-              {/* Tab Navigation */}
-              <View style={styles.tabContainer}>
-                <TouchableOpacity
-                  style={[styles.tab, activeTab === 'info' && styles.tabActive]}
-                  onPress={() => setActiveTab('info')}
-                >
-                  <Ionicons 
-                    name="information-circle" 
-                    size={20} 
-                    color={activeTab === 'info' ? '#FFFFFF' : 'rgba(255, 255, 255, 0.7)'} 
-                  />
-                  <Text style={[styles.tabText, activeTab === 'info' && styles.tabTextActive]}>
-                    ინფო
-                  </Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={[styles.tab, activeTab === 'leaderboard' && styles.tabActive]}
-                  onPress={() => setActiveTab('leaderboard')}
-                >
-                  <Ionicons 
-                    name="trophy" 
-                    size={20} 
-                    color={activeTab === 'leaderboard' ? '#FFFFFF' : 'rgba(255, 255, 255, 0.7)'} 
-                  />
-                  <Text style={[styles.tabText, activeTab === 'leaderboard' && styles.tabTextActive]}>
-                    ლიდერბორდი
-                  </Text>
-                </TouchableOpacity>
-              </View>
+            {/* Tab Navigation — თეთრი ბარათი */}
+            <View style={styles.tabContainer}>
+              <TouchableOpacity
+                style={[styles.tab, activeTab === 'info' && styles.tabActive]}
+                onPress={() => setActiveTab('info')}
+              >
+                <Ionicons
+                  name="information-circle-outline"
+                  size={20}
+                  color={activeTab === 'info' ? '#111827' : '#6B7280'}
+                />
+                <Text style={[styles.tabText, activeTab === 'info' && styles.tabTextActive]}>
+                  ინფო
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.tab, activeTab === 'leaderboard' && styles.tabActive]}
+                onPress={() => setActiveTab('leaderboard')}
+              >
+                <Ionicons
+                  name="trophy-outline"
+                  size={20}
+                  color={activeTab === 'leaderboard' ? '#111827' : '#6B7280'}
+                />
+                <Text style={[styles.tabText, activeTab === 'leaderboard' && styles.tabTextActive]}>
+                  ლიდერბორდი
+                </Text>
+              </TouchableOpacity>
+            </View>
 
               {/* Tab Content */}
               {activeTab === 'info' ? (
@@ -507,23 +501,18 @@ export default function ReferralScreen() {
                   
                   return !subscriptionLoading && isPremiumUser;
                 })() ? (
-                  <LinearGradient
-                    colors={['#8B5CF6', '#6366F1']}
-                    start={{ x: 0, y: 0 }}
-                    end={{ x: 1, y: 1 }}
-                    style={styles.quickCodeCard}
-                  >
+                  <View style={styles.quickCodeCard}>
                     <View style={styles.quickCodeHeader}>
-                      <Ionicons name="gift" size={20} color="#FFFFFF" />
+                      <Ionicons name="gift-outline" size={20} color="#111827" />
                       <Text style={styles.quickCodeLabel}>თქვენი პრომო კოდი</Text>
                     </View>
                     <View style={styles.quickCodeRow}>
                       <Text style={styles.quickCodeText}>{referralCode || 'იტვირთება...'}</Text>
                       <TouchableOpacity onPress={handleCopyCode} style={styles.quickCopyButton}>
-                        <Ionicons name="copy-outline" size={20} color="#FFFFFF" />
+                        <Ionicons name="copy-outline" size={20} color="#111827" />
                       </TouchableOpacity>
                     </View>
-                  </LinearGradient>
+                  </View>
                 ) : (
                   <LinearGradient
                     colors={['#8B5CF6', '#6366F1']}
@@ -635,15 +624,10 @@ export default function ReferralScreen() {
                     {/* Stats Card */}
                     {stats && (
                       <View style={styles.quickStatsCard}>
-                        <LinearGradient
-                          colors={['#F0F9FF', '#E0F2FE']}
-                          start={{ x: 0, y: 0 }}
-                          end={{ x: 1, y: 1 }}
-                          style={styles.quickStatsGradient}
-                        >
+                        <View style={styles.quickStatsGradient}>
                           <View style={styles.quickStatItem}>
                             <View style={styles.quickStatIconContainer}>
-                              <Ionicons name="people" size={20} color="#8B5CF6" />
+                              <Ionicons name="people-outline" size={20} color="#111827" />
                             </View>
                             <Text style={styles.quickStatLabel}>მოწვეული</Text>
                             <Text style={styles.quickStatValue}>{stats.totalReferrals}</Text>
@@ -651,12 +635,12 @@ export default function ReferralScreen() {
                           <View style={styles.quickStatDivider} />
                           <View style={styles.quickStatItem}>
                             <View style={styles.quickStatIconContainer}>
-                              <Ionicons name="star" size={20} color="#F59E0B" />
+                              <Ionicons name="star-outline" size={20} color="#111827" />
                             </View>
                             <Text style={styles.quickStatLabel}>ქულა</Text>
                             <Text style={styles.quickStatValue}>{stats.totalPointsEarned}</Text>
                           </View>
-                        </LinearGradient>
+                        </View>
                       </View>
                     )}
 
@@ -806,40 +790,6 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#F8FAFC',
   },
-  headerGradient: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    height: 200,
-    zIndex: 0,
-  },
-  headerGradientOverlay: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    backgroundColor: 'rgba(255, 255, 255, 0.1)',
-  },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 20,
-    paddingVertical: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: '#E5E7EB',
-    backgroundColor: '#FFFFFF',
-  },
-  backButton: {
-    padding: 4,
-  },
-  headerTitle: {
-    fontSize: 20,
-    fontFamily: 'NotoSans_700Bold',
-    color: '#111827',
-  },
   content: {
     flex: 1,
   },
@@ -847,73 +797,102 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
+    gap: 12,
   },
   loadingText: {
-    marginTop: 12,
     fontSize: 14,
+    fontFamily: 'HelveticaMedium',
     color: '#6B7280',
-    fontFamily: 'NotoSans_400Regular',
   },
   leaderboardSection: {
-    paddingTop: 8,
-    marginBottom: 24,
+    paddingHorizontal: 20,
+    paddingTop: 12,
+    paddingBottom: 16,
   },
   pageHeader: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: 20,
-    paddingTop: 12,
-    paddingBottom: 24,
-    zIndex: 1,
+    marginBottom: 16,
   },
   backButtonHeader: {
     width: 44,
     height: 44,
-    borderRadius: 22,
+    borderRadius: 12,
     alignItems: 'center',
     justifyContent: 'center',
   },
   backButtonInner: {
     width: 44,
     height: 44,
-    borderRadius: 22,
-    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    borderRadius: 12,
+    backgroundColor: '#FFFFFF',
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.3)',
+    borderColor: '#E5E7EB',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.06,
+    shadowRadius: 8,
+    elevation: 2,
   },
   pageTitleContainer: {
     flex: 1,
     alignItems: 'center',
-    marginHorizontal: 12,
+    marginHorizontal: 8,
   },
   pageTitle: {
-    fontSize: 28,
-    fontFamily: 'NotoSans_700Bold',
-    color: '#FFFFFF',
-    textAlign: 'center',
+    fontSize: 26,
+    fontFamily: 'HelveticaMedium',
+    fontWeight: '800',
+    color: '#111827',
+    textTransform: 'uppercase',
+    letterSpacing: -0.5,
     marginBottom: 4,
-    textShadowColor: 'rgba(0, 0, 0, 0.2)',
-    textShadowOffset: { width: 0, height: 2 },
-    textShadowRadius: 4,
+    textAlign: 'center',
   },
   pageSubtitle: {
     fontSize: 13,
-    fontFamily: 'NotoSans_500Medium',
-    color: 'rgba(255, 255, 255, 0.9)',
+    fontFamily: 'HelveticaMedium',
+    color: '#6B7280',
     textAlign: 'center',
+  },
+  headerShareButton: {
+    width: 44,
+    height: 44,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  shareButtonInner: {
+    width: 44,
+    height: 44,
+    borderRadius: 12,
+    backgroundColor: '#FFFFFF',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.06,
+    shadowRadius: 8,
+    elevation: 2,
   },
   tabContainer: {
     flexDirection: 'row',
-    marginHorizontal: 20,
-    marginTop: 8,
-    marginBottom: 20,
-    backgroundColor: 'rgba(255, 255, 255, 0.15)',
+    backgroundColor: '#FFFFFF',
     borderRadius: 16,
     padding: 4,
     gap: 4,
+    borderWidth: 1,
+    borderColor: '#F3F4F6',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.06,
+    shadowRadius: 8,
+    elevation: 2,
   },
   tab: {
     flex: 1,
@@ -927,20 +906,17 @@ const styles = StyleSheet.create({
     backgroundColor: 'transparent',
   },
   tabActive: {
-    backgroundColor: 'rgba(255, 255, 255, 0.25)',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
+    backgroundColor: '#F3F4F6',
   },
   tabText: {
-    fontSize: 15,
-    fontFamily: 'NotoSans_600SemiBold',
-    color: 'rgba(255, 255, 255, 0.7)',
+    fontSize: 14,
+    fontFamily: 'HelveticaMedium',
+    fontWeight: '600',
+    color: '#6B7280',
+    textTransform: 'uppercase',
   },
   tabTextActive: {
-    color: '#FFFFFF',
+    color: '#111827',
   },
   tabContent: {
     paddingBottom: 20,
@@ -953,26 +929,9 @@ const styles = StyleSheet.create({
   },
   emptyStateText: {
     fontSize: 16,
-    fontFamily: 'NotoSans_500Medium',
+    fontFamily: 'HelveticaMedium',
     color: '#6B7280',
     marginTop: 16,
-  },
-  headerShareButton: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  shareButtonInner: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: 'rgba(255, 255, 255, 0.2)',
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.3)',
   },
   modalOverlay: {
     flex: 1,
@@ -995,7 +954,8 @@ const styles = StyleSheet.create({
   },
   modalTitle: {
     fontSize: 20,
-    fontFamily: 'NotoSans_700Bold',
+    fontFamily: 'HelveticaMedium',
+    fontWeight: '700',
     color: '#111827',
   },
   modalCloseButton: {
@@ -1025,21 +985,22 @@ const styles = StyleSheet.create({
     width: 80,
     height: 80,
     borderRadius: 40,
-    backgroundColor: '#F3E8FF',
+    backgroundColor: '#F3F4F6',
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: 16,
   },
   heroTitle: {
     fontSize: 22,
-    fontFamily: 'NotoSans_700Bold',
+    fontFamily: 'HelveticaMedium',
+    fontWeight: '700',
     color: '#111827',
     marginBottom: 8,
     textAlign: 'center',
   },
   heroSubtitle: {
     fontSize: 14,
-    fontFamily: 'NotoSans_400Regular',
+    fontFamily: 'HelveticaMedium',
     color: '#6B7280',
     textAlign: 'center',
     lineHeight: 20,
@@ -1076,13 +1037,14 @@ const styles = StyleSheet.create({
   },
   ruleTitle: {
     fontSize: 17,
-    fontFamily: 'NotoSans_700Bold',
+    fontFamily: 'HelveticaMedium',
+    fontWeight: '600',
     color: '#111827',
     marginBottom: 12,
   },
   ruleText: {
     fontSize: 14,
-    fontFamily: 'NotoSans_400Regular',
+    fontFamily: 'HelveticaMedium',
     color: '#6B7280',
     lineHeight: 22,
   },
@@ -1102,18 +1064,18 @@ const styles = StyleSheet.create({
   },
   pointTitle: {
     fontSize: 14,
-    fontFamily: 'NotoSans_600SemiBold',
+    fontFamily: 'HelveticaMedium',
     color: '#111827',
     marginBottom: 4,
   },
   pointText: {
     fontSize: 13,
-    fontFamily: 'NotoSans_400Regular',
+    fontFamily: 'HelveticaMedium',
     color: '#6B7280',
     lineHeight: 20,
   },
   pointHighlight: {
-    fontFamily: 'NotoSans_700Bold',
+    fontFamily: 'HelveticaMedium',
     color: '#8B5CF6',
   },
   prizeBox: {
@@ -1130,12 +1092,12 @@ const styles = StyleSheet.create({
   prizeText: {
     flex: 1,
     fontSize: 14,
-    fontFamily: 'NotoSans_500Medium',
+    fontFamily: 'HelveticaMedium',
     color: '#92400E',
     lineHeight: 20,
   },
   prizeHighlight: {
-    fontFamily: 'NotoSans_700Bold',
+    fontFamily: 'HelveticaMedium',
     fontSize: 15,
   },
   tipsList: {
@@ -1150,7 +1112,7 @@ const styles = StyleSheet.create({
   },
   tipText: {
     fontSize: 13,
-    fontFamily: 'NotoSans_400Regular',
+    fontFamily: 'HelveticaMedium',
     color: '#6B7280',
     flex: 1,
   },
@@ -1166,12 +1128,12 @@ const styles = StyleSheet.create({
   warningText: {
     flex: 1,
     fontSize: 13,
-    fontFamily: 'NotoSans_400Regular',
+    fontFamily: 'HelveticaMedium',
     color: '#6B7280',
     lineHeight: 20,
   },
   warningHighlight: {
-    fontFamily: 'NotoSans_700Bold',
+    fontFamily: 'HelveticaMedium',
     color: '#DC2626',
   },
   topUserSection: {
@@ -1197,7 +1159,7 @@ const styles = StyleSheet.create({
   },
   topUserWinnerText: {
     fontSize: 14,
-    fontFamily: 'NotoSans_700Bold',
+    fontFamily: 'HelveticaMedium',
     color: '#92400E',
     letterSpacing: 0.5,
   },
@@ -1224,7 +1186,7 @@ const styles = StyleSheet.create({
   },
   topUserAvatarText: {
     fontSize: 48,
-    fontFamily: 'NotoSans_700Bold',
+    fontFamily: 'HelveticaMedium',
     color: '#111827',
   },
   topUserRankBadge: {
@@ -1246,7 +1208,7 @@ const styles = StyleSheet.create({
   },
   topUserRankText: {
     fontSize: 14,
-    fontFamily: 'NotoSans_700Bold',
+    fontFamily: 'HelveticaMedium',
     color: '#FFFFFF',
   },
   topUserNameContainer: {
@@ -1273,7 +1235,8 @@ const styles = StyleSheet.create({
   },
   topUserName: {
     fontSize: 20,
-    fontFamily: 'NotoSans_700Bold',
+    fontFamily: 'HelveticaMedium',
+    fontWeight: '600',
     color: '#111827',
     marginBottom: 4,
     fontStyle: 'italic',
@@ -1282,22 +1245,22 @@ const styles = StyleSheet.create({
   },
   topUserPoints: {
     fontSize: 14,
-    fontFamily: 'NotoSans_500Medium',
+    fontFamily: 'HelveticaMedium',
     color: '#6B7280',
   },
   combinedCard: {
     marginHorizontal: 20,
     marginBottom: 24,
-    backgroundColor: '#F0F9FF',
+    backgroundColor: '#FFFFFF',
     borderRadius: 16,
     padding: 20,
     borderWidth: 1,
-    borderColor: '#BAE6FD',
+    borderColor: '#F3F4F6',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05,
+    shadowOpacity: 0.06,
     shadowRadius: 8,
-    elevation: 3,
+    elevation: 2,
   },
   combinedCardHeader: {
     flexDirection: 'row',
@@ -1323,7 +1286,8 @@ const styles = StyleSheet.create({
   },
   combinedCardTitle: {
     fontSize: 18,
-    fontFamily: 'NotoSans_700Bold',
+    fontFamily: 'HelveticaMedium',
+    fontWeight: '600',
     color: '#111827',
   },
   combinedCardCloseButton: {
@@ -1355,23 +1319,23 @@ const styles = StyleSheet.create({
   },
   combinedPromoTitle: {
     fontSize: 16,
-    fontFamily: 'NotoSans_700Bold',
+    fontFamily: 'HelveticaMedium',
     color: '#111827',
   },
   combinedPromoDescription: {
     fontSize: 13,
-    fontFamily: 'NotoSans_400Regular',
+    fontFamily: 'HelveticaMedium',
     color: '#6B7280',
     lineHeight: 20,
   },
   infoCard: {
     marginHorizontal: 20,
     marginBottom: 16,
-    backgroundColor: '#EEF2FF',
-    borderRadius: 12,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
     padding: 16,
     borderWidth: 1,
-    borderColor: '#E0E7FF',
+    borderColor: '#F3F4F6',
   },
   infoCardHeader: {
     flexDirection: 'row',
@@ -1390,7 +1354,8 @@ const styles = StyleSheet.create({
   infoCardTitle: {
     flex: 1,
     fontSize: 15,
-    fontFamily: 'NotoSans_700Bold',
+    fontFamily: 'HelveticaMedium',
+    fontWeight: '600',
     color: '#111827',
   },
   infoCardCloseButton: {
@@ -1411,12 +1376,12 @@ const styles = StyleSheet.create({
   infoText: {
     flex: 1,
     fontSize: 13,
-    fontFamily: 'NotoSans_400Regular',
+    fontFamily: 'HelveticaMedium',
     color: '#6B7280',
     lineHeight: 18,
   },
   infoHighlight: {
-    fontFamily: 'NotoSans_700Bold',
+    fontFamily: 'HelveticaMedium',
     color: '#6366F1',
   },
   quickActionsSection: {
@@ -1425,14 +1390,16 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   quickCodeCard: {
-    borderRadius: 20,
+    borderRadius: 16,
     padding: 20,
     marginBottom: 16,
-    shadowColor: '#8B5CF6',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 12,
-    elevation: 8,
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.06,
+    shadowRadius: 8,
+    elevation: 2,
   },
   quickCodeHeader: {
     flexDirection: 'row',
@@ -1441,9 +1408,11 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
   quickCodeLabel: {
-    fontSize: 13,
-    fontFamily: 'NotoSans_600SemiBold',
-    color: 'rgba(255, 255, 255, 0.9)',
+    fontSize: 12,
+    fontFamily: 'HelveticaMedium',
+    fontWeight: '600',
+    color: '#6B7280',
+    textTransform: 'uppercase',
   },
   quickCodeRow: {
     flexDirection: 'row',
@@ -1451,25 +1420,29 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
   },
   quickCodeText: {
-    fontSize: 22,
-    fontFamily: 'NotoSans_700Bold',
-    color: '#FFFFFF',
+    fontSize: 20,
+    fontFamily: 'HelveticaMedium',
+    fontWeight: '800',
+    color: '#111827',
     letterSpacing: 2,
     flex: 1,
   },
   quickCopyButton: {
-    padding: 8,
-    borderRadius: 10,
-    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    padding: 10,
+    borderRadius: 12,
+    backgroundColor: '#F3F4F6',
   },
   quickStatsCard: {
-    borderRadius: 20,
+    borderRadius: 16,
     overflow: 'hidden',
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#F3F4F6',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
+    shadowOpacity: 0.06,
     shadowRadius: 8,
-    elevation: 4,
+    elevation: 2,
   },
   quickStatsGradient: {
     flexDirection: 'row',
@@ -1485,24 +1458,20 @@ const styles = StyleSheet.create({
     width: 40,
     height: 40,
     borderRadius: 20,
-    backgroundColor: '#FFFFFF',
+    backgroundColor: '#F3F4F6',
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: 4,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 2,
   },
   quickStatLabel: {
     fontSize: 12,
-    fontFamily: 'NotoSans_500Medium',
+    fontFamily: 'HelveticaMedium',
     color: '#6B7280',
   },
   quickStatValue: {
     fontSize: 22,
-    fontFamily: 'NotoSans_700Bold',
+    fontFamily: 'HelveticaMedium',
+    fontWeight: '700',
     color: '#111827',
   },
   quickStatDivider: {
@@ -1542,7 +1511,7 @@ const styles = StyleSheet.create({
   },
   rankCircleText: {
     fontSize: 13,
-    fontFamily: 'NotoSans_700Bold',
+    fontFamily: 'HelveticaMedium',
     color: '#FFFFFF',
   },
   trophyContainer: {
@@ -1567,7 +1536,7 @@ const styles = StyleSheet.create({
   },
   userAvatarText: {
     fontSize: 18,
-    fontFamily: 'NotoSans_700Bold',
+    fontFamily: 'HelveticaMedium',
     color: '#111827',
   },
   userInfo: {
@@ -1578,7 +1547,7 @@ const styles = StyleSheet.create({
   },
   userName: {
     fontSize: 15,
-    fontFamily: 'NotoSans_600SemiBold',
+    fontFamily: 'HelveticaMedium',
     color: '#111827',
     width: '100%',
   },
@@ -1594,14 +1563,14 @@ const styles = StyleSheet.create({
   },
   userPoints: {
     fontSize: 14,
-    fontFamily: 'NotoSans_600SemiBold',
+    fontFamily: 'HelveticaMedium',
     color: '#111827',
     textAlign: 'right',
     minWidth: 60,
   },
   pointsLabel: {
     fontSize: 12,
-    fontFamily: 'NotoSans_400Regular',
+    fontFamily: 'HelveticaMedium',
     color: '#6B7280',
   },
   loadMoreContainer: {
@@ -1622,7 +1591,7 @@ const styles = StyleSheet.create({
   },
   loadMoreText: {
     fontSize: 15,
-    fontFamily: 'NotoSans_600SemiBold',
+    fontFamily: 'HelveticaMedium',
     color: '#8B5CF6',
   },
   helpFriendSection: {
@@ -1630,11 +1599,11 @@ const styles = StyleSheet.create({
     marginBottom: 24,
   },
   helpFriendCard: {
-    backgroundColor: '#F0F9FF',
+    backgroundColor: '#FFFFFF',
     borderRadius: 16,
     padding: 20,
     borderWidth: 1,
-    borderColor: '#BAE6FD',
+    borderColor: '#F3F4F6',
   },
   helpFriendHeader: {
     flexDirection: 'row',
@@ -1644,12 +1613,13 @@ const styles = StyleSheet.create({
   },
   helpFriendTitle: {
     fontSize: 18,
-    fontFamily: 'NotoSans_700Bold',
+    fontFamily: 'HelveticaMedium',
+    fontWeight: '600',
     color: '#111827',
   },
   helpFriendDescription: {
     fontSize: 14,
-    fontFamily: 'NotoSans_400Regular',
+    fontFamily: 'HelveticaMedium',
     color: '#6B7280',
     marginBottom: 16,
     lineHeight: 20,
@@ -1666,7 +1636,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 14,
     fontSize: 16,
-    fontFamily: 'NotoSans_500Medium',
+    fontFamily: 'HelveticaMedium',
     color: '#111827',
     borderWidth: 1,
     borderColor: '#E5E7EB',
@@ -1688,7 +1658,7 @@ const styles = StyleSheet.create({
   },
   applyPromoButtonText: {
     fontSize: 15,
-    fontFamily: 'NotoSans_600SemiBold',
+    fontFamily: 'HelveticaMedium',
     color: '#FFFFFF',
   },
   subscriptionPromptContent: {
@@ -1713,13 +1683,13 @@ const styles = StyleSheet.create({
   },
   subscriptionPromptMainText: {
     fontSize: 16,
-    fontFamily: 'NotoSans_700Bold',
+    fontFamily: 'HelveticaMedium',
     color: '#FFFFFF',
     lineHeight: 22,
   },
   subscriptionPromptSubText: {
     fontSize: 13,
-    fontFamily: 'NotoSans_500Medium',
+    fontFamily: 'HelveticaMedium',
     color: 'rgba(255, 255, 255, 0.9)',
     lineHeight: 18,
   },
@@ -1742,7 +1712,7 @@ const styles = StyleSheet.create({
   },
   subscriptionPromptButtonText: {
     fontSize: 15,
-    fontFamily: 'NotoSans_700Bold',
+    fontFamily: 'HelveticaMedium',
     color: '#8B5CF6',
   },
 });
