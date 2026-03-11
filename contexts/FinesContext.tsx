@@ -131,6 +131,7 @@ export function FinesProvider({ children }: { children: ReactNode }) {
         maxCars: limitInfo?.maxCars,
         registeredCars: limitInfo?.registeredCars,
       });
+      console.log('🔍 [FinesContext] getUserRegisteredVehicles რესპონსი (raw):', JSON.stringify(vehicles, null, 2));
     } finally {
       setFinesDataLoading(false);
     }
@@ -145,14 +146,25 @@ export function FinesProvider({ children }: { children: ReactNode }) {
   }, [isPremiumUser, user?.id, loadFinesData]);
 
   // ======== Helper Functions ========
+  const normalizePlate = (plate: string) =>
+    (plate || '').toUpperCase().replace(/-/g, '').trim();
+
   const isVehicleRegistered = useCallback(
     (plateNumber: string) => {
-      return registeredVehicles.some(
-        (v) =>
-          v.vehicleNumber?.toUpperCase() === plateNumber?.toUpperCase(),
+      const norm = normalizePlate(plateNumber);
+      if (!norm) return false;
+      if (
+        registeredVehicles.some(
+          (v) => normalizePlate(v.vehicleNumber || '') === norm,
+        )
+      )
+        return true;
+      // ფოლბექი: გამოწერა აქვს ამ ნომერზე (ბაზაში FinesVehicle ჩანაწერი ვერ ჩაიწერა)
+      return carFinesSubscriptions.some(
+        (s) => normalizePlate(s.vehicleNumber || '') === norm,
       );
     },
-    [registeredVehicles],
+    [registeredVehicles, carFinesSubscriptions],
   );
 
   // SA API-ში იუზერის მანქანებიდან რამდენია რეგისტრირებული

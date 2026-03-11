@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import {
   StyleSheet,
   View,
@@ -55,6 +55,19 @@ export default function GarageScreen() {
   const [currentCarIndex, setCurrentCarIndex] = useState(0);
   const scrollViewRef = useRef<ScrollView>(null);
 
+  const sortedCars = useMemo(() => {
+    return [...cars].sort((a, b) => {
+      const finesA = getCarFines(a.id)?.penalties?.length ?? 0;
+      const finesB = getCarFines(b.id)?.penalties?.length ?? 0;
+      return finesB - finesA;
+    });
+  }, [cars, carFinesMap, getCarFines]);
+
+  const selectedCarIndexInSorted = selectedCar
+    ? sortedCars.findIndex((c) => c.id === selectedCar.id)
+    : 0;
+  const effectiveCarIndex = selectedCarIndexInSorted >= 0 ? selectedCarIndexInSorted : 0;
+
   // API -> UI mapping
   useEffect(() => {
     const mappedCars: UICar[] = (apiCars || []).map((c) => ({
@@ -106,17 +119,18 @@ export default function GarageScreen() {
     const cardWidth = width * 0.85 + 16;
     const offsetX = event.nativeEvent.contentOffset.x;
     const index = Math.round(offsetX / cardWidth);
-    if (index >= 0 && index < cars.length) {
+    if (index >= 0 && index < sortedCars.length) {
       setCurrentCarIndex(index);
-      if (cars[index]) {
-        setSelectedCar(cars[index]);
+      const car = sortedCars[index];
+      if (car) {
+        setSelectedCar(car);
         apiSelectCar({
-          id: cars[index].id,
-          make: cars[index].brand,
-          model: cars[index].model,
-          year: parseInt(cars[index].year || '0'),
-          plateNumber: cars[index].licensePlate,
-          imageUri: cars[index].image || '',
+          id: car.id,
+          make: car.brand,
+          model: car.model,
+          year: parseInt(car.year || '0'),
+          plateNumber: car.licensePlate,
+          imageUri: car.image || '',
         } as any);
       }
     }
@@ -129,6 +143,16 @@ export default function GarageScreen() {
       'Audi': 'https://images.unsplash.com/photo-1606664515524-ed2f786a0bd6?q=80&w=1600&auto=format&fit=crop',
       'Toyota': 'https://images.unsplash.com/photo-1621007947382-bb3c3994e3fb?q=80&w=1600&auto=format&fit=crop',
       'Honda': 'https://images.unsplash.com/photo-1525609004556-c46c7d6cf023?q=80&w=1600&auto=format&fit=crop',
+      'Land Rover': 'https://images.unsplash.com/photo-1503376780353-7e6692767b70?q=80&w=1600&auto=format&fit=crop',
+      'Lexus': 'https://images.unsplash.com/photo-1503376780353-7e6692767b70?q=80&w=1600&auto=format&fit=crop',
+      'Nissan': 'https://images.unsplash.com/photo-1503376780353-7e6692767b70?q=80&w=1600&auto=format&fit=crop',
+      'Ford': 'https://images.unsplash.com/photo-1503376780353-7e6692767b70?q=80&w=1600&auto=format&fit=crop',
+      'Volkswagen': 'https://images.unsplash.com/photo-1503376780353-7e6692767b70?q=80&w=1600&auto=format&fit=crop',
+      'Hyundai': 'https://images.unsplash.com/photo-1503376780353-7e6692767b70?q=80&w=1600&auto=format&fit=crop',
+      'Kia': 'https://images.unsplash.com/photo-1503376780353-7e6692767b70?q=80&w=1600&auto=format&fit=crop',
+      'Mazda': 'https://images.unsplash.com/photo-1503376780353-7e6692767b70?q=80&w=1600&auto=format&fit=crop',
+      'Subaru': 'https://images.unsplash.com/photo-1503376780353-7e6692767b70?q=80&w=1600&auto=format&fit=crop',
+      
     };
     if (make && carImages[make]) return carImages[make];
     return 'https://images.unsplash.com/photo-1503376780353-7e6692767b70?q=80&w=1600&auto=format&fit=crop';
@@ -600,7 +624,10 @@ export default function GarageScreen() {
               snapToInterval={width * 0.85 + 16}
               decelerationRate="fast"
             >
-              {cars.map((car, index) => (
+              {sortedCars.map((car, index) => {
+                const finesCount = getCarFines(car.id)?.penalties?.length ?? 0;
+                const showFinesBadge = finesCount > 0;
+                return (
                 <TouchableOpacity
                   key={car.id}
                   style={[
@@ -627,7 +654,16 @@ export default function GarageScreen() {
                   <View style={styles.carOverlay}>
                     <View style={styles.carTopRow}>
                       <View style={styles.carInfo}>
-                        <Text style={styles.carBrand}>{car.brand}</Text>
+                        <View style={styles.carInfoTitleRow}>
+                          <Text style={styles.carBrand}>{car.brand}</Text>
+                          {showFinesBadge && (
+                            <View style={styles.finesBadge}>
+                              <Text style={styles.finesBadgeText}>
+                                {finesCount > 99 ? '99+' : finesCount} ჯარიმა
+                              </Text>
+                            </View>
+                          )}
+                        </View>
                         <Text style={styles.carModel}>{car.model}</Text>
                         <Text style={styles.carYear}>{car.year}</Text>
                       </View>
@@ -685,7 +721,8 @@ export default function GarageScreen() {
                     </View>
                   </View>
                 </TouchableOpacity>
-              ))}
+                );
+              })}
 
               {/* Add Car Card - Inside ScrollView */}
               <TouchableOpacity
@@ -699,14 +736,14 @@ export default function GarageScreen() {
             </ScrollView>
 
             {/* Car Indicators */}
-            {cars.length > 0 && (
+            {sortedCars.length > 0 && (
               <View style={styles.indicatorsContainer}>
-                {cars.map((_, index) => (
+                {sortedCars.map((_, index) => (
                   <View
                     key={index}
                     style={[
                       styles.indicator,
-                      currentCarIndex === index && styles.indicatorActive,
+                      effectiveCarIndex === index && styles.indicatorActive,
                     ]}
                   />
                 ))}
@@ -886,7 +923,24 @@ const styles = StyleSheet.create({
   },
   carInfo: {
     flex: 1,
-    },
+  },
+  carInfoTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    flexWrap: 'wrap',
+  },
+  finesBadge: {
+    backgroundColor: '#DC2626',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 10,
+  },
+  finesBadgeText: {
+    color: '#FFFFFF',
+    fontSize: 11,
+    fontWeight: '700',
+  },
   carActions: {
     flexDirection: 'row',
     gap: 8,

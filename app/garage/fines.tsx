@@ -54,6 +54,7 @@ export default function FinesScreen() {
   const [hasSearched, setHasSearched] = useState(false);
   const [isRegistered, setIsRegistered] = useState(false);
   const [registering, setRegistering] = useState(false);
+  const [removing, setRemoving] = useState(false);
   const [showSubscriptionModal, setShowSubscriptionModal] = useState(false);
 
   // პირველივე მანქანა დეფაულტად — cars მასივიდან (სადაც techPassport არის)
@@ -191,6 +192,38 @@ export default function FinesScreen() {
     setShowUpgradeModal(true);
   };
 
+  const handleRemoveVehicleFromFines = () => {
+    if (!licensePlate?.trim()) return;
+    if (!user?.id) return;
+    Alert.alert(
+      'სისტემიდან ამოღება',
+      `დარწმუნებული ხართ, რომ გსურთ მანქანა ${licensePlate.trim().toUpperCase()} ჯარიმების სისტემიდან ამოღება? ჯარიმების მონიტორინგი გაუქმდება.`,
+      [
+        { text: 'გაუქმება', style: 'cancel' },
+        {
+          text: 'ამოღება',
+          style: 'destructive',
+          onPress: async () => {
+            setRemoving(true);
+            try {
+              const result = await finesApi.removeVehicleFromFines(
+                user.id,
+                licensePlate.trim().toUpperCase(),
+              );
+              setIsRegistered(false);
+              await refreshFinesData();
+              Alert.alert('წარმატება', result.message || 'მანქანა სისტემიდან ამოღებულია');
+            } catch (e: any) {
+              Alert.alert('შეცდომა', e?.message || 'ამოღება ვერ მოხერხდა');
+            } finally {
+              setRemoving(false);
+            }
+          },
+        },
+      ]
+    );
+  };
+
   const confirmUpgrade = async () => {
     if (!user?.id || !selectedCarId || !licensePlate.trim()) {
       Alert.alert('შეცდომა', 'მანქანის მონაცემები არ არის');
@@ -252,6 +285,18 @@ export default function FinesScreen() {
     ? isCarMonitoringActive(selectedCarId, licensePlate)
     : false;
   const canCheckFines = isPremiumUser && isCurrentCarRegistered && currentCarHasSubscription;
+
+  // დებაგი: რა გვიბრუნდება ბაზიდან და რატომ ჩანს/არ ჩანს "დარეგისტრირებული"
+  useEffect(() => {
+    if (finesDataLoading || !licensePlate) return;
+    const fromApi = isVehicleRegistered(licensePlate);
+    console.log('🔍 [FINES DEBUG] registeredVehicles (ბაზიდან):', JSON.stringify(registeredVehicles, null, 2));
+    console.log('🔍 [FINES DEBUG] მიმდინარე ნომერი:', licensePlate.trim().toUpperCase(), '| სხვა ფორმატი:', licensePlate);
+    console.log('🔍 [FINES DEBUG] isVehicleRegistered(licensePlate):', fromApi, '| isRegistered (ლოკალური):', isRegistered);
+    console.log('🔍 [FINES DEBUG] isCurrentCarRegistered:', isCurrentCarRegistered, '| currentCarHasSubscription:', currentCarHasSubscription, '| canCheckFines:', canCheckFines);
+    console.log('🔍 [FINES DEBUG] carLimitInfo:', JSON.stringify(carLimitInfo));
+    console.log('🔍 [FINES DEBUG] carFinesSubscriptions:', JSON.stringify(carFinesSubscriptions, null, 2));
+  }, [finesDataLoading, registeredVehicles, licensePlate, isVehicleRegistered, isRegistered, isCurrentCarRegistered, currentCarHasSubscription, canCheckFines, carLimitInfo, carFinesSubscriptions]);
 
   // სხვა დივაისზე შესვლისას: როცა კონტექსტში ჯარიმების დატა ჯერ არ არის, ავტომატურად გავუშვათ შემოწმება
   useEffect(() => {
@@ -462,8 +507,17 @@ export default function FinesScreen() {
               showsHorizontalScrollIndicator={false}
               contentContainerStyle={styles.carSelectorScroll}
             >
-              {cars.map((car) => {
+              {[...cars]
+                .sort((a, b) => {
+                  const finesA = getCarFines(a.id)?.penalties?.length ?? 0;
+                  const finesB = getCarFines(b.id)?.penalties?.length ?? 0;
+                  return finesB - finesA;
+                })
+                .map((car) => {
                 const isSelected = selectedCarId === car.id;
+                const carFinesData = getCarFines(car.id);
+                const finesCount = carFinesData?.penalties?.length ?? 0;
+                const showFinesBadge = finesCount > 0;
                 return (
                   <TouchableOpacity
                     key={car.id}
@@ -487,11 +541,20 @@ export default function FinesScreen() {
                     }}
                     activeOpacity={0.7}
                   >
-                    <Ionicons
-                      name="car-sport"
-                      size={20}
-                      color={isSelected ? '#FFFFFF' : '#6B7280'}
-                    />
+                    <View style={styles.carSelectorCardIconRow}>
+                      <Ionicons
+                        name="car-sport"
+                        size={20}
+                        color={isSelected ? '#FFFFFF' : '#6B7280'}
+                      />
+                      {showFinesBadge && (
+                        <View style={styles.carFinesBadge}>
+                          <Text style={styles.carFinesBadgeText}>
+                            {finesCount > 99 ? '99+' : finesCount}
+                          </Text>
+                        </View>
+                      )}
+                    </View>
                     <Text
                       style={[
                         styles.carSelectorBrand,
@@ -617,11 +680,28 @@ export default function FinesScreen() {
             </TouchableOpacity>
           )}
 
-          {/* მანქანა უკვე დარეგისტრირებულია ინდიკატორი */}
+          {/* მანქანა უკვე დარეგისტრირებულია ინდიკატორი + სისტემიდან ამოღება */}
           {isPremiumUser && (isVehicleRegistered(licensePlate) || isRegistered) && (
-            <View style={styles.registeredBadge}>
-              <Ionicons name="checkmark-circle" size={18} color="#22C55E" />
-              <Text style={styles.registeredBadgeText}>მანქანა სისტემაში დარეგისტრირებულია</Text>
+            <View style={styles.registeredBadgeRow}>
+              <View style={styles.registeredBadge}>
+                <Ionicons name="checkmark-circle" size={18} color="#22C55E" />
+                <Text style={styles.registeredBadgeText}>მანქანა სისტემაში დარეგისტრირებულია</Text>
+              </View>
+              <TouchableOpacity
+                style={styles.removeFromFinesButton}
+                onPress={handleRemoveVehicleFromFines}
+                disabled={removing || registering}
+                activeOpacity={0.7}
+              >
+                {removing ? (
+                  <ActivityIndicator size="small" color="#DC2626" />
+                ) : (
+                  <>
+                    <Ionicons name="trash-outline" size={16} color="#DC2626" />
+                    <Text style={styles.removeFromFinesButtonText}>ჯარიმების ფუნქციონალის წაშლა</Text>
+                  </>
+                )}
+              </TouchableOpacity>
             </View>
           )}
 
@@ -629,7 +709,7 @@ export default function FinesScreen() {
           {isPremiumUser && isCurrentCarRegistered && selectedCarId && (
             <View style={[
               styles.registeredBadge,
-              { backgroundColor: currentCarHasSubscription ? '#F0FDF4' : '#FEF2F2' }
+              { backgroundColor: currentCarHasSubscription ? '#F0FDF4' : '#FEF2F2', marginBottom: 12 }
             ]}>
               <Ionicons
                 name={currentCarHasSubscription ? 'shield-checkmark' : 'alert-circle-outline'}
@@ -990,6 +1070,26 @@ const styles = StyleSheet.create({
     minWidth: 120,
     gap: 4,
   },
+  carSelectorCardIconRow: {
+    position: 'relative',
+  },
+  carFinesBadge: {
+    position: 'absolute',
+    top: -8,
+    right: -12,
+    minWidth: 18,
+    height: 18,
+    borderRadius: 9,
+    backgroundColor: '#DC2626',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 4,
+  },
+  carFinesBadgeText: {
+    color: '#FFFFFF',
+    fontSize: 11,
+    fontWeight: '700',
+  },
   carSelectorCardActive: {
     backgroundColor: '#111827',
     borderColor: '#111827',
@@ -1094,6 +1194,10 @@ const styles = StyleSheet.create({
     fontFamily: 'HelveticaMedium',
     textTransform: 'uppercase',
   },
+  registeredBadgeRow: {
+    marginBottom: 12,
+    gap: 8,
+  },
   registeredBadge: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1102,9 +1206,26 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     paddingHorizontal: 14,
     paddingVertical: 10,
-    marginBottom: 12,
+    marginBottom: 0,
     borderWidth: 1,
     borderColor: '#BBF7D0',
+  },
+  removeFromFinesButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#FECACA',
+    backgroundColor: '#FEF2F2',
+  },
+  removeFromFinesButtonText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#DC2626',
   },
   registeredBadgeText: {
     fontSize: 13,

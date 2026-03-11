@@ -267,6 +267,22 @@ class FinesApiService {
     return this.request<VehicleRegistration[]>(`/vehicles/user/${userId}`);
   }
 
+  /**
+   * მანქანის ამოღება ჯარიმების სისტემიდან (ბაზაში deactivate + გამოწერის გაუქმება)
+   */
+  async removeVehicleFromFines(
+    userId: string,
+    vehicleNumber: string,
+  ): Promise<{ success: boolean; message: string }> {
+    return this.request<{ success: boolean; message: string }>(
+      '/vehicles/remove',
+      {
+        method: 'POST',
+        body: JSON.stringify({ userId, vehicleNumber }),
+      },
+    );
+  }
+
   // ==========================================
   // CarFinesSubscription მეთოდები
   // ==========================================

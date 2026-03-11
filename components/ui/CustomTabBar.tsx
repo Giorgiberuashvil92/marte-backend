@@ -7,6 +7,7 @@ import { useRouter } from 'expo-router';
 import Colors from '@/constants/Colors';
 import { useColorScheme } from '@/components/useColorScheme';
 import { useUser } from '@/contexts/UserContext';
+import { useFines } from '@/contexts/FinesContext';
 import { aiApi } from '@/services/aiApi';
 
 export default function CustomTabBar({ state, descriptors, navigation }: BottomTabBarProps) {
@@ -18,6 +19,8 @@ export default function CustomTabBar({ state, descriptors, navigation }: BottomT
   const styles = createStyles(theme, isCompact);
   const router = useRouter();
   const { user } = useUser();
+  const { getTotalFinesCount } = useFines();
+  const totalFinesCount = getTotalFinesCount();
   const [sellerStatus, setSellerStatus] = useState<any>(null);
 
   // Load seller status when component mounts
@@ -88,10 +91,19 @@ export default function CustomTabBar({ state, descriptors, navigation }: BottomT
     const iconName = (options.tabBarIcon as any)?.({ color: '#000' })?.props?.name as React.ComponentProps<typeof FontAwesome>['name'] | undefined;
     const iconSize = isCompact ? 15 : 18;
 
-    // Center slot is reserved for the floating action button
+    const isGarage = route.name === 'garage';
+    const showFinesBadge = isGarage && totalFinesCount > 0;
+
     return (
       <TouchableOpacity key={route.key} accessibilityRole="button" activeOpacity={0.9} style={styles.tabItem} onPress={() => goTo(route.name, originalIndex)}>
-        {iconName && <FontAwesome name={iconName} size={iconSize} color={isFocused ? theme.text : theme.secondary} />}
+        <View style={styles.iconWrap}>
+          {iconName && <FontAwesome name={iconName} size={iconSize} color={isFocused ? theme.text : theme.secondary} />}
+          {showFinesBadge && (
+            <View style={styles.finesBadge}>
+              <Text style={styles.finesBadgeText}>{totalFinesCount > 99 ? '99+' : totalFinesCount}</Text>
+            </View>
+          )}
+        </View>
         <Text style={[styles.tabText, { color: isFocused ? theme.text : theme.secondary }]} numberOfLines={1}>
           {String(label)}
         </Text>
@@ -142,6 +154,24 @@ function createStyles(theme: typeof Colors.light, isCompact: boolean) {
     side: { flexDirection: 'row', gap: isCompact ? 12 : 24, alignItems: 'center' },
     fabHole: { width: isCompact ? 50 : 64 },
     tabItem: { alignItems: 'center', justifyContent: 'center' },
+    iconWrap: { position: 'relative' },
+    finesBadge: {
+      position: 'absolute',
+      top: -6,
+      right: -10,
+      minWidth: 16,
+      height: 16,
+      borderRadius: 8,
+      backgroundColor: '#DC2626',
+      alignItems: 'center',
+      justifyContent: 'center',
+      paddingHorizontal: 4,
+    },
+    finesBadgeText: {
+      color: '#FFFFFF',
+      fontSize: 10,
+      fontWeight: '700',
+    },
     tabText: {
       fontFamily: 'HelveticaMedium',
       textTransform: 'uppercase',
