@@ -509,28 +509,46 @@ export class FinesService implements OnModuleInit {
     this.logger.debug(`   Request body: ${JSON.stringify(data)}`);
 
     const doRegister = () =>
-      this.authenticatedRequest<{ id: number }>(
+      this.authenticatedRequest<Record<string, unknown>>(
         '/patrolpenalties/vehicles',
         { method: 'POST', body: JSON.stringify(data) },
         30000, // 30s timeout – Railway → SA.gov.ge ზოგჯერ ნელა პასუხობს
       );
 
-    let response: { id: number };
+    let rawResponse: Record<string, unknown>;
     try {
-      response = await doRegister();
+      rawResponse = await doRegister();
     } catch (err: any) {
       const isRetryable =
         err instanceof HttpException && err.getStatus() === 502;
       if (isRetryable) {
         this.logger.warn('🔄 Retrying vehicle registration once...');
         await new Promise((r) => setTimeout(r, 2000));
-        response = await doRegister();
+        rawResponse = await doRegister();
       } else {
         throw err;
       }
     }
 
-    const saVehicleId = response.id;
+    this.logger.debug(
+      `📥 SA register vehicle raw response: ${JSON.stringify(rawResponse)}`,
+    );
+    const resp = rawResponse as { id?: number; Id?: number };
+    const saVehicleId =
+      typeof resp.id === 'number'
+        ? resp.id
+        : typeof resp.Id === 'number'
+          ? resp.Id
+          : undefined;
+    const saVehicleIdToSave =
+      saVehicleId !== undefined && saVehicleId !== null
+        ? Number(saVehicleId)
+        : 0;
+    if (saVehicleIdToSave === 0) {
+      this.logger.warn(
+        `⚠️ SA API did not return vehicle id; raw response keys: ${Object.keys(rawResponse || {}).join(', ')}`,
+      );
+    }
 
     // შენახვა ჩვენს ბაზაში
     try {
@@ -544,7 +562,7 @@ export class FinesService implements OnModuleInit {
 
       if (existing) {
         // განვაახლოთ არსებული ჩანაწერი
-        existing.saVehicleId = saVehicleId;
+        existing.saVehicleId = saVehicleIdToSave;
         existing.addDate = new Date().toISOString();
         existing.mediaFile = mediaFile;
         await existing.save();
@@ -557,7 +575,7 @@ export class FinesService implements OnModuleInit {
           userId,
           vehicleNumber: formattedVehicleNumber,
           techPassportNumber: techPassportNumber.trim(),
-          saVehicleId,
+          saVehicleId: saVehicleIdToSave,
           addDate: new Date().toISOString(),
           isActive: true,
           mediaFile,
@@ -572,8 +590,8 @@ export class FinesService implements OnModuleInit {
       // არ ვაგდებთ error-ს, რადგან API რეგისტრაცია წარმატებული იყო
     }
 
-    this.logger.log(`✅ Vehicle registered with SA ID: ${saVehicleId}`);
-    return saVehicleId;
+    this.logger.log(`✅ Vehicle registered with SA ID: ${saVehicleIdToSave}`);
+    return saVehicleIdToSave;
   }
 
   /**
@@ -616,6 +634,73 @@ export class FinesService implements OnModuleInit {
       .find({ isActive: true })
       .sort({ createdAt: -1 })
       .exec();
+  }
+
+  /**
+   * მანქანის ამოღება ჯარიმების სისტემიდან (ბაზაში deactivate + გამოწერის გაუქმება, SA-ში DELETE თუ id არსებობს)
+   */
+  async removeVehicleFromFines(
+    userId: string,
+    vehicleNumber: string,
+  ): Promise<{ success: boolean; message: string }> {
+    const formatted = this.formatVehicleNumber(vehicleNumber);
+
+    const vehicle = await this.finesVehicleModel.findOne({
+      userId,
+      vehicleNumber: formatted,
+      isActive: true,
+    });
+
+    if (vehicle) {
+      vehicle.isActive = false;
+      vehicle.cancelDate = new Date().toISOString();
+      await vehicle.save();
+      this.logger.log(
+        `🗑️ Vehicle deactivated in DB: ${formatted} (user: ${userId})`,
+      );
+
+      if (vehicle.saVehicleId && vehicle.saVehicleId > 0) {
+        try {
+          await this.authenticatedRequest<void>(
+            `/patrolpenalties/vehicles/${vehicle.saVehicleId}`,
+            { method: 'DELETE' },
+            10000,
+          );
+          this.logger.log(
+            `🗑️ Vehicle removed from SA: id=${vehicle.saVehicleId}`,
+          );
+        } catch (err) {
+          this.logger.warn(
+            `⚠️ SA DELETE vehicle failed (id=${vehicle.saVehicleId}), vehicle still deactivated in our DB: ${err}`,
+          );
+        }
+      }
+    }
+
+    const subs = await this.carFinesSubscriptionModel
+      .find({
+        userId,
+        vehicleNumber: formatted,
+        status: { $in: ['active', 'pending'] },
+      })
+      .exec();
+
+    for (const sub of subs) {
+      sub.status = 'cancelled';
+      sub.endDate = new Date();
+      await sub.save();
+      this.logger.log(
+        `🚫 Car fines subscription cancelled: ${String(sub._id)} (${formatted})`,
+      );
+    }
+
+    return {
+      success: true,
+      message:
+        vehicle || subs.length > 0
+          ? 'მანქანა სისტემიდან ამოღებულია'
+          : 'მანქანა ვერ მოიძებნა',
+    };
   }
 
   /**

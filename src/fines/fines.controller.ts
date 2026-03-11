@@ -171,6 +171,31 @@ export class FinesController {
   }
 
   /**
+   * მანქანის ამოღება ჯარიმების სისტემიდან
+   * POST /fines/vehicles/remove
+   */
+  @Post('vehicles/remove')
+  async removeVehicleFromFines(
+    @Body() body: { userId: string; vehicleNumber: string },
+  ) {
+    try {
+      const result = await this.finesService.removeVehicleFromFines(
+        body.userId,
+        body.vehicleNumber,
+      );
+      return result;
+    } catch (error) {
+      if (error instanceof HttpException) {
+        throw error;
+      }
+      throw new HttpException(
+        'მანქანის ამოღება ვერ მოხერხდა',
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
+  }
+
+  /**
    * კონკრეტული იუზერის დარეგისტრირებული მანქანები
    * GET /fines/vehicles/user/:userId
    */
