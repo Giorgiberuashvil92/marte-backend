@@ -231,7 +231,20 @@ export class FinesService {
   }
 
   /**
+   * ბაზის URL: თუ FINES_BACKEND_URL არის (VPS proxy), ვიყენებთ მას; წინააღმდეგ შემთხვევაში პირდაპირ SA API.
+   */
+  private getFinesApiBaseUrl(): string {
+    const proxyUrl = this.configService.get<string>('FINES_BACKEND_URL');
+    if (proxyUrl && proxyUrl.trim()) {
+      const base = proxyUrl.replace(/\/$/, '');
+      return `${base}/api/v1`;
+    }
+    return SA_PUBLIC_API_URL;
+  }
+
+  /**
    * Authenticated request helper
+   * თუ FINES_BACKEND_URL არის დაყენებული, request მიდის fines-backend (VPS)-ზე, რომელიც SA-ს პროქსირებს.
    * @param timeoutMs - optional timeout. SA API-ს ზოგჯერ დიდი დრო სჭირდება, განსაკუთრებით Railway-დან.
    */
   private async authenticatedRequest<T>(
@@ -239,11 +252,20 @@ export class FinesService {
     options: RequestInit = {},
     timeoutMs: number = 15000,
   ): Promise<T> {
-    const token = await this.getAccessToken();
-    const fullUrl = `${SA_PUBLIC_API_URL}${endpoint}`;
+    const baseUrl = this.getFinesApiBaseUrl();
+    const useProxy = baseUrl !== SA_PUBLIC_API_URL;
+    const fullUrl = `${baseUrl}${endpoint}`;
 
-    this.logger.debug(`🌐 API Request: ${options.method || 'GET'} ${fullUrl}`);
-    this.logger.debug(`   Authorization: Bearer ${token.substring(0, 20)}...`);
+    const token = useProxy ? null : await this.getAccessToken();
+
+    this.logger.debug(
+      `🌐 API Request: ${options.method || 'GET'} ${fullUrl}${useProxy ? ' (via fines-backend proxy)' : ''}`,
+    );
+    if (token) {
+      this.logger.debug(
+        `   Authorization: Bearer ${token.substring(0, 20)}...`,
+      );
+    }
     if (options.body) {
       const bodyStr =
         typeof options.body === 'string'
@@ -255,16 +277,20 @@ export class FinesService {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
 
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+      ...(options.headers as Record<string, string>),
+    };
+    if (token) {
+      headers.Authorization = `Bearer ${token}`;
+    }
+
     let response: Response;
     try {
       response = await fetch(fullUrl, {
         ...options,
         signal: controller.signal,
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
-          ...options.headers,
-        },
+        headers,
       });
     } catch (err: unknown) {
       clearTimeout(timeoutId);

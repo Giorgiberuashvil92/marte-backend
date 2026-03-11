@@ -185,6 +185,8 @@ export class NotificationsController {
       userIds?: string[];
       role?: string;
       active?: boolean;
+      /** true = გაგზავნა ყველა რეგისტრირებულ device token-ზე */
+      broadcastToAll?: boolean;
     },
   ) {
     try {
@@ -193,6 +195,20 @@ export class NotificationsController {
         body: body.body || 'მადლობა რომ შემოგვიერთდით! 🎉',
         data: body.data || {},
       };
+
+      // ყველა მოწყობილობაზე გაგზავნა (broadcast to all)
+      if (body.broadcastToAll === true) {
+        const result =
+          await this.notificationsService.broadcastToAllUsers(payload);
+        return {
+          success: result.success,
+          sent: result.sent,
+          failed: result.failed,
+          message: result.success
+            ? `Notification sent to ${result.sent} devices`
+            : `Sent: ${result.sent}, failed: ${result.failed}`,
+        };
+      }
 
       if (
         body.userIds &&
@@ -247,11 +263,10 @@ export class NotificationsController {
         };
       }
 
-      // თუ არაფერი არ არის მოწოდებული, ვერ გავაგზავნოთ - უსაფრთხოების მიზნით
       throw new BadRequestException({
         success: false,
         message:
-          'გთხოვთ მიუთითოთ userIds, role ან active პარამეტრი. Broadcast to all არ არის დაშვებული.',
+          'გთხოვთ მიუთითოთ userIds, role, active ან broadcastToAll: true.',
       });
     } catch (error) {
       throw new BadRequestException({
