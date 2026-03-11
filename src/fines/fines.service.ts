@@ -1,4 +1,10 @@
-import { Injectable, Logger, HttpException, HttpStatus } from '@nestjs/common';
+import {
+  Injectable,
+  Logger,
+  HttpException,
+  HttpStatus,
+  OnModuleInit,
+} from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
@@ -70,7 +76,7 @@ const SA_CLIENT_ID = 'martegeo';
 const SA_CLIENT_SECRET = 'VJ.e35U~9M6£zQY';
 
 @Injectable()
-export class FinesService {
+export class FinesService implements OnModuleInit {
   private readonly logger = new Logger(FinesService.name);
   private accessToken: string | null = null;
   private tokenExpiry: number = 0;
@@ -83,6 +89,21 @@ export class FinesService {
     private carFinesSubscriptionModel: Model<CarFinesSubscriptionDocument>,
     private subscriptionsService: SubscriptionsService,
   ) {}
+
+  onModuleInit() {
+    const proxyUrl = this.configService.get<string>('FINES_BACKEND_URL');
+    const base = this.getFinesApiBaseUrl();
+    if (proxyUrl && proxyUrl.trim()) {
+      this.logger.log(
+        `🚀 Fines: using proxy → ${base} (FINES_BACKEND_URL is set)`,
+      );
+    } else {
+      this.logger.warn(
+        `⚠️ Fines: FINES_BACKEND_URL not set → calling SA directly (${SA_PUBLIC_API_URL}). ` +
+          `Set FINES_BACKEND_URL on Railway to use VPS proxy.`,
+      );
+    }
+  }
 
   /**
    * Format vehicle number: MI999SS -> MI-999-SS
