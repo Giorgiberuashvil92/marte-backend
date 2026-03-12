@@ -301,7 +301,10 @@ export default function OilsNewScreen() {
         loading={loading}
         renderVIPCard={renderVIPStore}
         renderListItem={renderStoreItem}
-        showAddButton={false}
+        onAddPress={loadStores}
+        showAddButton={true}
+        addModalDefaultType="store"
+        addModalDefaultFormData={{ type: 'ზეთები' }}
         showFilterButton={false}
         vipSectionTitle="VIP მაღაზიები"
         regularSectionTitle="ყველა მაღაზია"

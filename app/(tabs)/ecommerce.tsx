@@ -321,41 +321,7 @@ export default function EcommerceScreen() {
         </View>
 
         {/* Partner Banner */}
-        {!hasStore && !hasDismantlers && (
-          <View style={styles.section}>
-            <TouchableOpacity
-              activeOpacity={0.8}
-              onPress={() => {
-                analyticsService.logButtonClick('გახდი პარტნიორი', 'მართვა', undefined, user?.id);
-                router.push('/partner' as any);
-              }}
-            >
-              <LinearGradient
-                colors={['#111827', '#1F2937']}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 1 }}
-                style={styles.partnerBanner}
-              >
-                <View style={styles.partnerBannerContent}>
-                  <View style={styles.partnerBannerLeft}>
-                    <View style={styles.partnerBannerIcon}>
-                      <Ionicons name="business" size={24} color="#FFFFFF" />
-                    </View>
-                    <View style={{ flex: 1 }}>
-                      <Text style={styles.partnerBannerTitle}>გახდი პარტნიორი</Text>
-                      <Text style={styles.partnerBannerSubtitle}>
-                        დაამატე მაღაზია ან დაშლილი და მიიღე მოთხოვნები
-                      </Text>
-                    </View>
-                  </View>
-                  <View style={styles.partnerBannerArrow}>
-                    <Ionicons name="arrow-forward" size={18} color="#FFFFFF" />
-                  </View>
-                </View>
-              </LinearGradient>
-            </TouchableOpacity>
-          </View>
-        )}
+       
 
         <View style={{ height: 40 }} />
       </ScrollView>

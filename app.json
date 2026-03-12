@@ -2,21 +2,22 @@
   "expo": {
     "name": "Marte",
     "slug": "marte",
-    "version": "1.0.20",
+    "version": "1.0.22",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "carappx",
-    "userInterfaceStyle": "automatic",
+    "userInterfaceStyle": "light",
     "description": "MARTE - ყველაფერი მანქანისთვის ერთ ადგილზე",
     "splash": {
-      "image": "./assets/images/splash.png",
-      "resizeMode": "cover",
-      "backgroundColor": "#ffffff"
+      "image": "./assets/images/adaptive-icon.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#1e40af"
     },
     "assetBundlePatterns": [
       "**/*"
     ],
     "ios": {
+      "buildNumber": "22",
       "supportsTablet": true,
       "config": {
         "googleMapsApiKey": "AIzaSyDKfuHFeirbXsr_dLGMvpKR7ZoZcZhbes4"
@@ -28,9 +29,9 @@
       "bundleIdentifier": "com.marte.marte",
       "googleServicesFile": "./GoogleService-Info.plist",
       "splash": {
-        "image": "./assets/images/splash.png",
-        "resizeMode": "cover",
-        "backgroundColor": "#ffffff"
+        "image": "./assets/images/adaptive-icon.png",
+        "resizeMode": "contain",
+        "backgroundColor": "#1e40af"
       },
       "infoPlist": {
         "CFBundleIconName": "AppIcon",
@@ -74,9 +75,9 @@
       },
       "googleServicesFile": "./google-services.json",
       "splash": {
-        "image": "./assets/images/splash.png",
-        "resizeMode": "cover",
-        "backgroundColor": "#ffffff"
+        "image": "./assets/images/adaptive-icon.png",
+        "resizeMode": "contain",
+        "backgroundColor": "#1e40af"
       },
       "permissions": [
         "android.permission.ACCESS_COARSE_LOCATION",
@@ -102,9 +103,9 @@
       [
         "expo-splash-screen",
         {
-          "image": "./assets/images/splash.png",
-          "resizeMode": "cover",
-          "backgroundColor": "#ffffff"
+          "image": "./assets/images/adaptive-icon.png",
+          "resizeMode": "contain",
+          "backgroundColor": "#1e40af"
         }
       ],
       "@react-native-firebase/app",

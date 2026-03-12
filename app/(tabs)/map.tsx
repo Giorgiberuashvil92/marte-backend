@@ -1519,7 +1519,7 @@ export default function MapScreen() {
           }}
           showsUserLocation={false}
           showsMyLocationButton={false}
-          customMapStyle={MAP_STYLE_MINIMAL_DARK}
+          customMapStyle={colorScheme === 'dark' ? MAP_STYLE_MINIMAL_DARK : undefined}
         >
 
           {/* User location marker - Car icon with heading */}

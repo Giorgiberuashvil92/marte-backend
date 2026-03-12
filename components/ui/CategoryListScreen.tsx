@@ -88,6 +88,10 @@ export type CategoryListScreenProps = {
   specialOffersData?: any[];
   renderSpecialOfferCard?: (item: any, index: number) => React.ReactElement;
   specialOffersTitle?: string;
+  /** მოდალის ფორმის ნაგულისხმევი მონაცემები (მაგ. type: 'ზეთები' ზეთების გვერდიდან) */
+  addModalDefaultFormData?: Record<string, any>;
+  /** მოდალის ნაგულისხმევი ტიპი (store, part, ...) */
+  addModalDefaultType?: 'store' | 'part' | 'dismantler' | 'carwash' | 'mechanic' | 'service';
 };
 
 export default function CategoryListScreen({
@@ -119,6 +123,8 @@ export default function CategoryListScreen({
   specialOffersData,
   renderSpecialOfferCard,
   specialOffersTitle,
+  addModalDefaultFormData,
+  addModalDefaultType,
   customSections,
   listLayout = 'vertical',
   numColumns = 2,
@@ -424,7 +430,8 @@ export default function CategoryListScreen({
           visible={showAddModal}
           onClose={() => setShowAddModal(false)}
           onSave={handleAddItem}
-          defaultType="store"
+          defaultType={addModalDefaultType ?? 'store'}
+          defaultFormData={addModalDefaultFormData}
         />
       )}
     </View>

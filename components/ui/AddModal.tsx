@@ -736,7 +736,7 @@ const AddModal: React.FC<AddModalProps> = ({ visible, onClose, onSave, defaultTy
             { key: 'name', label: 'კონტაქტი (სახელი)', type: 'text', required: true, placeholder: 'მაგ. ნიკა მელაძე' },
             { key: 'phone', label: 'ტელეფონის ნომერი', type: 'phone', required: true, placeholder: '+995 XXX XXX XXX' },
             { key: 'title', label: 'მაღაზიის სახელი', type: 'text', required: true, placeholder: 'მაგ. AutoParts.ge' },
-            { key: 'type', label: 'მაღაზიის ტიპი', type: 'select', required: true, options: ['დეტეილინგი', 'ავტონაწილები', 'სამრეცხაო', 'ავტოსერვისი', 'სხვა'] },
+            { key: 'type', label: 'მაღაზიის ტიპი', type: 'select', required: true, options: ['დეტეილინგი', 'ავტონაწილები', 'ზეთები', 'სამრეცხაო', 'ავტოსერვისი', 'სხვა'] },
             { key: 'images', label: 'ფოტოები', type: 'photo', required: false },
             { key: 'location', label: 'ქალაქი', type: 'select', required: true, options: ['თბილისი', 'ბათუმი', 'ქუთაისი', 'რუსთავი', 'გორი', 'ზუგდიდი', 'ფოთი', 'ახალქალაქი', 'ოზურგეთი', 'ტყიბული', 'სხვა'] },
             { key: 'address', label: 'მისამართი', type: 'location', required: false, placeholder: 'დააჭირეთ "რუკა"-ს კოორდინატების დასამატებლად' },

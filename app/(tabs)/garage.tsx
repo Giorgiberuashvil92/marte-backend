@@ -11,6 +11,7 @@ import {
   NativeScrollEvent,
   NativeSyntheticEvent,
   Alert,
+  RefreshControl,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
@@ -37,7 +38,7 @@ interface UICar {
 
 export default function GarageScreen() {
   const router = useRouter();
-  const { cars: apiCars, selectCar: apiSelectCar, reminders, fuelEntries, serviceHistory, removeCar } = useCars();
+  const { cars: apiCars, selectCar: apiSelectCar, reminders, fuelEntries, serviceHistory, removeCar, refreshData } = useCars();
   const { success } = useToast();
   const { isPremiumUser } = useSubscription();
   const { 
@@ -53,7 +54,17 @@ export default function GarageScreen() {
   const [cars, setCars] = useState<UICar[]>([]);
   const [selectedCar, setSelectedCar] = useState<UICar | null>(null);
   const [currentCarIndex, setCurrentCarIndex] = useState(0);
+  const [refreshing, setRefreshing] = useState(false);
   const scrollViewRef = useRef<ScrollView>(null);
+
+  const onRefresh = async () => {
+    setRefreshing(true);
+    try {
+      await refreshData();
+    } finally {
+      setRefreshing(false);
+    }
+  };
 
   const sortedCars = useMemo(() => {
     return [...cars].sort((a, b) => {
@@ -590,6 +601,9 @@ export default function GarageScreen() {
         style={styles.scrollView}
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
+        }
       >
         {/* Empty State */}
         {cars.length === 0 ? (

@@ -161,8 +161,16 @@ class GarageApiService {
       throw new Error(`API Error: ${response.status} ${response.statusText}`);
     }
 
-    const data = await response.json();
-    return data;
+    // 204 No Content ან ცარიელი body (მაგ. DELETE) – json არ ვპარსოთ
+    const text = await response.text();
+    if (response.status === 204 || !text?.trim()) {
+      return undefined as T;
+    }
+    try {
+      return JSON.parse(text) as T;
+    } catch {
+      return undefined as T;
+    }
   }
 
   // მანქანების API

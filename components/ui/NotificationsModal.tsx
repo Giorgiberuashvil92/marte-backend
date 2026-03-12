@@ -5,19 +5,18 @@ import { useRouter } from 'expo-router';
 import API_BASE_URL from '../../config/api';
 import { useUser } from '../../contexts/UserContext';
 import { triggerSubscriptionRefresh } from '../../services/subscriptionRefresh';
+import {
+  type NotificationType,
+  type NotificationItem,
+  type AnyObject,
+  mapNotificationFromApi,
+  getNotificationIcon as getIconName,
+  getIconPalette,
+} from '../../utils/notificationTypes';
 
 const { width, height } = Dimensions.get('window');
 
-type AnyObject = { [key: string]: any };
-interface NotificationItem {
-  id: string;
-  title: string;
-  message: string;
-  type: string;
-  createdAt: number;
-  isRead: boolean;
-  data?: AnyObject;
-}
+export type { NotificationType, NotificationItem };
 
 type Props = {
   visible: boolean;
@@ -54,33 +53,10 @@ export function NotificationsModal({ visible, onClose }: Props) {
       const res = await fetch(`${API_BASE_URL}/notifications/user/${user.id}`);
       if (!res.ok) return;
       const json = await res.json();
+      // რესპონსის სტრუქტურა – მაგის მიხედვით მოვარგებთ ტიპებს და როუტინგს
+      console.log('🔔 [NOTIFICATIONS] API response:', JSON.stringify(json, null, 2));
       const list: AnyObject[] = Array.isArray(json?.data) ? json.data : [];
-      const mapped: NotificationItem[] = list.map((n: AnyObject) => {
-        const rawTs = n.createdAt || n.timestamp;
-        const ts = typeof rawTs === 'number' ? rawTs : rawTs ? new Date(rawTs).getTime() : Date.now();
-        const status = typeof n.status === 'string' ? n.status.toLowerCase() : (n.read ? 'read' : '');
-        const payload = n.payload || {};
-        const target = n.target || {};
-        const payloadData = payload.data || n.data || {};
-        return {
-          id: String(n._id || n.id),
-          title: String(payload.title || n.title || 'შეტყობინება'),
-          message: String(payload.body || n.body || n.message || ''),
-          type: String(n.type || n.category || payloadData.type || 'info'),
-          createdAt: ts,
-          isRead: status === 'read',
-          data: {
-            ...payloadData,
-            type: payloadData.type || n.type || payloadData.type,
-            screen: payloadData.screen || payloadData.screen,
-            target: target, 
-            requestId: payloadData.requestId || payloadData.reqId || payloadData.request_id,
-            offerId: payloadData.offerId || payloadData.offer_id,
-            chatId: payloadData.chatId || payloadData.chat_id,
-            carwashId: payloadData.carwashId || payloadData.carwash_id,
-          },
-        };
-      });
+      const mapped: NotificationItem[] = list.map((n: AnyObject) => mapNotificationFromApi(n));
       mapped.sort((a, b) => b.createdAt - a.createdAt);
       setNotifications(mapped);
     } catch {}
@@ -93,43 +69,6 @@ export function NotificationsModal({ visible, onClose }: Props) {
   const markAsRead = async (id: string) => {
     try { await fetch(`${API_BASE_URL}/notifications/${id}/read`, { method: 'PATCH' }); } catch {}
     setNotifications(prev => prev.map(n => n.id === id ? { ...n, isRead: true } : n));
-  };
-
-  const getNotificationIcon = (type: string) => {
-    switch (type) {
-      case 'chat_message': return 'chatbubble-ellipses';
-      case 'offer_status': return 'pricetag';
-      case 'carwash_booking': return 'water';
-      case 'carwash_booking_confirmed': return 'checkmark-circle';
-      case 'carwash_booking_reminder': return 'alarm';
-      case 'success': return 'checkmark-circle';
-      case 'warning': return 'warning';
-      case 'error': return 'alert-circle';
-      default: return 'notifications';
-    }
-  };
-
-  const getIconPalette = (type: string) => {
-    switch (type) {
-      case 'chat_message':
-        return { bg: '#DBEAFE', border: '#93C5FD', color: '#1D4ED8' };
-      case 'offer_status':
-        return { bg: '#EDE9FE', border: '#C4B5FD', color: '#6D28D9' };
-      case 'carwash_booking':
-        return { bg: '#DCFCE7', border: '#86EFAC', color: '#16A34A' };
-      case 'carwash_booking_confirmed':
-        return { bg: '#DCFCE7', border: '#86EFAC', color: '#16A34A' };
-      case 'carwash_booking_reminder':
-        return { bg: '#FEF3C7', border: '#FCD34D', color: '#D97706' };
-      case 'success':
-        return { bg: '#DCFCE7', border: '#86EFAC', color: '#16A34A' };
-      case 'warning':
-        return { bg: '#FEF3C7', border: '#FCD34D', color: '#D97706' };
-      case 'error':
-        return { bg: '#FEE2E2', border: '#FCA5A5', color: '#DC2626' };
-      default:
-        return { bg: '#E5E7EB', border: '#D1D5DB', color: '#374151' };
-    }
   };
 
   const unreadCount = notifications.filter(n => !n.isRead).length;
@@ -223,18 +162,26 @@ export function NotificationsModal({ visible, onClose }: Props) {
       return;
     }
     
-    if (screen === 'Garage' || d.type === 'garage_reminder') {
+    if (screen === 'Garage' || notification.type === 'garage_reminder') {
       onClose();
       console.log('🔔 [NOTIFICATIONS] Navigating to Garage');
       router.push('/(tabs)/garage' as any);
       return;
     }
-    
-    // New Offer-ისთვის
-    if (d.type === 'new_offer' || notification.type === 'offer' && !isBusiness) {
+
+    if (notification.type === 'fines' || screen === 'Fines') {
       onClose();
-      console.log('🔔 [NOTIFICATIONS] Navigating to Offers');
-      router.push('/offers' as any);
+      console.log('🔔 [NOTIFICATIONS] Navigating to Fines');
+      router.push('/garage/fines' as any);
+      return;
+    }
+    
+    // New Offer-ისთვის (მომხმარებლის შეთავაზებები)
+    if (notification.type === 'new_offer' || (notification.type === 'offer' && !isBusiness)) {
+      onClose();
+      const offersRoute = hasValidRequestId ? `/offers/${requestId}` : '/offers';
+      console.log('🔔 [NOTIFICATIONS] Navigating to Offers:', offersRoute);
+      router.push(offersRoute as any);
       return;
     }
     
@@ -334,7 +281,7 @@ export function NotificationsModal({ visible, onClose }: Props) {
                     activeOpacity={0.7}
                   >
                     <View style={[styles.iconWrap, { backgroundColor: p.bg }]}>
-                      <Ionicons name={getNotificationIcon(notification.type) as any} size={18} color={p.color} />
+                      <Ionicons name={getIconName(notification.type) as any} size={18} color={p.color} />
                     </View>
                     <View style={styles.notificationText}>
                       <View style={styles.cardTitleRow}>

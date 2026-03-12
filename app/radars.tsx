@@ -23,6 +23,7 @@ import { overpassApi, SpeedLimit, RadarLocation } from '../services/overpassApi'
 import { geojsonRadarsService } from '../services/geojsonRadars';
 import API_BASE_URL from '../config/api';
 import { useCars } from '../contexts/CarContext';
+import { useColorScheme } from '../components/useColorScheme';
 import { Vibration } from 'react-native';
 
 const { width, height } = Dimensions.get('window');
@@ -47,6 +48,7 @@ const MAP_STYLE_MINIMAL_DARK = [
 export default function RadarsScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const colorScheme = useColorScheme();
   const { selectedCar, cars } = useCars();
   const [radars, setRadars] = useState<Radar[]>([]);
   const [selectedRadar, setSelectedRadar] = useState<Radar | null>(null);
@@ -1875,7 +1877,7 @@ export default function RadarsScreen() {
           }}
           showsUserLocation={false}
           showsMyLocationButton={false}
-          customMapStyle={MAP_STYLE_MINIMAL_DARK}
+          customMapStyle={colorScheme === 'dark' ? MAP_STYLE_MINIMAL_DARK : undefined}
           pitchEnabled={true}
           rotateEnabled={true}
           initialCamera={{

@@ -55,15 +55,20 @@ export default function ForceUpdateModal({
     }
   }, [visible, minVersion, currentVersion]);
 
-  const handleUpdate = () => {
-    const appStoreUrl = Platform.select({
-      ios: 'https://apps.apple.com/app/id6753679575', // Marte App Store ID
-      android: 'https://play.google.com/store/apps/details?id=com.marte.marte',
-    });
+  const storeUrl = Platform.select({
+    ios: 'https://apps.apple.com/app/id6753679575',
+    android: 'https://play.google.com/store/apps/details?id=com.marte.marte&hl=en',
+  });
+  const updateButtonLabel = Platform.select({
+    ios: 'განახლება (App Store)',
+    android: 'განახლება (Play Store)',
+    default: 'განახლება',
+  });
 
-    if (appStoreUrl) {
-      Linking.openURL(appStoreUrl).catch((err) => {
-        console.error('Error opening app store:', err);
+  const handleUpdate = () => {
+    if (storeUrl) {
+      Linking.openURL(storeUrl).catch((err) => {
+        console.error('Error opening store:', err);
       });
     }
   };
@@ -148,7 +153,7 @@ export default function ForceUpdateModal({
               end={{ x: 1, y: 0 }}
             >
               <Ionicons name="cloud-download" size={20} color="#FFFFFF" />
-              <Text style={styles.updateButtonText}>განახლება</Text>
+              <Text style={styles.updateButtonText}>{updateButtonLabel}</Text>
             </LinearGradient>
           </TouchableOpacity>
 

@@ -56,6 +56,9 @@ const SkeletonListItem = () => (
   </View>
 );
 
+const isAndroid = Platform.OS === 'android';
+const headerIconSize = isAndroid ? 20 : 24;
+
 export default function PartsNewScreen() {
   const router = useRouter();
   const params = useLocalSearchParams();
@@ -527,7 +530,7 @@ export default function PartsNewScreen() {
                 }
               }}
             >
-              <Ionicons name="arrow-back" size={24} color="#111827" />
+              <Ionicons name="arrow-back" size={headerIconSize} color="#111827" />
             </TouchableOpacity>
             
             <Text style={styles.topBarTitle}>ავტონაწილები</Text>
@@ -540,7 +543,7 @@ export default function PartsNewScreen() {
                   setShowFilterModal(true);
                 }}
               >
-                <Ionicons name="options" size={24} color="#111827" />
+                <Ionicons name="options" size={headerIconSize} color="#111827" />
               </TouchableOpacity>
               <TouchableOpacity
                 style={styles.topBarButton}
@@ -549,7 +552,7 @@ export default function PartsNewScreen() {
                   setShowAddModal(true);
                 }}
               >
-                <Ionicons name="add" size={24} color="#111827" />
+                <Ionicons name="add" size={headerIconSize} color="#111827" />
               </TouchableOpacity>
             </View>
           </View>
@@ -722,17 +725,6 @@ export default function PartsNewScreen() {
         }
       />
 
-      {/* Floating Action Button */}
-      <TouchableOpacity
-        style={styles.fab}
-        onPress={() => {
-          analyticsService.logButtonClick('დამატება (FAB)', 'ავტონაწილები', { active_tab: activeTab }, user?.id);
-          setShowAddModal(true);
-        }}
-        activeOpacity={0.8}
-      >
-        <Ionicons name="add" size={28} color="#FFFFFF" />
-      </TouchableOpacity>
 
 
       {/* Filter Modal */}
@@ -782,11 +774,11 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: 20,
+    paddingHorizontal: Platform.select({ android: 16, default: 20 }),
     paddingTop: 8,
   },
   topBarTitle: {
-    fontSize: 18,
+    fontSize: Platform.select({ android: 15, default: 18 }),
     fontFamily: 'HelveticaMedium',
     textTransform: 'uppercase',
     fontWeight: '700',
@@ -795,21 +787,21 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   topBarButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
+    width: Platform.select({ android: 36, default: 40 }),
+    height: Platform.select({ android: 36, default: 40 }),
+    borderRadius: Platform.select({ android: 18, default: 20 }),
     backgroundColor: '#F3F4F6',
     alignItems: 'center',
     justifyContent: 'center',
   },
   topBarRight: {
     flexDirection: 'row',
-    gap: 12,
+    gap: Platform.select({ android: 8, default: 12 }),
   },
   // Navigation Section
   navSection: {
-    paddingHorizontal: 20,
-    paddingVertical: 16,
+    paddingHorizontal: Platform.select({ android: 16, default: 20 }),
+    paddingVertical: Platform.select({ android: 12, default: 16 }),
     backgroundColor: '#FFFFFF',
     borderBottomWidth: 1,
     borderBottomColor: '#E5E7EB',
@@ -822,8 +814,8 @@ const styles = StyleSheet.create({
   },
   segmentItem: {
     flex: 1,
-    paddingVertical: 10,
-    paddingHorizontal: 16,
+    paddingVertical: Platform.select({ android: 8, default: 10 }),
+    paddingHorizontal: Platform.select({ android: 12, default: 16 }),
     borderRadius: 8,
     alignItems: 'center',
     justifyContent: 'center',
@@ -832,7 +824,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#111827',
   },
   segmentText: {
-    fontSize: 14,
+    fontSize: Platform.select({ android: 12, default: 14 }),
     fontFamily: 'HelveticaMedium',
     textTransform: 'uppercase',
     color: '#6B7280',
@@ -848,19 +840,19 @@ const styles = StyleSheet.create({
   },
   // Section Title
   sectionTitleContainer: {
-    paddingHorizontal: 20,
-    paddingTop: 24,
+    paddingHorizontal: Platform.select({ android: 16, default: 20 }),
+    paddingTop: Platform.select({ android: 18, default: 24 }),
     paddingBottom: 12,
   },
   sectionTitle: {
-    fontSize: 18,
+    fontSize: Platform.select({ android: 15, default: 18 }),
     fontFamily: 'HelveticaMedium',
     textTransform: 'uppercase',
     fontWeight: '700',
     color: '#111827',
   },
   sectionTitleSkeleton: {
-    height: 18,
+    height: Platform.select({ android: 15, default: 18 }),
     width: 200,
     backgroundColor: '#E5E7EB',
     borderRadius: 4,
@@ -918,7 +910,7 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   vipCardTitle: {
-    fontSize: 18,
+    fontSize: Platform.select({ android: 15, default: 18 }),
     fontFamily: 'HelveticaMedium',
     textTransform: 'uppercase',
     fontWeight: '700',
@@ -930,7 +922,7 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   vipCardLocation: {
-    fontSize: 13,
+    fontSize: Platform.select({ android: 12, default: 13 }),
     fontFamily: 'HelveticaMedium',
     textTransform: 'uppercase',
     color: '#FFFFFF',
@@ -981,7 +973,7 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   offerCardTitle: {
-    fontSize: 16,
+    fontSize: Platform.select({ android: 14, default: 16 }),
     fontFamily: 'HelveticaMedium',
     fontWeight: '700',
     color: '#FFFFFF',
@@ -1007,7 +999,7 @@ const styles = StyleSheet.create({
   },
   // Vertical List
   verticalList: {
-    paddingHorizontal: 20,
+    paddingHorizontal: Platform.select({ android: 16, default: 20 }),
     gap: 12,
     paddingBottom: 20,
   },
@@ -1037,7 +1029,7 @@ const styles = StyleSheet.create({
     gap: 4,
   },
   listItemTitle: {
-    fontSize: 15,
+    fontSize: Platform.select({ android: 13, default: 15 }),
     fontFamily: 'HelveticaMedium',
     textTransform: 'uppercase',
     fontWeight: '600',
@@ -1045,7 +1037,7 @@ const styles = StyleSheet.create({
     marginBottom: 4,
   },
   listItemSubtitle: {
-    fontSize: 13,
+    fontSize: Platform.select({ android: 12, default: 13 }),
     fontFamily: 'HelveticaMedium',
     textTransform: 'uppercase',
     color: '#6B7280',
@@ -1059,14 +1051,14 @@ const styles = StyleSheet.create({
     marginTop: 4,
   },
   listItemLocation: {
-    fontSize: 12,
+    fontSize: Platform.select({ android: 11, default: 12 }),
     fontFamily: 'HelveticaMedium',
     textTransform: 'uppercase',
     color: '#6B7280',
     fontWeight: '500',
   },
   listItemPrice: {
-    fontSize: 16,
+    fontSize: Platform.select({ android: 14, default: 16 }),
     fontFamily: 'HelveticaMedium',
     textTransform: 'uppercase',
     fontWeight: '700',
@@ -1074,8 +1066,8 @@ const styles = StyleSheet.create({
     marginTop: 4,
   },
   listItemIndicator: {
-    width: 32,
-    height: 32,
+    width: Platform.select({ android: 28, default: 32 }),
+    height: Platform.select({ android: 28, default: 32 }),
     alignItems: 'center',
     justifyContent: 'center',
     marginLeft: 8,
@@ -1085,9 +1077,9 @@ const styles = StyleSheet.create({
     position: 'absolute',
     bottom: 24,
     right: 24,
-    width: 56,
-    height: 56,
-    borderRadius: 28,
+    width: Platform.select({ android: 48, default: 56 }),
+    height: Platform.select({ android: 48, default: 56 }),
+    borderRadius: Platform.select({ android: 24, default: 28 }),
     backgroundColor: '#111827',
     alignItems: 'center',
     justifyContent: 'center',

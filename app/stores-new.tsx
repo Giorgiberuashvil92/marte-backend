@@ -391,6 +391,7 @@ export default function StoresNewScreen() {
         renderVIPCard={renderVIPStore}
         renderListItem={renderStoreItem}
         onAddPress={() => setShowAddModal(true)}
+        showAddButton={false}
         showFilterButton={false}
         vipSectionTitle="VIP მაღაზიები"
         regularSectionTitle="ყველა მაღაზია"

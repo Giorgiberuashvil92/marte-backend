@@ -13,21 +13,19 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter, Stack } from 'expo-router';
 import { useUser } from '../../contexts/UserContext';
 import API_BASE_URL from '../../config/api';
-
-type AnyObject = { [key: string]: any };
-interface NotificationItem {
-  id: string;
-  title: string;
-  message: string;
-  type: string;
-  createdAt: number;
-  isRead: boolean;
-  data?: AnyObject;
-}
+import { triggerSubscriptionRefresh } from '../../services/subscriptionRefresh';
+import {
+  type NotificationType,
+  type NotificationItem,
+  type AnyObject,
+  mapNotificationFromApi,
+  getNotificationIcon,
+  getIconPalette,
+} from '../../utils/notificationTypes';
 
 export default function NotificationsScreen() {
   const router = useRouter();
-  const { user } = useUser();
+  const { user, setShouldOpenPremiumModal } = useUser();
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
   const [filter, setFilter] = useState<'all' | 'unread' | 'chat' | 'offer' | 'booking' | 'system'>('all');
   const [displayCount, setDisplayCount] = useState(20);
@@ -56,22 +54,7 @@ export default function NotificationsScreen() {
       if (!res.ok) return;
       const json = await res.json();
       const list: AnyObject[] = Array.isArray(json?.data) ? json.data : [];
-      const mapped: NotificationItem[] = list.map((n: AnyObject) => {
-        const rawTs = n.createdAt || n.timestamp;
-        const ts = typeof rawTs === 'number' ? rawTs : rawTs ? new Date(rawTs).getTime() : Date.now();
-        const status = typeof n.status === 'string' ? n.status.toLowerCase() : (n.read ? 'read' : '');
-        const payload = n.payload || {};
-        return {
-          id: String(n._id || n.id),
-          title: String(payload.title || n.title || 'შეტყობინება'),
-          message: String(payload.body || n.body || n.message || ''),
-          type: String(n.type || n.category || 'info'),
-          createdAt: ts,
-          isRead: status === 'read',
-          data: payload.data || n.data || {},
-        };
-      });
-      // newest first
+      const mapped: NotificationItem[] = list.map((n: AnyObject) => mapNotificationFromApi(n));
       mapped.sort((a, b) => b.createdAt - a.createdAt);
       setNotifications(mapped);
     } catch {}
@@ -98,55 +81,20 @@ export default function NotificationsScreen() {
     setNotifications(prev => prev.map(n => ({ ...n, isRead: true })));
   };
 
-  const getNotificationIcon = (type: string) => {
-    switch (type) {
-      case 'chat_message': return 'chatbubble-ellipses';
-      case 'offer_status': return 'pricetag';
-      case 'carwash_booking': return 'water';
-      case 'carwash_booking_confirmed': return 'checkmark-circle';
-      case 'carwash_booking_reminder': return 'alarm';
-      case 'success': return 'checkmark-circle';
-      case 'warning': return 'warning';
-      case 'error': return 'alert-circle';
-      default: return 'notifications';
-    }
-  };
-
-  const getIconPalette = (type: string) => {
-    switch (type) {
-      case 'chat_message':
-        return { bg: '#DBEAFE', border: '#93C5FD', color: '#1D4ED8' };
-      case 'offer_status':
-        return { bg: '#EDE9FE', border: '#C4B5FD', color: '#6D28D9' };
-      case 'carwash_booking':
-        return { bg: '#DCFCE7', border: '#86EFAC', color: '#16A34A' };
-      case 'carwash_booking_confirmed':
-        return { bg: '#DCFCE7', border: '#86EFAC', color: '#16A34A' };
-      case 'carwash_booking_reminder':
-        return { bg: '#FEF3C7', border: '#FCD34D', color: '#D97706' };
-      case 'success':
-        return { bg: '#DCFCE7', border: '#86EFAC', color: '#16A34A' };
-      case 'warning':
-        return { bg: '#FEF3C7', border: '#FCD34D', color: '#D97706' };
-      case 'error':
-        return { bg: '#FEE2E2', border: '#FCA5A5', color: '#DC2626' };
-      default:
-        return { bg: '#E5E7EB', border: '#D1D5DB', color: '#374151' };
-    }
-  };
-
   const unreadCount = useMemo(() => notifications.filter(n => !n.isRead).length, [notifications]);
 
   const filtered = useMemo(() => {
     if (filter === 'all') return notifications;
     if (filter === 'unread') return notifications.filter(n => !n.isRead);
     if (filter === 'chat') return notifications.filter(n => n.type === 'chat_message');
-    if (filter === 'offer') return notifications.filter(n => n.type === 'offer_status');
+    if (filter === 'offer') return notifications.filter(n => (
+      n.type === 'offer_status' || n.type === 'new_offer' || n.type === 'offer'
+    ));
     if (filter === 'booking') return notifications.filter(n => (
       n.type === 'carwash_booking' || n.type === 'carwash_booking_confirmed' || n.type === 'carwash_booking_reminder'
     ));
     return notifications.filter(n => (
-      n.type !== 'chat_message' && n.type !== 'offer_status' &&
+      n.type !== 'chat_message' && n.type !== 'offer_status' && n.type !== 'new_offer' && n.type !== 'offer' &&
       n.type !== 'carwash_booking' && n.type !== 'carwash_booking_confirmed' && n.type !== 'carwash_booking_reminder'
     ));
   }, [notifications, filter]);
@@ -174,29 +122,83 @@ export default function NotificationsScreen() {
     return Array.from(map.entries()).map(([title, items]) => ({ title, items }));
   }, [limited]);
 
-  const handleNavigation = (data?: AnyObject) => {
-    const d = data || {};
+  const isValidId = (id: string | undefined): boolean => {
+    if (!id) return false;
+    const str = String(id).trim();
+    return str !== '' && str !== 'undefined' && str !== 'null' && str !== '1' && str.length > 0;
+  };
+
+  const handleNavigation = (notification: NotificationItem) => {
+    const d = notification.data || {};
     const screen = d.screen as string | undefined;
+    const type = (d.type as string | undefined) || notification.type;
     const requestId = d.requestId as string | undefined;
     const offerId = d.offerId as string | undefined;
     const carwashId = d.carwashId as string | undefined;
     const chatId = d.chatId as string | undefined;
-    if (screen === 'AIRecommendations' || screen === 'PartDetails') {
-      router.push('/offers' as any);
-    } else if (screen === 'RequestDetails' && requestId) {
-      router.push(`/offers/${requestId}`);
-    } else if (screen === 'OfferDetails' && (offerId || requestId)) {
-      router.push(`/offers/${offerId || requestId}`);
-    } else if (screen === 'Bookings' && carwashId) {
-      router.push(`/bookings/${carwashId}`);
-    } else if (screen === 'Chat') {
-      const partId = d.partnerId as string | undefined;
-      if (requestId && partId) router.push(`/chat/${requestId}/${partId}`);
-      else router.push('/chats');
-    } else {
-      // თუ სპეციფიკური route არ არის, უბრალოდ არაფერი არ ვაკეთებთ
-      // რათა არ მოხდეს უსასრულო მარყუჟი
+    const partnerId = d.partnerId as string | undefined;
+    const target = d.target || {};
+    const hasValidRequestId = isValidId(requestId);
+    const hasValidOfferId = isValidId(offerId);
+    const isBusiness = target.partnerId || target.storeId || target.dismantlerId ||
+      target.role === 'partner' || target.role === 'store' || target.role === 'dismantler';
+    const isBusinessType = notification.type === 'offer' && isBusiness;
+    const isUserType = notification.type === 'request' || (notification.type === 'offer' && !isBusiness);
+    const title = notification.title || '';
+    const titleLower = title.toLowerCase();
+
+    if (screen === 'Subscription' || notification.type === 'subscription_activated' || d.type === 'subscription_activated') {
+      router.push('/' as any);
+      setShouldOpenPremiumModal?.(true);
       return;
+    }
+    if (type === 'subscription_updated' || notification.type === 'subscription_updated') {
+      triggerSubscriptionRefresh();
+      router.push('/' as any);
+      return;
+    }
+    if (titleLower.includes('carfax') || type === 'carfax' || screen === 'Carfax') {
+      router.push('/carfax' as any);
+      return;
+    }
+    if (type === 'review' || d.type === 'review_us' || screen === 'Review' || screen === 'ReviewUs' || titleLower.includes('შეფასება') || titleLower.includes('review')) {
+      router.push('/review' as any);
+      return;
+    }
+    if (screen === 'Garage' || notification.type === 'garage_reminder') {
+      router.push('/(tabs)/garage' as any);
+      return;
+    }
+    if (notification.type === 'fines' || screen === 'Fines') {
+      router.push('/garage/fines' as any);
+      return;
+    }
+    if (notification.type === 'new_offer' || (notification.type === 'offer' && !isBusiness)) {
+      router.push((hasValidRequestId ? `/offers/${requestId}` : '/offers') as any);
+      return;
+    }
+
+    if (isBusiness || isBusinessType) {
+      let route = '';
+      if (screen === 'RequestDetails' && hasValidRequestId) route = `/partner-chat/${requestId}`;
+      else if (screen === 'OfferDetails' && (hasValidOfferId || hasValidRequestId)) route = `/partner-chat/${hasValidOfferId ? offerId : requestId}`;
+      else if (screen === 'Chat' && (chatId || hasValidOfferId || hasValidRequestId)) route = `/partner-chat/${chatId || offerId || requestId}`;
+      else if (target.storeId || target.dismantlerId) route = '/partner-dashboard';
+      else if (hasValidRequestId || hasValidOfferId) route = `/partner-chat/${requestId || offerId}`;
+      else route = '/partner-chats';
+      router.push(route as any);
+      return;
+    }
+    if (isUserType || !isBusiness) {
+      let route = '';
+      if (screen === 'AIRecommendations' || screen === 'PartDetails') route = '/all-requests';
+      else if (screen === 'RequestDetails' && hasValidRequestId) route = `/offers/${requestId}`;
+      else if (screen === 'OfferDetails' && hasValidRequestId) route = `/offers/${requestId}`;
+      else if (screen === 'Bookings' && carwashId) route = `/bookings/${carwashId}`;
+      else if (screen === 'Chat') route = (requestId && partnerId) ? `/chat/${requestId}/${partnerId}` : '/chats';
+      else if (hasValidRequestId) route = `/offers/${requestId}`;
+      else route = '/all-requests';
+      router.push(route as any);
     }
   };
 
@@ -275,7 +277,7 @@ export default function NotificationsScreen() {
                       style={[styles.card, !notification.isRead && styles.cardUnread]}
                       onPress={() => {
                         markAsRead(notification.id);
-                        handleNavigation(notification.data);
+                        handleNavigation(notification);
                       }}
                       activeOpacity={0.7}
                     >

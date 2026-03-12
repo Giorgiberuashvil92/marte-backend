@@ -15,8 +15,9 @@ export default function CustomTabBar({ state, descriptors, navigation }: BottomT
   const theme = Colors[colorScheme];
   const { width } = Dimensions.get('window');
   const isSmallDevice = width < 360;
-  const isCompact = isSmallDevice || (Platform.OS === 'android' && width < 400);
-  const styles = createStyles(theme, isCompact);
+  const isAndroid = Platform.OS === 'android';
+  const isCompact = isSmallDevice || isAndroid;
+  const styles = createStyles(theme, isCompact, isAndroid);
   const router = useRouter();
   const { user } = useUser();
   const { getTotalFinesCount } = useFines();
@@ -89,7 +90,7 @@ export default function CustomTabBar({ state, descriptors, navigation }: BottomT
     const originalIndex = state.routes.findIndex(r => r.key === route.key);
     const isFocused = state.index === originalIndex;
     const iconName = (options.tabBarIcon as any)?.({ color: '#000' })?.props?.name as React.ComponentProps<typeof FontAwesome>['name'] | undefined;
-    const iconSize = isCompact ? 15 : 18;
+    const iconSize = isAndroid ? 14 : (isCompact ? 15 : 18);
 
     const isGarage = route.name === 'garage';
     const showFinesBadge = isGarage && totalFinesCount > 0;
@@ -119,13 +120,19 @@ export default function CustomTabBar({ state, descriptors, navigation }: BottomT
         <View style={styles.side}>{tabItems.slice(2)}</View>
       </View>
       <TouchableOpacity activeOpacity={0.9} style={styles.fab} onPress={handleNewsFeedPress}>
-        <Ionicons name="newspaper" size={isCompact ? 20 : 24} color="#FFFFFF" />
+        <Ionicons name="newspaper" size={isAndroid ? 18 : (isCompact ? 20 : 24)} color="#FFFFFF" />
       </TouchableOpacity>
     </View>
   );
 }
 
-function createStyles(theme: typeof Colors.light, isCompact: boolean) {
+function createStyles(theme: typeof Colors.light, isCompact: boolean, isAndroid: boolean) {
+  const tabFontSize = isAndroid ? 7 : (isCompact ? 8 : 11);
+  const tabMarginTop = isAndroid ? 0 : (isCompact ? 1 : 4);
+  const barHeight = isAndroid ? 50 : (isCompact ? 54 : 70);
+  const barPaddingH = isAndroid ? 8 : (isCompact ? 10 : 16);
+  const fabSize = isAndroid ? 42 : (isCompact ? 46 : 56);
+
   return StyleSheet.create({
     wrapper: {
       position: 'absolute',
@@ -142,8 +149,8 @@ function createStyles(theme: typeof Colors.light, isCompact: boolean) {
       borderRadius: 24,
       borderWidth: 1,
       borderColor: theme.border,
-      paddingHorizontal: isCompact ? 10 : 16,
-      height: isCompact ? 54 : 70,
+      paddingHorizontal: barPaddingH,
+      height: barHeight,
       width: '92%',
       shadowColor: '#000',
       shadowOffset: { width: 0, height: 8 },
@@ -169,21 +176,21 @@ function createStyles(theme: typeof Colors.light, isCompact: boolean) {
     },
     finesBadgeText: {
       color: '#FFFFFF',
-      fontSize: 10,
+      fontSize: isAndroid ? 9 : 10,
       fontWeight: '700',
     },
     tabText: {
       fontFamily: 'HelveticaMedium',
       textTransform: 'uppercase',
-      fontSize: isCompact ? 8 : 11,
-      marginTop: isCompact ? 1 : 4,
+      fontSize: tabFontSize,
+      marginTop: tabMarginTop,
     },
     fab: {
       position: 'absolute',
       bottom: 24,
-      width: isCompact ? 46 : 56,
-      height: isCompact ? 46 : 56,
-      borderRadius: isCompact ? 23 : 28,
+      width: fabSize,
+      height: fabSize,
+      borderRadius: fabSize / 2,
       backgroundColor: '#111827',
       alignItems: 'center',
       justifyContent: 'center',
