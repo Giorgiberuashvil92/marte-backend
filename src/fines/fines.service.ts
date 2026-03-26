@@ -1221,6 +1221,78 @@ export class FinesService implements OnModuleInit {
   }
 
   /**
+   * ადმინისთვის: SA Vehicle ID-ით მანქანის სრულად წაშლა
+   * - SA სისტემიდან DELETE
+   * - ჩვენს ბაზაში deactivate
+   * - დაკავშირებული fines subscriptions cancel
+   */
+  async removeVehicleBySaIdForAdmin(saVehicleId: number): Promise<{
+    success: boolean;
+    saDeleted: boolean;
+    dbDeactivated: number;
+    subscriptionsCancelled: number;
+    message: string;
+  }> {
+    const id = Number(saVehicleId);
+    if (!Number.isFinite(id) || id <= 0) {
+      throw new HttpException('არასწორი SA ID', HttpStatus.BAD_REQUEST);
+    }
+
+    let saDeleted = false;
+    try {
+      await this.authenticatedRequest<void>(
+        `/patrolpenalties/vehicles/${id}`,
+        { method: 'DELETE' },
+        10000,
+      );
+      saDeleted = true;
+    } catch (err) {
+      this.logger.warn(
+        `⚠️ SA DELETE failed for saVehicleId=${id}. გავაგრძელებ ლოკალურ deactivation-ს: ${err}`,
+      );
+    }
+
+    const vehicles = await this.finesVehicleModel
+      .find({ saVehicleId: id, isActive: true })
+      .exec();
+
+    let dbDeactivated = 0;
+    let subscriptionsCancelled = 0;
+
+    for (const v of vehicles) {
+      v.isActive = false;
+      v.cancelDate = new Date().toISOString();
+      await v.save();
+      dbDeactivated++;
+
+      const subs = await this.carFinesSubscriptionModel
+        .find({
+          userId: v.userId,
+          vehicleNumber: v.vehicleNumber,
+          status: { $in: ['active', 'pending'] },
+        })
+        .exec();
+      for (const s of subs) {
+        s.status = 'cancelled';
+        s.endDate = new Date();
+        await s.save();
+        subscriptionsCancelled++;
+      }
+    }
+
+    return {
+      success: true,
+      saDeleted,
+      dbDeactivated,
+      subscriptionsCancelled,
+      message:
+        dbDeactivated > 0
+          ? 'მანქანა წაიშალა SA-დან/ლოკალურად (ან SA წაშლა ვერ დადასტურდა, მაგრამ ლოკალური გაუქმდა)'
+          : 'ლოკალურ ბაზაში ჩანაწერი ვერ მოიძებნა ამ SA ID-ზე',
+    };
+  }
+
+  /**
    * კონკრეტული იუზერის დარეგისტრირებული მანქანები (ბაზიდან — ნებისმიერი მოწყობილობიდან ჩანს)
    * დააბრუნებს VehicleRegistration[] ფორმატში, რომ ფრონტი ნებისმიერ დივაისზე იმუშაოს.
    */

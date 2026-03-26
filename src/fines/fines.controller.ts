@@ -2,6 +2,7 @@ import {
   Controller,
   Get,
   Post,
+  Delete,
   Query,
   Param,
   Body,
@@ -228,25 +229,6 @@ export class FinesController {
   }
 
   /**
-   * იუზერის ჯარიმების cache (debug/admin)
-   * GET /fines/cache/:userId
-   */
-  @Get('cache/:userId')
-  async getPenaltyCacheByUser(@Param('userId') userId: string) {
-    try {
-      return await this.finesService.getPenaltyCacheByUser(userId);
-    } catch (error) {
-      if (error instanceof HttpException) {
-        throw error;
-      }
-      throw new HttpException(
-        'ჯარიმების cache-ის წამოღება ვერ მოხერხდა',
-        HttpStatus.INTERNAL_SERVER_ERROR,
-      );
-    }
-  }
-
-  /**
    * saVehicleId = 0/NULL ჩანაწერების მასობრივი გასწორება SA Active სიიდან
    * POST /fines/vehicles/reconcile-sa-ids
    * body: { limit?: number }
@@ -290,6 +272,27 @@ export class FinesController {
       }
       throw new HttpException(
         'მანქანის ამოღება ვერ მოხერხდა',
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
+  }
+
+  /**
+   * ადმინისთვის: SA Vehicle ID-ით წაშლა
+   * DELETE /fines/vehicles/sa/:saVehicleId
+   */
+  @Delete('vehicles/sa/:saVehicleId')
+  async removeVehicleBySaId(@Param('saVehicleId') saVehicleId: string) {
+    try {
+      return await this.finesService.removeVehicleBySaIdForAdmin(
+        Number(saVehicleId),
+      );
+    } catch (error) {
+      if (error instanceof HttpException) {
+        throw error;
+      }
+      throw new HttpException(
+        'SA ID-ით მანქანის წაშლა ვერ მოხერხდა',
         HttpStatus.INTERNAL_SERVER_ERROR,
       );
     }
@@ -511,7 +514,13 @@ export class FinesController {
   async syncAllFinesCache() {
     try {
       const result = await this.finesService.syncAllActiveFinesUsersCache();
-      return { success: true, ...result };
+      const users = await this.finesService.getUnpaidUsersFromCache();
+      return {
+        success: true,
+        ...result,
+        totalUsers: users.length,
+        users,
+      };
     } catch (error) {
       if (error instanceof HttpException) throw error;
       throw new HttpException(
@@ -538,6 +547,35 @@ export class FinesController {
       if (error instanceof HttpException) throw error;
       throw new HttpException(
         'Fines unpaid users ვერ მოიძებნა',
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
+  }
+
+  /**
+   * იუზერის ჯარიმების cache (debug/admin)
+   * GET /fines/cache/:userId
+   */
+  @Get('cache/:userId')
+  async getPenaltyCacheByUser(@Param('userId') userId: string) {
+    try {
+      // Safety fallback: ზოგ გარემოში dynamic route შეიძლება static-ს გადააჯდეს.
+      // ასეთ შემთხვევაში მაინც დავაბრუნოთ unpaid-users endpoint-ის სწორი პასუხი.
+      if (userId === 'unpaid-users') {
+        const users = await this.finesService.getUnpaidUsersFromCache();
+        return {
+          success: true,
+          totalUsers: users.length,
+          users,
+        };
+      }
+      return await this.finesService.getPenaltyCacheByUser(userId);
+    } catch (error) {
+      if (error instanceof HttpException) {
+        throw error;
+      }
+      throw new HttpException(
+        'ჯარიმების cache-ის წამოღება ვერ მოხერხდა',
         HttpStatus.INTERNAL_SERVER_ERROR,
       );
     }
