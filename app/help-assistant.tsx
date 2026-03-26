@@ -16,12 +16,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { router, Stack } from 'expo-router';
 
 const FAQ: { question: string; answer: string; keywords: string[] }[] = [
-  {
-    question: 'როგორ გავაუქმოთ საბსქრიფშენი / გამოწერა?',
-    keywords: ['გაუქმება', 'საბსქრიფშენი', 'გამოწერა', 'უქმო', 'აუქმება'],
-    answer:
-      'პრემიუმ გამოწერის გასაუქმებლად: გახსენი „პროფილი და პარამეტრები“ → „ჩემი გამოწერა“ ან „გადახდები“. იქ იხილავ გამოწერის სტატუსს და გაუქმების ვარიანტს. ასევე შეგიძლია მოგვწერო მხარდაჭერაში – გამოწერა ხელით გავაუქმებთ.',
-  },
+ 
   {
     question: 'როგორ ვიყიდო / ვიხილო Carfax (მანქანის ისტორია)?',
     keywords: ['carfax', 'კარფაქსი', 'კარფაქს', 'ისტორია', 'მანქანის ისტორია', 'ვინახო'],
@@ -64,7 +59,7 @@ const FAQ: { question: string; answer: string; keywords: string[] }[] = [
     answer:
       'ჩატები: „მართვა“ → „ჩატები“ ან ჩატების ტაბი. შეტყობინებები: „შეტყობინებები“ იკონიდან მთავარ ეკრანზე ან „მართვა“ → „შეტყობინებები“. იქ ჩანს ყველა push და სისტემური შეტყობინება.',
   },
-];
+]; 
 
 export default function HelpAssistantScreen() {
   const [search, setSearch] = useState('');

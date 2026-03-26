@@ -1235,6 +1235,7 @@ export default function PartsRequestsScreen() {
           }}
           partsFilters={{
             brand: filterMake,
+            model: filterModel,
             category: '',
             priceMin: minBudget?.toString() || '',
             priceMax: maxBudget?.toString() || '',

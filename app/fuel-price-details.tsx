@@ -223,6 +223,7 @@ export default function FuelPriceDetailsScreen() {
                 'regular': 1,
                 'regular_pm': 2,
                 'super': 3,
+                'super_pm': 3,
                 'premium_pm': 4,
                 'diesel': 5,
                 'diesel_pm': 6,

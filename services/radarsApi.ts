@@ -15,6 +15,8 @@ export interface Radar {
   isActive: boolean;
   source?: string;
   radarSubType?: string; // დამატებითი ტიპი (speed_camera, traffic_monitoring, traffic_signals, etc.)
+  /** ვინ დააფიქსირა (მობილურიდან user report) — ადმინისთვის / ანალიტიკისთვის */
+  userId?: string;
 }
 
 export interface RadarsResponse {

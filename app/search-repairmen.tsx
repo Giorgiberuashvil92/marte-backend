@@ -1071,6 +1071,7 @@ export default function SearchRepairmenScreen() {
           }}
           partsFilters={{
             brand: '',
+            model: '',
             category: '',
             priceMin: '',
             priceMax: '',

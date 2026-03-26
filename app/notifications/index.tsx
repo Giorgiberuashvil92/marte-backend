@@ -22,6 +22,10 @@ import {
   getNotificationIcon,
   getIconPalette,
 } from '../../utils/notificationTypes';
+import {
+  shouldNavigateToPartsRequests,
+  shouldNavigateToExclusiveFuelOffer,
+} from '../../utils/pushNavigation';
 
 export default function NotificationsScreen() {
   const router = useRouter();
@@ -173,6 +177,17 @@ export default function NotificationsScreen() {
       router.push('/garage/fines' as any);
       return;
     }
+    if (
+      shouldNavigateToExclusiveFuelOffer(type, screen) ||
+      shouldNavigateToExclusiveFuelOffer(notification.type, screen)
+    ) {
+      router.push('/exclusive-fuel-offer' as any);
+      return;
+    }
+    if (shouldNavigateToPartsRequests(type, screen) || shouldNavigateToPartsRequests(notification.type, screen)) {
+      router.push('/parts-requests' as any);
+      return;
+    }
     if (notification.type === 'new_offer' || (notification.type === 'offer' && !isBusiness)) {
       router.push((hasValidRequestId ? `/offers/${requestId}` : '/offers') as any);
       return;
@@ -191,7 +206,9 @@ export default function NotificationsScreen() {
     }
     if (isUserType || !isBusiness) {
       let route = '';
-      if (screen === 'AIRecommendations' || screen === 'PartDetails') route = '/all-requests';
+      if (shouldNavigateToExclusiveFuelOffer(undefined, screen)) route = '/exclusive-fuel-offer';
+      else if (shouldNavigateToPartsRequests(undefined, screen)) route = '/parts-requests';
+      else if (screen === 'AIRecommendations' || screen === 'PartDetails') route = '/all-requests';
       else if (screen === 'RequestDetails' && hasValidRequestId) route = `/offers/${requestId}`;
       else if (screen === 'OfferDetails' && hasValidRequestId) route = `/offers/${requestId}`;
       else if (screen === 'Bookings' && carwashId) route = `/bookings/${carwashId}`;

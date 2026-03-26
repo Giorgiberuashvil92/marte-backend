@@ -9,6 +9,7 @@ export type NotificationType =
   | 'review'
   | 'review_us'
   | 'garage_reminder'
+  | 'garage_fines_reminder'
   | 'new_offer'
   | 'new_request'
   | 'offer'
@@ -18,6 +19,10 @@ export type NotificationType =
   | 'carwash_booking_confirmed'
   | 'carwash_booking_reminder'
   | 'ai_recommendation'
+  | 'parts_search'
+  | 'parts_request'
+  | 'fuel_discount'
+  | 'exclusive_fuel_offer'
   | 'offer_status'
   | 'fines'
   | 'success'
@@ -39,9 +44,9 @@ export interface NotificationItem {
 
 const KNOWN_TYPES: NotificationType[] = [
   'subscription_activated', 'subscription_updated', 'carfax', 'review', 'review_us',
-  'garage_reminder', 'new_offer', 'new_request', 'offer', 'request', 'chat_message',
+  'garage_reminder', 'garage_fines_reminder', 'new_offer', 'new_request', 'offer', 'request', 'chat_message',
   'carwash_booking', 'carwash_booking_confirmed', 'carwash_booking_reminder',
-  'ai_recommendation', 'offer_status', 'fines', 'success', 'warning', 'error', 'info',
+  'ai_recommendation', 'parts_search', 'parts_request', 'fuel_discount', 'exclusive_fuel_offer', 'offer_status', 'fines', 'success', 'warning', 'error', 'info',
 ];
 
 export function normalizeNotificationType(raw: AnyObject): NotificationType {
@@ -64,6 +69,10 @@ export function refineTypeFromInfo(
   if (resolvedType !== 'info') return resolvedType;
   const t = (title || '').toLowerCase();
   const s = (screen || '').toLowerCase();
+  const sCompact = s.replace(/\s+/g, '');
+  if (sCompact.replace(/-/g, '') === 'exclusivefueloffer') return 'fuel_discount';
+  if (sCompact === 'partsrequests' || sCompact === 'partssearch') return 'parts_request';
+  if (sCompact === 'garagefines') return 'garage_fines_reminder';
   if (s === 'fines' || t.includes('ლიმიტი') || t.includes('ჯარიმ')) return 'fines';
   if (t.includes('carfax')) return 'carfax';
   if (t.includes('შეფასება') || t.includes('review')) return 'review';
@@ -116,13 +125,20 @@ export function getNotificationIcon(type: NotificationType): string {
     case 'carwash_booking': return 'water';
     case 'carwash_booking_confirmed': return 'checkmark-circle';
     case 'carwash_booking_reminder': return 'alarm';
-    case 'garage_reminder': return 'car';
+    case 'garage_reminder':
+    case 'garage_fines_reminder':
+      return 'car';
     case 'subscription_activated':
     case 'subscription_updated': return 'star';
     case 'carfax': return 'document';
     case 'review':
     case 'review_us': return 'star';
     case 'ai_recommendation': return 'sparkles';
+    case 'fuel_discount':
+    case 'exclusive_fuel_offer':
+      return 'flame';
+    case 'parts_search':
+    case 'parts_request': return 'construct';
     case 'fines': return 'card';
     case 'success': return 'checkmark-circle';
     case 'warning': return 'warning';
@@ -148,6 +164,7 @@ export function getIconPalette(type: NotificationType): { bg: string; border: st
     case 'carwash_booking_reminder':
       return { bg: '#FEF3C7', border: '#FCD34D', color: '#D97706' };
     case 'garage_reminder':
+    case 'garage_fines_reminder':
       return { bg: '#E0F2FE', border: '#7DD3FC', color: '#0284C7' };
     case 'subscription_activated':
     case 'subscription_updated':
@@ -159,6 +176,12 @@ export function getIconPalette(type: NotificationType): { bg: string; border: st
       return { bg: '#FEF3C7', border: '#FCD34D', color: '#D97706' };
     case 'ai_recommendation':
       return { bg: '#ECFDF5', border: '#A7F3D0', color: '#059669' };
+    case 'fuel_discount':
+    case 'exclusive_fuel_offer':
+      return { bg: '#E0F2FE', border: '#7DD3FC', color: '#0369A1' };
+    case 'parts_search':
+    case 'parts_request':
+      return { bg: '#EFF6FF', border: '#93C5FD', color: '#2563EB' };
     case 'fines':
       return { bg: '#FEF2F2', border: '#FECACA', color: '#B91C1C' };
     case 'success':

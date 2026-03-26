@@ -23,13 +23,30 @@ import API_BASE_URL from '@/config/api';
 
 const { width } = Dimensions.get('window');
 
-const MAIN_CATEGORIES = [
+type CategoryRoute = string | { pathname: '/category'; params: Record<string, string> };
+
+const MAIN_CATEGORIES: Array<{
+  id: string;
+  title: string;
+  subtitle: string;
+  icon: string;
+  color: string;
+  route: CategoryRoute;
+}> = [
   {
-    id: 'parts',
+    id: 'parts-list',
     title: 'ნაწილები',
-    subtitle: 'ავტონაწილების მოძიება და შეძენა',
-    icon: 'construct-outline',
-    color: '#3B82F6',
+    subtitle: 'ავტონაწილების კატალოგი და ფილტრები',
+    icon: 'cog-outline',
+    color: '#EC4899',
+    route: '/parts-browse',
+  },
+  {
+    id: 'dismantlers',
+    title: 'დაშლილი მანქანები',
+    subtitle: 'დაშლილების მაღაზიები და განცხადებები',
+    icon: 'build-outline',
+    color: '#6366F1',
     route: '/parts-new',
   },
   {
@@ -73,14 +90,7 @@ const MAIN_CATEGORIES = [
   //   route: '/accessories',
   // },
   
-  {
-    id: 'interior',
-    title: 'ავტომობილის ინტერიერი',
-    subtitle: 'სალონის აქსესუარები და დეკორაცია',
-    icon: 'car-sport-outline',
-    color: '#A855F7',
-    route: '/interior',
-  },
+
   
   {
     id: 'detailing',
@@ -227,12 +237,15 @@ export default function MarketplaceScreen() {
     }, [user?.id])
   );
 
-  const handleCategoryPress = (category: any) => {
-    // Track category click
+  const handleCategoryPress = (category: (typeof MAIN_CATEGORIES)[number]) => {
     analyticsService.logCategoryClick(category.id, category.title, 'გაყიდვები', user?.id);
-    
+
     if (category.route) {
-      router.push(category.route as any);
+      if (typeof category.route === 'string') {
+        router.push(category.route as any);
+      } else {
+        router.push(category.route as any);
+      }
     }
   };
 

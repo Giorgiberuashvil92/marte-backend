@@ -13,6 +13,10 @@ import {
   getNotificationIcon as getIconName,
   getIconPalette,
 } from '../../utils/notificationTypes';
+import {
+  shouldNavigateToPartsRequests,
+  shouldNavigateToExclusiveFuelOffer,
+} from '../../utils/pushNavigation';
 
 const { width, height } = Dimensions.get('window');
 
@@ -175,8 +179,24 @@ export function NotificationsModal({ visible, onClose }: Props) {
       router.push('/garage/fines' as any);
       return;
     }
+
+    if (
+      shouldNavigateToExclusiveFuelOffer(type, screen) ||
+      shouldNavigateToExclusiveFuelOffer(notification.type, screen)
+    ) {
+      onClose();
+      console.log('🔔 [NOTIFICATIONS] Navigating to Exclusive Fuel Offer');
+      router.push('/exclusive-fuel-offer' as any);
+      return;
+    }
+
+    if (shouldNavigateToPartsRequests(type, screen) || shouldNavigateToPartsRequests(notification.type, screen)) {
+      onClose();
+      console.log('🔔 [NOTIFICATIONS] Navigating to Parts Requests');
+      router.push('/parts-requests' as any);
+      return;
+    }
     
-    // New Offer-ისთვის (მომხმარებლის შეთავაზებები)
     if (notification.type === 'new_offer' || (notification.type === 'offer' && !isBusiness)) {
       onClose();
       const offersRoute = hasValidRequestId ? `/offers/${requestId}` : '/offers';
@@ -207,7 +227,11 @@ export function NotificationsModal({ visible, onClose }: Props) {
     } 
     else if (isUserType || !isBusiness) {
       let route = '';
-      if (screen === 'AIRecommendations' || screen === 'PartDetails') {
+      if (shouldNavigateToExclusiveFuelOffer(undefined, screen)) {
+        route = '/exclusive-fuel-offer';
+      } else if (shouldNavigateToPartsRequests(undefined, screen)) {
+        route = '/parts-requests';
+      } else if (screen === 'AIRecommendations' || screen === 'PartDetails') {
         route = '/all-requests';
       } else if (screen === 'RequestDetails' && hasValidRequestId) {
         route = `/offers/${requestId}`;

@@ -105,6 +105,68 @@ export default function PaymentCardScreen() {
   const [visible, setVisible] = useState(true);
   const [paymentFromDB, setPaymentFromDB] = useState<any | null>(null);
 
+  // Params ზოგჯერ მეორე/მესამე რენდერზე ივსება (expo-router); თუ მხოლოდ useState-ით წავიღებთ,
+  // subscription გადახდა შეიძლება შენახული იყოს როგორც context: general / isSubscription: false
+  // და BOG success-ის შემდეგ router.back() გაეშვას refreshSubscription-ის ნაცვლად.
+  useEffect(() => {
+    const hasRouteParams =
+      (params.amount != null && params.amount !== '') ||
+      !!params.context ||
+      !!params.orderId ||
+      params.isSubscription === 'true' ||
+      params.isSubscription === 'false' ||
+      !!params.planId ||
+      !!params.metadata;
+    if (!hasRouteParams) return;
+
+    setPaymentData((prev) => {
+      const next = { ...prev };
+      if (params.amount != null && params.amount !== '') {
+        const a = parseFloat(params.amount);
+        if (!Number.isNaN(a)) next.amount = a;
+      }
+      if (params.description) next.description = params.description;
+      if (params.context) next.context = params.context;
+      if (params.orderId) next.orderId = params.orderId;
+      if (params.successUrl) next.successUrl = params.successUrl;
+      if (params.isSubscription === 'true') next.isSubscription = true;
+      if (params.isSubscription === 'false') next.isSubscription = false;
+      if (params.planId) next.planId = params.planId;
+      if (params.planName) next.planName = params.planName;
+      if (params.planPrice) next.planPrice = params.planPrice;
+      if (params.planCurrency) {
+        next.planCurrency = params.planCurrency;
+        next.currency = params.planCurrency;
+      }
+      if (params.planDescription) next.planDescription = params.planDescription;
+      if (params.metadata) {
+        try {
+          const parsed = JSON.parse(params.metadata);
+          next.metadata = { ...prev.metadata, ...parsed };
+        } catch {
+          /* ignore */
+        }
+      }
+      return next;
+    });
+  }, [
+    params.amount,
+    params.description,
+    params.context,
+    params.orderId,
+    params.successUrl,
+    params.isSubscription,
+    params.planId,
+    params.planName,
+    params.planPrice,
+    params.planCurrency,
+    params.planDescription,
+    params.metadata,
+  ]);
+
+  const isAppSubscriptionPayment =
+    Boolean(paymentData.isSubscription) || paymentData.context === 'subscription';
+
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const slideAnim = useRef(new Animated.Value(20)).current;
 
@@ -289,7 +351,7 @@ export default function PaymentCardScreen() {
     };
 
     fetchPaymentData();
-  }, [user?.id]);
+  }, [user?.id, params.context]);
 
   // BOG OAuth Status Check
   useEffect(() => {
@@ -367,7 +429,7 @@ export default function PaymentCardScreen() {
       // თუ subscription აქვს და bogCardToken აქვს, recurring payment გამოვიყენოთ
       // IMPORTANT: car_fines_subscription-ს ცალკე ფლოუ აქვს — ახალი BOG order უნდა შეიქმნას,
       // რადგან საჭიროა თავისი save_card/bogCardToken და onSuccess-ში confirmCarFinesPayment-ის გამოძახება
-      if (subscription?.bogCardToken && paymentData.isSubscription && paymentData.context !== 'car_fines_subscription') {
+      if (subscription?.bogCardToken && isAppSubscriptionPayment && paymentData.context !== 'car_fines_subscription') {
         console.log('💳 შენახული ბარათით recurring payment-ის განხორციელება...');
         console.log('📦 BOG Card Token:', subscription.bogCardToken);
         console.log('📦 Subscription Plan:', subscription.plan);
@@ -412,7 +474,7 @@ export default function PaymentCardScreen() {
         if (paymentData.context === 'carfax-package') {
           // CarFAX პაკეტი: carfax_package_userId_timestamp
           externalOrderId = `carfax_package_${user.id}_${Date.now()}`;
-        } else if (paymentData.isSubscription && paymentData.planId) {
+        } else if (isAppSubscriptionPayment && paymentData.planId) {
           // Subscription payment: subscription_planId_timestamp_userId
           externalOrderId = `subscription_${paymentData.planId}_${Date.now()}_${user.id}`;
         } else {
@@ -422,7 +484,7 @@ export default function PaymentCardScreen() {
       } else if (paymentData.context === 'carfax-package' && !externalOrderId.includes('carfax_package')) {
         // CarFAX პაკეტისთვის prefix-ის დამატება
         externalOrderId = `carfax_package_${user.id}_${Date.now()}`;
-      } else if (paymentData.isSubscription && paymentData.planId && !externalOrderId.includes('subscription_') && paymentData.context === 'subscription') {
+      } else if (isAppSubscriptionPayment && paymentData.planId && !externalOrderId.includes('subscription_') && paymentData.context === 'subscription') {
         // თუ orderId არ შეიცავს subscription prefix-ს, დავამატოთ
         // IMPORTANT: car_fines_subscription-ს თავისი orderId აქვს, არ გადავწეროთ
         externalOrderId = `subscription_${paymentData.planId}_${Date.now()}_${user.id}`;
@@ -448,7 +510,7 @@ export default function PaymentCardScreen() {
         description: paymentData.description,
         success_url: successUrl,
         fail_url: failUrl,
-        save_card: paymentData.isSubscription || paymentData.context === 'dismantler' || paymentData.context === 'car_fines_subscription', // Subscription-ისა, დაშლილებისა და car fines subscription-ისთვის ბარათის დამახსოვრება
+        save_card: isAppSubscriptionPayment || paymentData.context === 'dismantler' || paymentData.context === 'car_fines_subscription', // Subscription-ისა, დაშლილებისა და car fines subscription-ისთვის ბარათის დამახსოვრება
       };
 
       console.log('💳 BOG Order Data:', {
@@ -475,6 +537,8 @@ export default function PaymentCardScreen() {
       const paymentInfo = {
         userId: user.id,
         orderId: paymentData.orderId,
+        // BOG callback-ის ძებნა: იგივე მნიშვნელობა, რაც createOrder-ში external_order_id
+        externalOrderId: paymentData.orderId,
         amount: paymentData.amount,
         currency: paymentData.currency === '₾' ? 'GEL' : paymentData.currency,
         paymentMethod: 'BOG',
@@ -558,7 +622,7 @@ export default function PaymentCardScreen() {
               <View style={styles.detailsDivider} />
 
               {/* Subscription Info */}
-              {paymentData.isSubscription && paymentData.planName && (
+              {isAppSubscriptionPayment && paymentData.planName && (
                 <>
                   <View style={styles.detailRow}>
                     <Text style={styles.detailLabel}>პაკეტი:</Text>
@@ -729,7 +793,7 @@ export default function PaymentCardScreen() {
             setShowSuccessModal(true);
             await savePaymentInfo();
 
-            if (paymentData.isSubscription) {
+            if (isAppSubscriptionPayment) {
               try {
                 await refreshSubscription();
               } catch (error) {
@@ -1170,11 +1234,32 @@ export default function PaymentCardScreen() {
                 setShowSuccessModal(false);
                 router.replace('/garage/fines' as any);
               }, 3000);
+            } else if (paymentData.context === 'carfax-package') {
+              // CarFAX პაკეტის ყიდვის შემდეგ დაბრუნება CarFAX გვერდზე და usage-ის განახლება
+              setTimeout(() => {
+                setShowSuccessModal(false);
+                router.replace({
+                  pathname: '/carfax',
+                  params: { packagePaid: '1' },
+                } as any);
+              }, 1200);
+            } else if (paymentData.context === 'carfax') {
+              // ერთჯერადი CarFAX ყიდვის შემდეგ პირდაპირ გახსენით ანგარიშის flow VIN-ით
+              const vinFromMetadata = String(paymentData.metadata?.vinNumber || '').trim().toUpperCase();
+              setTimeout(() => {
+                setShowSuccessModal(false);
+                router.replace({
+                  pathname: '/carfax',
+                  params: {
+                    paid: '1',
+                    vinCode: vinFromMetadata,
+                  },
+                } as any);
+              }, 1200);
             } else {
               setTimeout(() => {
                 setShowSuccessModal(false);
-                if (paymentData.isSubscription) {
-                  // Subscription-ის შემთხვევაში refresh-ის შემდეგ მთავარ გვერდზე გადავიდეთ
+                if (isAppSubscriptionPayment) {
                   router.replace('/(tabs)');
                 } else {
                   router.back();
@@ -1357,8 +1442,7 @@ export default function PaymentCardScreen() {
                   style={styles.successButton}
                   onPress={() => {
                     setShowSuccessModal(false);
-                    // Subscription payment-ის შემთხვევაში მთავარ გვერდზე გადავიდეთ
-                    if (paymentData.isSubscription) {
+                    if (isAppSubscriptionPayment) {
                       router.replace('/(tabs)');
                     } else {
                       router.back();

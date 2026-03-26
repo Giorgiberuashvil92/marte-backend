@@ -6,6 +6,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { BlurView } from 'expo-blur';
 import API_BASE_URL from '../config/api';
+import { addItemApi } from '../services/addItemApi';
 import { categoriesApi, Category } from '../services/categoriesApi';
 import { useUser } from '../contexts/UserContext';
 import { engagementApi } from '../services/engagementApi';
@@ -190,6 +191,45 @@ export default function CategoryScreen() {
   const fetchCategoryServices = async (isRefresh = false) => {
     try {
       if (!isRefresh) setLoading(true);
+
+      if (categoryType === 'part') {
+        const res = await addItemApi.getParts({ limit: 40, page: 1 });
+        const raw = res.success && res.data ? res.data : [];
+        const list = Array.isArray(raw) ? raw : [];
+        const formattedServices = list.map((part: any) => {
+          const img =
+            part.photos?.[0] ||
+            part.images?.[0] ||
+            part.image ||
+            'https://images.unsplash.com/photo-1558618666-fcd25c85cd64?q=80&w=400';
+          const priceStr =
+            part.price != null && part.price !== ''
+              ? typeof part.price === 'string' && String(part.price).includes('₾')
+                ? String(part.price)
+                : `${part.price}₾`
+              : '—';
+          return {
+            id: part.id || part._id,
+            name: part.title || part.name || 'ნაწილი',
+            location: part.location || '',
+            rating: typeof part.rating === 'number' ? part.rating : 4.5,
+            price: priceStr,
+            image: img,
+            category: part.category || 'part',
+            address: part.location || '',
+            phone: part.phone || 'N/A',
+            isOpen: true,
+            reviews: part.reviews || Math.floor(Math.random() * 50) + 10,
+            type: 'part' as const,
+            description: part.description || '',
+            distance: `${(Math.random() * 5 + 0.5).toFixed(1)} კმ`,
+            waitTime: '—',
+            _rawPart: part,
+          };
+        });
+        setServices(formattedServices);
+        return;
+      }
       
       // API-დან მონაცემების მიღება
       const response = await fetch(`${API_BASE_URL}/services?type=${categoryType}&limit=20`);
@@ -311,6 +351,39 @@ export default function CategoryScreen() {
         });
       }
       // Add more types as needed (mechanic, etc.)
+    }
+
+    if (serviceType === 'part' || categoryType === 'part') {
+      const part = service._rawPart || service;
+      const mainImage =
+        part.photos?.[0] || part.images?.[0] || part.image || service.image;
+      const gallery =
+        part.photos?.length > 0 ? part.photos : part.images?.length > 0 ? part.images : [mainImage];
+      const detailItem = {
+        id: part.id || part._id || serviceId,
+        title: part.title || part.name || service.name,
+        name: part.title || part.name,
+        description: part.description || service.description,
+        price: part.price,
+        image: mainImage,
+        type: 'part',
+        location: part.location || service.location,
+        phone: part.phone || service.phone,
+        gallery: gallery || [mainImage],
+        specifications: {
+          'ბრენდი': part.brand || '',
+          'კატეგორია': part.category || '',
+          'მდგომარეობა': part.condition || '',
+          'მდებარეობა': part.location || '',
+          'ტელეფონი': part.phone || '',
+        },
+        features: ['ორიგინალი', 'ხარისხიანი'],
+      };
+      router.push({
+        pathname: '/parts-details-new',
+        params: { item: JSON.stringify(detailItem) },
+      } as any);
+      return;
     }
     
     router.push({

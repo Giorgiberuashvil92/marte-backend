@@ -114,7 +114,13 @@ export default function BOGPaymentModal({
     }
     
     // ვამოწმებთ BOG-ის success/fail URL-ებს პირდაპირ
-    if (url.includes('/payment/success') || url.includes('success') || url.includes('completed')) {
+    if (
+      url.includes('/payment/success') ||
+      url.includes('success') ||
+      url.includes('completed') ||
+      url.includes('paid=1') ||
+      url.includes('packagePaid=1')
+    ) {
       console.log('✅ BOG Success URL detected!');
       onClose();
       setShowSuccessModal(true);
@@ -143,7 +149,12 @@ export default function BOGPaymentModal({
     console.log('🔄 BOG Navigation State:', navState.url);
     
     // ვამოწმებთ success/fail URL-ებს navigation state-ში
-    if (navState.url.includes('success') || navState.url.includes('completed')) {
+    if (
+      navState.url.includes('success') ||
+      navState.url.includes('completed') ||
+      navState.url.includes('paid=1') ||
+      navState.url.includes('packagePaid=1')
+    ) {
       console.log('✅ BOG Success detected in navigation!');
       onClose(); // WebView მაშინვე იხურება
       setShowSuccessModal(true);

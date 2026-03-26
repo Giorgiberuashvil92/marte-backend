@@ -1,10 +1,10 @@
 import FontAwesome from '@expo/vector-icons/FontAwesome';
-import { DarkTheme, DefaultTheme, ThemeProvider } from '@react-navigation/native';
+import { DefaultTheme, ThemeProvider } from '@react-navigation/native';
 import { useFonts } from 'expo-font';
 import { Stack } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { useEffect, useState, useRef } from 'react';
-import { BackHandler, Keyboard, Platform, AppState, AppStateStatus, Text as RNText, TextInput as RNTextInput } from 'react-native';
+import { Appearance, BackHandler, Keyboard, Platform, AppState, AppStateStatus, Text as RNText, TextInput as RNTextInput } from 'react-native';
 import {
   useFonts as useOutfitFonts,
   Outfit_400Regular,
@@ -13,7 +13,6 @@ import {
   Outfit_700Bold,
 } from '@expo-google-fonts/outfit';
 
-import { useColorScheme } from '@/components/useColorScheme';
 import Colors from '@/constants/Colors';
 import { CarProvider } from '../contexts/CarContext';
 import { MarketplaceProvider } from '../contexts/MarketplaceContext';
@@ -85,8 +84,12 @@ export default function RootLayout() {
 }
 
 function RootLayoutNav() {
-  const colorScheme = useColorScheme();
-  const colors = Colors[colorScheme ?? 'light'];
+  const colors = Colors.light;
+
+  /** სისტემური dark-ის იგნორირება (iOS/Android) — მხოლოდ light */
+  useEffect(() => {
+    Appearance.setColorScheme('light');
+  }, []);
   const [keyboardVisible, setKeyboardVisible] = useState(false);
   const appState = useRef<AppStateStatus>(AppState.currentState);
   const [showForceUpdate, setShowForceUpdate] = useState(false);
@@ -103,9 +106,9 @@ function RootLayoutNav() {
 
 
   const customTheme = {
-    ...(colorScheme === 'dark' ? DarkTheme : DefaultTheme),
+    ...DefaultTheme,
     colors: {
-      ...(colorScheme === 'dark' ? DarkTheme.colors : DefaultTheme.colors),
+      ...DefaultTheme.colors,
       primary: colors.primary,
       background: colors.background,
       card: colors.card,
@@ -323,6 +326,7 @@ function RootLayoutNav() {
               <Stack.Screen name="parts-order" options={{ headerShown: false }} />
               <Stack.Screen name="parts" options={{ headerShown: false }} />
               <Stack.Screen name="parts-new" options={{ headerShown: false }} />
+              <Stack.Screen name="parts-browse" options={{ headerShown: false }} />
               <Stack.Screen name="parts-details-new" options={{ headerShown: false }} />
               <Stack.Screen name="stores" options={{ headerShown: false }} />
               <Stack.Screen name="stores-new" options={{ headerShown: false }} />
@@ -339,6 +343,7 @@ function RootLayoutNav() {
               <Stack.Screen name="garage/add-service" options={{ headerShown: false }} />
               <Stack.Screen name="garage/service/[id]" options={{ headerShown: false }} />
               <Stack.Screen name="garage/documents" options={{ headerShown: false }} />
+              <Stack.Screen name="garage/fines" options={{ headerShown: false }} />
               <Stack.Screen name="garage/fuel" options={{ headerShown: false }} />
               <Stack.Screen name="garage/statistics" options={{ headerShown: false }} />
               <Stack.Screen name="service-form" options={{ headerShown: false }} />
@@ -351,6 +356,7 @@ function RootLayoutNav() {
               <Stack.Screen name="notifications/[id]" options={{ headerShown: false }} />
               <Stack.Screen name="financing-request" options={{ headerShown: false }} />
               <Stack.Screen name="financing-info" options={{ headerShown: false }} />
+              <Stack.Screen name="exclusive-fuel-offer" options={{ headerShown: false }} />
               <Stack.Screen name="caru-service" options={{ headerShown: false }} />
               <Stack.Screen name="caru-orders" options={{ headerShown: false }} />
               <Stack.Screen name="caru-order" options={{ headerShown: false }} />

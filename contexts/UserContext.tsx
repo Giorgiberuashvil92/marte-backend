@@ -6,6 +6,11 @@ import messaging from '@react-native-firebase/messaging';
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore
 import notifee, { AndroidImportance, AndroidColor } from '@notifee/react-native';
+import {
+  normalizePushNavData,
+  shouldNavigateToPartsRequests,
+  shouldNavigateToExclusiveFuelOffer,
+} from '@/utils/pushNavigation';
 import { router } from 'expo-router';
 import { Platform, Alert } from 'react-native';
 import * as Device from 'expo-device';
@@ -150,15 +155,17 @@ export function UserProvider({ children }: { children: ReactNode }) {
     let unsubscribeOnMessage: (() => void) | undefined;
     let unsubscribeOnNotificationOpened: (() => void) | undefined;
     const processedMessageIds = new Set<string>();
-    const handleNavigateFromData = (data?: Record<string, any>) => {
+    const handleNavigateFromData = (raw?: Record<string, any>) => {
       console.log('📱 [PUSH NOTIFICATION] ============================================');
-      console.log('📱 [PUSH NOTIFICATION] Received notification data:', JSON.stringify(data, null, 2));
-      console.log('📱 [PUSH NOTIFICATION] Data keys:', data ? Object.keys(data) : 'no data');
+      console.log('📱 [PUSH NOTIFICATION] Received notification data:', JSON.stringify(raw, null, 2));
+      console.log('📱 [PUSH NOTIFICATION] Data keys:', raw ? Object.keys(raw) : 'no data');
       
-      if (!data) {
+      if (!raw) {
         console.log('📱 [PUSH NOTIFICATION] ❌ No data provided, returning');
         return;
       }
+
+      const data = normalizePushNavData(raw);
       
       // Prefer explicit screen param
       const screen = data.screen as string | undefined;
@@ -206,7 +213,18 @@ export function UserProvider({ children }: { children: ReactNode }) {
         return;
       }
       
-      // 2. Garage reminders
+      // 2. Garage — ჯარიმების შეხსენება
+      if (
+        type === 'garage_fines_reminder' ||
+        data.type === 'garage_fines_reminder' ||
+        screen === 'GarageFines'
+      ) {
+        console.log('📱 [PUSH NOTIFICATION] ✅ Navigating to /garage/fines (garage_fines_reminder)');
+        router.push('/garage/fines' as any);
+        return;
+      }
+
+      // 2.1 Garage reminders
       if (type === 'garage_reminder' || screen === 'Garage' || data.type === 'garage_reminder') {
         console.log('📱 [PUSH NOTIFICATION] ✅ Navigating to /(tabs)/garage (garage_reminder)');
         router.push('/(tabs)/garage' as any);
@@ -237,6 +255,20 @@ export function UserProvider({ children }: { children: ReactNode }) {
           console.log('📱 [PUSH NOTIFICATION] ✅ Navigating to /bookings (carwash_booking, no ID)');
           router.push('/bookings' as any);
         }
+        return;
+      }
+
+      // 4.4. საწვავის ფასდაკლება / exclusive-fuel-offer
+      if (shouldNavigateToExclusiveFuelOffer(type, screen)) {
+        console.log('📱 [PUSH NOTIFICATION] ✅ Navigating to /exclusive-fuel-offer (fuel_discount)');
+        router.push('/exclusive-fuel-offer' as any);
+        return;
+      }
+
+      // 4.5. ნაწილის მოთხოვნა / parts-requests (ადრე new_request-ამდე — უსაფრთხო თანმიმდევრობა)
+      if (shouldNavigateToPartsRequests(type, screen)) {
+        console.log('📱 [PUSH NOTIFICATION] ✅ Navigating to /parts-requests (parts_request / PartsRequests)');
+        router.push('/parts-requests' as any);
         return;
       }
       
@@ -275,7 +307,7 @@ export function UserProvider({ children }: { children: ReactNode }) {
         }
         return;
       }
-      
+
       // 8. Screen-based navigation (fallback)
       if (screen) {
         console.log('📱 [PUSH NOTIFICATION] 🔍 Checking screen-based navigation...');
@@ -292,6 +324,16 @@ export function UserProvider({ children }: { children: ReactNode }) {
         if (screen === 'PartDetails' || screen === 'AIRecommendations') {
           console.log('📱 [PUSH NOTIFICATION] ✅ Navigating to /all-requests (PartDetails/AIRecommendations)');
           router.push('/all-requests' as any);
+          return;
+        }
+        if (shouldNavigateToExclusiveFuelOffer(undefined, screen)) {
+          console.log('📱 [PUSH NOTIFICATION] ✅ Navigating to /exclusive-fuel-offer (screen fallback)');
+          router.push('/exclusive-fuel-offer' as any);
+          return;
+        }
+        if (shouldNavigateToPartsRequests(undefined, screen)) {
+          console.log('📱 [PUSH NOTIFICATION] ✅ Navigating to /parts-requests (screen fallback)');
+          router.push('/parts-requests' as any);
           return;
         }
         if (screen === 'Bookings' && data.carwashId) {
@@ -437,19 +479,30 @@ export function UserProvider({ children }: { children: ReactNode }) {
 
         // Handle cold start (user tapped notification to open the app)
         const initial = await messaging().getInitialNotification();
-        if (initial?.data) {
+        if (initial?.data && Object.keys(initial.data).length > 0) {
           console.log('📱 [PUSH NOTIFICATION] ============================================');
-          console.log('📱 [PUSH NOTIFICATION] 🔔 COLD START - Notification opened app');
+          console.log('📱 [PUSH NOTIFICATION] 🔔 COLD START - FCM notification opened app');
           console.log('📱 [PUSH NOTIFICATION] MessageId:', initial?.messageId);
           console.log('📱 [PUSH NOTIFICATION] Title:', initial?.notification?.title);
           console.log('📱 [PUSH NOTIFICATION] Body:', initial?.notification?.body);
           console.log('📱 [PUSH NOTIFICATION] Data:', JSON.stringify(initial?.data, null, 2));
-          // Pass title along with data
           const notificationData = {
             ...(initial.data || {}),
             title: initial?.notification?.title || initial?.data?.title,
           };
           handleNavigateFromData(notificationData as any);
+        } else {
+          // Notifee-ით ნაჩვენები ლოკალური შეტყობინება (cold start)
+          const notifeeInitial = await notifee.getInitialNotification();
+          if (notifeeInitial?.notification?.data) {
+            console.log('📱 [PUSH NOTIFICATION] 🔔 COLD START - Notifee notification opened app');
+            const n = notifeeInitial.notification;
+            const notificationData = {
+              ...(n.data || {}),
+              title: n.title || (n.data as any)?.title,
+            };
+            handleNavigateFromData(notificationData as any);
+          }
         }
 
         // Handle Notifee foreground press events

@@ -12,14 +12,15 @@ import {
   TextInput,
   Image,
   Animated,
-  Platform,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
-import Colors from '../constants/Colors';
 import { fuelPricesApi, ProviderPrices, FuelType, LowestPrice } from '../services/fuelPricesApi';
+
+/** აპის სტანდარტული ფონტი (იგივე რაც მთავარ ეკრანზე — _layout.tsx / HelveticaMedium) */
+const FONT = 'HelveticaMedium' as const;
 
 const PROVIDER_LOGOS: Record<string, string> = {
   'Gulf': 'https://gulf.ge/img/logo_main_ge.png',
@@ -45,20 +46,21 @@ const FUEL_TYPES = [
     id: 'regular', 
     name: 'რეგულარი', 
     typeAlt: 'regular', 
-    color: '#10B981', 
+    color: '#0EA5E9', 
     icon: 'flash', 
   },
   { 
     id: 'regular_pm', 
     name: 'ევრო რეგულარი', 
     typeAlt: 'regular_pm', 
-    color: '#10B981', 
+    color: '#0EA5E9', 
     icon: 'flash', 
   },
   { 
     id: 'super', 
     name: 'სუპერი', 
-    typeAlt: 'super', 
+    /** petrol.com.ge API: სუპერი = super_pm (არა super) */
+    typeAlt: 'super_pm', 
     color: '#8B5CF6', 
     icon: 'star', 
   },
@@ -92,6 +94,18 @@ interface StationData {
   typeAlt: string;
 }
 
+/** Portal სადგურზე Marte აპით — ყველა საწვავის ტიპი ჩამონათვალიდან (ლარში) */
+const PORTAL_DISCOUNT_GEL = 0.17;
+
+const PORTAL_DISCOUNT_TYPE_ALTS = new Set([
+  ...FUEL_TYPES.map((f) => f.typeAlt),
+  'super', // თუ სადმე ჯერ კიდევ super მოდის
+]);
+
+function isPortalDiscountFuel(typeAlt: string): boolean {
+  return PORTAL_DISCOUNT_TYPE_ALTS.has(typeAlt);
+}
+
 export default function FuelStationsScreen() {
   const router = useRouter();
   const [refreshing, setRefreshing] = useState(false);
@@ -106,8 +120,14 @@ export default function FuelStationsScreen() {
   
   const fadeAnim = useRef(new Animated.Value(0)).current;
 
-  // Get unique providers
-  const providers = currentPrices.map(p => p.provider);
+  // უნიკალური მომწოდებლები — პორტალი ყოველთვის პირველი
+  const providers = (() => {
+    const unique = [...new Set(currentPrices.map((p) => p.provider))];
+    return [
+      ...unique.filter((p) => p === 'Portal'),
+      ...unique.filter((p) => p !== 'Portal'),
+    ];
+  })();
 
   // Get available fuel types for selected provider
   const getAvailableFuelTypes = () => {
@@ -143,16 +163,14 @@ export default function FuelStationsScreen() {
       setLowestPrices(lowest);
       setFuelTypes(types);
       
-      // Set default provider immediately after data loads
-      setSelectedProvider(prev => {
+      // ნაგულისხმევად მონიშნული ყოველთვის პორტალი (თუ მონაცემებშია)
+      setSelectedProvider((prev) => {
         if (prev === null && prices.length > 0) {
-          const gulfProvider = prices.find(p => p.provider === 'Gulf');
-          if (gulfProvider) {
-            return 'Gulf';
-          } else if (prices.length > 0) {
-            // If Gulf not found, select first provider
-            return prices[0].provider;
-          }
+          const portal = prices.find((p) => p.provider === 'Portal');
+          if (portal) return 'Portal';
+          const gulf = prices.find((p) => p.provider === 'Gulf');
+          if (gulf) return 'Gulf';
+          return prices[0].provider;
         }
         return prev;
       });
@@ -238,13 +256,15 @@ export default function FuelStationsScreen() {
       );
     }
     
-    // Sort by provider first, then by price
+    // პორტალი ყოველთვის ზედა ნაწილში, შემდეგ არსებული წესი (სახელი/ფასი)
     return filtered.sort((a, b) => {
+      const aPortal = a.provider === 'Portal' ? 0 : 1;
+      const bPortal = b.provider === 'Portal' ? 0 : 1;
+      if (aPortal !== bPortal) return aPortal - bPortal;
+
       if (selectedProvider) {
-        // If provider selected, sort by fuel type name, then price
         return a.fuelName.localeCompare(b.fuelName) || a.price - b.price;
       }
-      // If no provider selected, sort by price
       return a.price - b.price;
     });
   };
@@ -268,7 +288,12 @@ export default function FuelStationsScreen() {
     const emojiFallback = PROVIDER_EMOJIS[station.provider] || '⛽';
     const hasLogoError = logoErrors[station.provider];
     const priceDiff = cheapestPrice ? ((station.price - cheapestPrice) / cheapestPrice * 100) : 0;
-    
+    const showMartePortalDiscount =
+      station.provider === 'Portal' && isPortalDiscountFuel(station.typeAlt);
+    const martePortalPrice = showMartePortalDiscount
+      ? Math.max(0, station.price - PORTAL_DISCOUNT_GEL)
+      : null;
+
     return (
       <Animated.View 
         key={`${station.provider}-${station.fuelName}-${index}`}
@@ -305,12 +330,39 @@ export default function FuelStationsScreen() {
                   )}
                 </View>
                 <Text style={styles.fuelName}>{station.fuelName}</Text>
+                {showMartePortalDiscount && (
+                  <TouchableOpacity
+                    activeOpacity={0.75}
+                    onPress={() =>
+                      router.push('/exclusive-fuel-offer' as any)
+                    }
+                    style={styles.portalChipTouchable}
+                  >
+                    <LinearGradient
+                      colors={['#1D4ED8', '#3B82F6']}
+                      start={{ x: 0, y: 0 }}
+                      end={{ x: 1, y: 1 }}
+                      style={styles.portalChip}
+                    >
+                      <Ionicons name="sparkles" size={12} color="#FDE047" />
+                      <Text style={styles.portalChipText}>აიღე Marte-ს ბარათი</Text>
+                    </LinearGradient>
+                  </TouchableOpacity>
+                )}
               </View>
             </View>
             
             <View style={styles.cardRight}>
               <Text style={styles.priceValue}>{station.price.toFixed(2)}</Text>
               <Text style={styles.priceCurrency}>₾/ლ</Text>
+              {martePortalPrice !== null && (
+                <View style={styles.portalPriceBlock}>
+                  <Text style={styles.portalPriceLabel}>ბარათით</Text>
+                  <Text style={styles.portalPriceValue}>
+                    {martePortalPrice.toFixed(2)} ₾
+                  </Text>
+                </View>
+              )}
               {priceDiff > 0 && !isCheapest && (
                 <Text style={styles.priceDiff}>+{priceDiff.toFixed(1)}%</Text>
               )}
@@ -359,6 +411,26 @@ export default function FuelStationsScreen() {
             </TouchableOpacity>
           )}
         </View>
+
+        <TouchableOpacity
+          style={styles.portalPromoCard}
+          activeOpacity={0.88}
+          onPress={() => router.push('/exclusive-fuel-offer' as any)}
+        >
+          <View style={styles.portalPromoStripe} />
+          <View style={styles.portalPromoInner}>
+            <View style={styles.portalPromoIconWrap}>
+              <Ionicons name="card-outline" size={22} color="#2563EB" />
+            </View>
+            <View style={styles.portalPromoTextCol}>
+              <Text style={styles.portalPromoTitle}>აიღე Marte-ს ბარათი</Text>
+              <Text style={styles.portalPromoSub}>
+                −17 თეთრი ყველა საწვავზე · ბენზინი და დიზელი
+              </Text>
+            </View>
+            <Ionicons name="chevron-forward" size={22} color="#94A3B8" />
+          </View>
+        </TouchableOpacity>
       </View>
 
       {/* Providers Carousel */}
@@ -517,14 +589,137 @@ const styles = StyleSheet.create({
   },
   headerTitle: {
     fontSize: 28,
+    fontFamily: FONT,
     fontWeight: '700',
     color: '#111827',
     letterSpacing: -0.5,
   },
   headerSubtitle: {
     fontSize: 14,
+    fontFamily: FONT,
     color: '#6B7280',
+    marginTop: 6,
+  },
+  headerPortalRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginTop: 8,
+  },
+  headerPortalBadge: {
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 8,
+    backgroundColor: '#EFF6FF',
+    borderWidth: 1,
+    borderColor: '#BFDBFE',
+  },
+  headerPortalBadgeText: {
+    fontSize: 11,
+    fontFamily: FONT,
+    fontWeight: '800',
+    color: '#1D4ED8',
+    letterSpacing: 0.8,
+  },
+  headerPortalHint: {
+    fontSize: 13,
+    fontFamily: FONT,
+    fontWeight: '600',
+    color: '#374151',
+    flex: 1,
+  },
+  portalPromoCard: {
+    marginTop: 14,
+    flexDirection: 'row',
+    alignItems: 'stretch',
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: '#E8EEE9',
+    shadowColor: '#0F172A',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.06,
+    shadowRadius: 10,
+    elevation: 3,
+  },
+  portalPromoStripe: {
+    width: 4,
+    backgroundColor: '#3B82F6',
+  },
+  portalPromoInner: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 12,
+    paddingHorizontal: 12,
+    gap: 10,
+  },
+  portalPromoIconWrap: {
+    width: 44,
+    height: 44,
+    borderRadius: 14,
+    backgroundColor: '#EFF6FF',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  portalPromoTextCol: {
+    flex: 1,
+  },
+  portalPromoTitle: {
+    fontSize: 15,
+    fontFamily: FONT,
+    fontWeight: '800',
+    color: '#0F172A',
+    letterSpacing: -0.2,
+  },
+  portalPromoSub: {
+    fontSize: 11,
+    fontFamily: FONT,
+    color: '#64748B',
+    marginTop: 3,
+    lineHeight: 15,
+  },
+  portalChipTouchable: {
+    alignSelf: 'flex-start',
+    marginTop: 8,
+  },
+  portalChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 10,
+    maxWidth: '100%',
+  },
+  portalChipText: {
+    fontSize: 10,
+    fontFamily: FONT,
+    fontWeight: '800',
+    color: '#FFFFFF',
+    letterSpacing: -0.2,
+    flexShrink: 1,
+  },
+  portalPriceBlock: {
     marginTop: 4,
+    alignItems: 'flex-end',
+  },
+  portalPriceLabel: {
+    fontSize: 9,
+    fontFamily: FONT,
+    fontWeight: '700',
+    color: '#2563EB',
+    textTransform: 'uppercase',
+    letterSpacing: 0.4,
+  },
+  portalPriceValue: {
+    fontSize: 14,
+    fontFamily: FONT,
+    fontWeight: '800',
+    color: '#1D4ED8',
+    marginTop: 1,
   },
   searchContainer: {
     flexDirection: 'row',
@@ -540,6 +735,7 @@ const styles = StyleSheet.create({
   searchInput: {
     flex: 1,
     fontSize: 14,
+    fontFamily: FONT,
     color: '#111827',
   },
   providersSection: {
@@ -607,6 +803,7 @@ const styles = StyleSheet.create({
   },
   fuelTypeText: {
     fontSize: 13,
+    fontFamily: FONT,
     fontWeight: '600',
     color: '#6B7280',
   },
@@ -673,6 +870,7 @@ const styles = StyleSheet.create({
   },
   providerName: {
     fontSize: 16,
+    fontFamily: FONT,
     fontWeight: '700',
     color: '#111827',
     letterSpacing: -0.3,
@@ -681,18 +879,20 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
-    backgroundColor: '#10B981',
+    backgroundColor: '#3B82F6',
     paddingHorizontal: 8,
     paddingVertical: 3,
     borderRadius: 12,
   },
   bestBadgeText: {
     fontSize: 10,
+    fontFamily: FONT,
     fontWeight: '700',
     color: '#FFFFFF',
   },
   fuelName: {
     fontSize: 13,
+    fontFamily: FONT,
     color: '#6B7280',
   },
   cardRight: {
@@ -701,17 +901,20 @@ const styles = StyleSheet.create({
   },
   priceValue: {
     fontSize: 22,
+    fontFamily: FONT,
     fontWeight: '700',
     color: '#111827',
     letterSpacing: -0.5,
   },
   priceCurrency: {
     fontSize: 12,
+    fontFamily: FONT,
     fontWeight: '500',
     color: '#6B7280',
   },
   priceDiff: {
     fontSize: 11,
+    fontFamily: FONT,
     fontWeight: '600',
     color: '#EF4444',
     marginTop: 2,
@@ -724,6 +927,7 @@ const styles = StyleSheet.create({
   loadingText: {
     marginTop: 20,
     fontSize: 15,
+    fontFamily: FONT,
     fontWeight: '500',
     color: '#6B7280',
   },
@@ -734,6 +938,7 @@ const styles = StyleSheet.create({
   },
   emptyTitle: {
     fontSize: 18,
+    fontFamily: FONT,
     fontWeight: '700',
     color: '#111827',
     marginTop: 24,
@@ -741,6 +946,7 @@ const styles = StyleSheet.create({
   },
   emptySubtitle: {
     fontSize: 14,
+    fontFamily: FONT,
     color: '#6B7280',
     textAlign: 'center',
   },

@@ -53,6 +53,7 @@ export default function CarFAXScreen() {
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const slideAnim = useRef(new Animated.Value(24)).current;
   const paidFetchRef = useRef(false);
+  const packageAppliedRef = useRef(false);
 
   // Load CarFAX usage for premium users
   useEffect(() => {
@@ -186,26 +187,28 @@ export default function CarFAXScreen() {
     const packagePaid = params?.packagePaid === '1';
     const vinParam = params?.vinCode ? String(params.vinCode).toUpperCase() : '';
     
-    if (packagePaid && isPremiumUser && user?.id) {
-      // პაკეტის გადახდის შემდეგ usage-ის განახლება
-      const updateUsage = async (retryCount = 0) => {
+    if (packagePaid && isPremiumUser && user?.id && !packageAppliedRef.current) {
+      packageAppliedRef.current = true;
+      // პაკეტის გადახდის შემდეგ ჯერ ვამატებთ 1 კრედიტს, მერე ვაახლებთ usage-ს
+      const applyPackageAndRefreshUsage = async (retryCount = 0) => {
         try {
+          await carfaxApi.addCarFAXPackage(user.id, 1);
           const updatedUsage = await carfaxApi.getCarFAXUsage(user.id);
           setCarfaxUsage(updatedUsage);
           Alert.alert('წარმატება', '1 CarFAX შემოწმება წარმატებით დაემატა!');
         } catch (error) {
-          console.error('Usage განახლების შეცდომა:', error);
+          console.error('CarFAX პაკეტის დამატება/usage განახლების შეცდომა:', error);
           // Network error-ის შემთხვევაში, ვცდილობთ retry-ს (მაქს 3-ჯერ)
           if (error instanceof Error && error.message.includes('Network request failed') && retryCount < 3) {
             setTimeout(() => {
-              updateUsage(retryCount + 1);
+              applyPackageAndRefreshUsage(retryCount + 1);
             }, 2000 * (retryCount + 1)); // Exponential backoff
           } else if (retryCount >= 3) {
-            Alert.alert('გაფრთხილება', 'Usage-ის განახლება ვერ მოხერხდა. გთხოვთ განაახლოთ გვერდი.');
+            Alert.alert('გაფრთხილება', 'CarFAX პაკეტის დადასტურება ვერ მოხერხდა. გთხოვთ სცადოთ ხელახლა.');
           }
         }
       };
-      updateUsage();
+      applyPackageAndRefreshUsage();
     }
     
     if (paid && vinParam && !paidFetchRef.current) {
@@ -326,7 +329,7 @@ export default function CarFAXScreen() {
                     description: 'CarFAX პაკეტი - 1 შემოწმება',
                     context: 'carfax-package',
                     orderId: `carfax_package_${user?.id || 'guest'}_${Date.now()}`,
-                    successUrl: `/carfax?packagePaid=1`,
+                    successUrl: `/payment/success`,
                     metadata: JSON.stringify({
                       packageType: 'package',
                       reportType: 'carfax',
@@ -351,7 +354,7 @@ export default function CarFAXScreen() {
         description: 'CarFAX ერთჯერადი მოხსენება',
         context: 'carfax',
         orderId: `carfax_subscription_${user?.id || 'guest'}_${Date.now()}`,
-        successUrl: `/carfax?paid=1&vinCode=${encodeURIComponent(trimmedVin)}`,
+        successUrl: `/payment/success`,
         vinCode: trimmedVin,
         metadata: JSON.stringify({
           packageType: 'single',

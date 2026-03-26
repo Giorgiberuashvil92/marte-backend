@@ -23,6 +23,7 @@ import { overpassApi, SpeedLimit, RadarLocation } from '../services/overpassApi'
 import { geojsonRadarsService } from '../services/geojsonRadars';
 import API_BASE_URL from '../config/api';
 import { useCars } from '../contexts/CarContext';
+import { useUser } from '../contexts/UserContext';
 import { useColorScheme } from '../components/useColorScheme';
 import { Vibration } from 'react-native';
 
@@ -45,11 +46,50 @@ const MAP_STYLE_MINIMAL_DARK = [
   { featureType: 'transit', stylers: [{ visibility: 'off' }] },
 ];
 
+/**
+ * Android: AirMap `cameraPositionFromMap` იძახებს getDouble("zoom"/"pitch"/"heading") ყოველთვის.
+ * iOS იყენებს `altitude`-ს; Android-ზე `altitude`-ს გარეშე `zoom` აუცილებელია — წინააღმდეგ შემთხვევაში native crash.
+ */
+function mapCameraForPlatform(params: {
+  latitude: number;
+  longitude: number;
+  /** iOS navigation feel */
+  altitude?: number;
+  pitch?: number;
+  heading?: number;
+  /** Google Maps zoom level on Android */
+  zoom?: number;
+}): Record<string, unknown> {
+  const {
+    latitude,
+    longitude,
+    altitude = 200,
+    pitch = 70,
+    heading = 0,
+    zoom = 17,
+  } = params;
+  if (Platform.OS === 'android') {
+    return {
+      center: { latitude, longitude },
+      zoom,
+      pitch,
+      heading,
+    };
+  }
+  return {
+    center: { latitude, longitude },
+    altitude,
+    pitch,
+    heading,
+  };
+}
+
 export default function RadarsScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const colorScheme = useColorScheme();
   const { selectedCar, cars } = useCars();
+  const { user } = useUser();
   const [radars, setRadars] = useState<Radar[]>([]);
   const [selectedRadar, setSelectedRadar] = useState<Radar | null>(null);
   const [showRadarInfo, setShowRadarInfo] = useState(false);
@@ -630,15 +670,14 @@ export default function RadarsScreen() {
       // Animate camera to Tbilisi
       setTimeout(() => {
         mapRef.current?.animateCamera(
-          {
-            center: {
-              latitude: 41.7151,
-              longitude: 44.8271,
-            },
+          mapCameraForPlatform({
+            latitude: 41.7151,
+            longitude: 44.8271,
             altitude: 200,
             pitch: 70,
             heading: 0,
-          },
+            zoom: 17,
+          }) as any,
           { duration: 1000 }
         );
       }, 500);
@@ -690,15 +729,14 @@ export default function RadarsScreen() {
         // Waze-style camera: 3D perspective, high zoom, follows car
         setTimeout(() => {
           mapRef.current?.animateCamera(
-            {
-              center: {
-                latitude: location.coords.latitude,
-                longitude: location.coords.longitude,
-              },
+            mapCameraForPlatform({
+              latitude: location.coords.latitude,
+              longitude: location.coords.longitude,
               altitude: 200,
               pitch: 70,
               heading: location.coords.heading || 0,
-            },
+              zoom: 17,
+            }) as any,
             { duration: 1000 }
           );
         }, 500);
@@ -721,15 +759,14 @@ export default function RadarsScreen() {
               // Update map camera to follow car
               if (mapRef.current) {
                 mapRef.current.animateCamera(
-                  {
-                    center: {
-                      latitude: newLocation.coords.latitude,
-                      longitude: newLocation.coords.longitude,
-                    },
+                  mapCameraForPlatform({
+                    latitude: newLocation.coords.latitude,
+                    longitude: newLocation.coords.longitude,
                     altitude: 200,
                     pitch: 70,
                     heading: newLocation.coords.heading || 0,
-                  },
+                    zoom: 17,
+                  }) as any,
                   { duration: 500 }
                 );
               }
@@ -1009,8 +1046,8 @@ export default function RadarsScreen() {
     return R * c;
   };
 
-  const getRadarIcon = (radar: Radar) => {
-    // განვასხვავოთ radarSubType-ის მიხედვით
+  const getRadarIcon = (radar: Radar): keyof typeof Ionicons.glyphMap => {
+    if (!radar || !radar.type) return 'radio';
     if (radar.radarSubType === 'speed_camera') {
       return 'camera'; // 📷 სიჩქარის კამერა
     } else if (radar.radarSubType === 'traffic_signals') {
@@ -1034,8 +1071,8 @@ export default function RadarsScreen() {
     }
   };
 
-  const getRadarColor = (radar: Radar) => {
-    // განვასხვავოთ radarSubType-ის მიხედვით
+  const getRadarColor = (radar: Radar): string => {
+    if (!radar) return '#3B82F6';
     if (radar.radarSubType === 'speed_camera') {
       return '#3B82F6'; // ლურჯი - სიჩქარის კამერა
     } else if (radar.radarSubType === 'traffic_signals') {
@@ -1059,8 +1096,8 @@ export default function RadarsScreen() {
     }
   };
 
-  const getRadarTypeName = (radar: Radar) => {
-    // განვასხვავოთ radarSubType-ის მიხედვით
+  const getRadarTypeName = (radar: Radar): string => {
+    if (!radar) return 'რადარი';
     if (radar.radarSubType === 'speed_camera') {
       return 'სიჩქარის კამერა';
     } else if (radar.radarSubType === 'traffic_signals') {
@@ -1121,28 +1158,42 @@ export default function RadarsScreen() {
     } catch (error) {
       console.error('❌ ZOOM IN Error:', error);
     }
-    // Fallback - use altitude-based zoom (zoom in = ნაკლები altitude) + ზემოთ გადაადგილება
+    // Fallback: iOS — altitude; Android — region (altitude-only animateCamera არ უნდა დავტოვოთ zoom-ის გარეშე)
     try {
       const camera = await mapRef.current?.getCamera();
-      const currentAltitude = camera?.altitude || 303.75;
-      const newAltitude = Math.max(currentAltitude * 0.7, 100);
-      
-      // ზემოთ გადაადგილება
       const currentCenter = camera?.center || {
         latitude: mapRegion.latitude,
         longitude: mapRegion.longitude,
       };
       const newCenter = {
-        latitude: currentCenter.latitude + 0.001, // ზემოთ (north)
+        latitude: currentCenter.latitude + 0.001,
         longitude: currentCenter.longitude,
       };
-      
-      await mapRef.current?.animateCamera({
-        center: newCenter,
-        altitude: newAltitude,
-        pitch: 70,
-        heading: userLocation?.coords.heading || 0,
-      }, { duration: 200 });
+      if (Platform.OS === 'android') {
+        const z = typeof camera?.zoom === 'number' ? Math.min((camera.zoom as number) + 1, 20) : 18;
+        await mapRef.current?.animateCamera(
+          mapCameraForPlatform({
+            latitude: newCenter.latitude,
+            longitude: newCenter.longitude,
+            pitch: 45,
+            heading: userLocation?.coords.heading || 0,
+            zoom: z,
+          }) as any,
+          { duration: 200 }
+        );
+      } else {
+        const currentAltitude = camera?.altitude || 303.75;
+        const newAltitude = Math.max(currentAltitude * 0.7, 100);
+        await mapRef.current?.animateCamera(
+          {
+            center: newCenter,
+            altitude: newAltitude,
+            pitch: 70,
+            heading: userLocation?.coords.heading || 0,
+          } as any,
+          { duration: 200 }
+        );
+      }
     } catch {}
   };
 
@@ -1187,28 +1238,26 @@ export default function RadarsScreen() {
     if (!userLocation) return;
     try {
       await mapRef.current?.animateCamera(
-        {
-          center: {
-            latitude: userLocation.coords.latitude,
-            longitude: userLocation.coords.longitude,
-          },
-          altitude: 303.75, // მანქანასთან ახლოს - ~300 მეტრი
-          pitch: 70, // 3D პერსპექტივა (70 გრადუსი - ძალიან დახრილი ხედვა)
+        mapCameraForPlatform({
+          latitude: userLocation.coords.latitude,
+          longitude: userLocation.coords.longitude,
+          altitude: 303.75,
+          pitch: 70,
           heading: userLocation.coords.heading || 0,
-        },
+          zoom: 18,
+        }) as any,
         { duration: 800 }
       );
     } catch {}
   };
 
   const handleRadarPress = (radar: Radar) => {
+    if (!radar || typeof radar.latitude !== 'number' || typeof radar.longitude !== 'number') return;
     setSelectedRadar(radar);
     setShowRadarInfo(true);
-    setCardExpanded(true); // Default-ად გახსნილი (უფრო მიმზიდველი)
-    
-    // Auto-show with smooth animation
-    cardTranslateY.setValue(0); // Start from bottom
-    cardOpacity.setValue(0); // Start invisible
+    setCardExpanded(true);
+    cardTranslateY.setValue(0);
+    cardOpacity.setValue(0);
     Animated.parallel([
       Animated.spring(cardTranslateY, {
         toValue: 0,
@@ -1222,20 +1271,34 @@ export default function RadarsScreen() {
         useNativeDriver: true,
       }),
     ]).start();
-    
-    // Focus on radar - maintain 3D perspective
-    mapRef.current?.animateCamera(
-      {
-        center: {
-          latitude: radar.latitude,
-          longitude: radar.longitude,
-        },
-        altitude: 200,
-        pitch: 70, // Maintain 3D perspective
-        heading: 0,
-      },
-      { duration: 400 }
-    );
+
+    try {
+      if (mapRef.current) {
+        if (Platform.OS === 'android') {
+          mapRef.current.animateToRegion(
+            {
+              latitude: radar.latitude,
+              longitude: radar.longitude,
+              latitudeDelta: mapRegion.latitudeDelta,
+              longitudeDelta: mapRegion.longitudeDelta,
+            },
+            400
+          );
+        } else {
+          mapRef.current.animateCamera(
+            {
+              center: { latitude: radar.latitude, longitude: radar.longitude },
+              altitude: 200,
+              pitch: 70,
+              heading: 0,
+            },
+            { duration: 400 }
+          );
+        }
+      }
+    } catch (e) {
+      if (__DEV__) console.warn('[Radars] animateCamera/animateToRegion error:', e);
+    }
   };
 
   const toggleCard = useCallback(() => {
@@ -1347,6 +1410,17 @@ export default function RadarsScreen() {
 
 
   const handleAddRadar = () => {
+    if (!user?.id) {
+      setModalMessage('რადარის დასაფიქსირებლად საჭიროა ანგარიშზე შესვლა.');
+      setShowErrorModal(true);
+      modalScale.setValue(0);
+      modalOpacity.setValue(0);
+      Animated.parallel([
+        Animated.spring(modalScale, { toValue: 1, useNativeDriver: true, tension: 50, friction: 7 }),
+        Animated.timing(modalOpacity, { toValue: 1, duration: 200, useNativeDriver: true }),
+      ]).start();
+      return;
+    }
     if (!userLocation) {
       setModalMessage('ლოკაცია ვერ მოიძებნა');
       setShowErrorModal(true);
@@ -1390,7 +1464,12 @@ export default function RadarsScreen() {
 
   const confirmAddRadar = async () => {
     if (!userLocation) return;
-    
+    if (!user?.id) {
+      setModalMessage('რადარის დასაფიქსირებლად საჭიროა ანგარიშზე შესვლა.');
+      setShowErrorModal(true);
+      return;
+    }
+
     // Animate modal out
     Animated.parallel([
       Animated.timing(modalScale, {
@@ -1415,6 +1494,9 @@ export default function RadarsScreen() {
         type: 'fixed' as const,
         speedLimit: speedLimit,
         isActive: true,
+        /** ბექი/ადმინი: ვინ დააფიქსირა (ადრე არ იგზავნებოდა — ინფო „იკარგებოდა“) */
+        userId: user.id,
+        source: 'user_report' as const,
       };
 
       const createdRadar = await radarsApi.createRadar(newRadar);
@@ -1521,15 +1603,14 @@ export default function RadarsScreen() {
                 setTimeout(() => {
                   if (userLocation && mapRef.current) {
                     mapRef.current.animateCamera(
-                      {
-                        center: {
-                          latitude: userLocation.coords.latitude,
-                          longitude: userLocation.coords.longitude,
-                        },
-                        altitude: 200, // Waze-style: ძალიან ახლოს
-                        pitch: 70, // 3D perspective
+                      mapCameraForPlatform({
+                        latitude: userLocation.coords.latitude,
+                        longitude: userLocation.coords.longitude,
+                        altitude: 200,
+                        pitch: 70,
                         heading: userLocation.coords.heading || 0,
-                      },
+                        zoom: 17,
+                      }) as any,
                       { duration: 1000 }
                     );
                   }
@@ -1880,22 +1961,22 @@ export default function RadarsScreen() {
           customMapStyle={colorScheme === 'dark' ? MAP_STYLE_MINIMAL_DARK : undefined}
           pitchEnabled={true}
           rotateEnabled={true}
-          initialCamera={{
-            center: {
+          initialCamera={
+            mapCameraForPlatform({
               latitude: mapRegion.latitude,
               longitude: mapRegion.longitude,
-            },
-            altitude: 200, // Waze-style: ძალიან ახლოს - ~200 მეტრი (navigation mode)
-            pitch: 70, // 3D პერსპექტივა (70 გრადუსი - horizontal view, Waze-style)
-            heading: 0, // Car's heading
-          }}
+              altitude: 200,
+              pitch: 70,
+              heading: 0,
+              zoom: 17,
+            }) as any
+          }
           followsUserLocation={false} // We control camera manually
           showsCompass={false}
           showsScale={false}
-          showsBuildings={true} // Waze shows buildings
+          showsBuildings={Platform.OS !== 'android'}
           showsTraffic={false}
         >
-          {/* User location marker - Waze-style car marker */}
           {userLocation && (
             <Marker
               coordinate={{
@@ -1968,8 +2049,16 @@ export default function RadarsScreen() {
             />
           )}
 
-          {/* Radar markers - ყველა რადარი */}
+          {/* Radar markers - ყველა რადარი (არასწორი კოორდინატი Android-ზე native crash-ს იწვევს) */}
           {nearbyFilteredRadars.map((radar, index) => {
+            if (
+              typeof radar.latitude !== 'number' ||
+              typeof radar.longitude !== 'number' ||
+              Number.isNaN(radar.latitude) ||
+              Number.isNaN(radar.longitude)
+            ) {
+              return null;
+            }
             const radarColor = getRadarColor(radar);
             const isSelected = selectedRadar?._id === radar._id;
 
@@ -2710,7 +2799,7 @@ export default function RadarsScreen() {
             )}
 
             {/* Fine Information */}
-            {selectedRadar.fineCount > 0 && (
+            {(selectedRadar.fineCount ?? 0) > 0 && (
               <View style={styles.fineBadge}>
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 4 }}>
                   <Ionicons name="warning" size={18} color="#FCA5A5" />

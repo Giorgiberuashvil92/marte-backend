@@ -27,12 +27,10 @@ export default function Root({ children }: { children: React.ReactNode }) {
   );
 }
 
+/* მხოლოდ light — არ ვაყოლებთ სისტემურ dark-ს (web) */
 const responsiveBackground = `
 body {
   background-color: #fff;
+  color-scheme: light;
 }
-@media (prefers-color-scheme: dark) {
-  body {
-    background-color: #000;
-  }
-}`;
+`;

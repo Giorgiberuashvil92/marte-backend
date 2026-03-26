@@ -17,8 +17,7 @@ const getLanIpFromHost = (): string | undefined => {
 
 const RAILWAY_URL = 'https://marte-backend-production.up.railway.app';
 
-// დროებით: true = ყოველთვის Railway, false = dev-ში ლოკალი
-const FORCE_RAILWAY = true;
+const FORCE_RAILWAY = false;
 
 const getApiUrl = () => {
   const override = process.env.EXPO_PUBLIC_API_URL;

@@ -14,7 +14,22 @@ import { carBrandsApi } from '../../services/carBrandsApi';
 
 const LOCATIONS = ['Tbilisi', 'Batumi', 'Kutaisi', 'Rustavi', 'Gori', 'Zugdidi', 'Poti', 'Other'];
 const YEARS = Array.from({ length: 30 }, (_, i) => (2024 - i).toString());
-const PART_CATEGORIES = ['Engine', 'Transmission', 'Body', 'Interior', 'Exterior', 'Electrical', 'Suspension', 'Brakes', 'Wheels', 'Other'];
+/** ნაწილების კატეგორიები (UI / API ფილტრი — იგივე სტრიქონი იგზავნება backend-ზე) */
+const PART_CATEGORIES = [
+  'ძრავი და მისი ნაწილები',
+  'აალების და დაქოქვის სისტემა',
+  'გაგრილების სისტემა',
+  'გამშვები სისტემა',
+  'კონდიციონერი და გამათბობელი',
+  'საწვავის მიწოდების სისტემა',
+  'ტურბო და კომპონენტები',
+  'ღვედი, დამჭიმი, შკივი',
+  'შემშვები სისტემა',
+  'ჩობალი, შუასადები (სალნიკი, პრაკლადკა)',
+  'ძრავის ელექტროობა',
+  'ძრავის ზეთის ხუფი',
+  'სხვა',
+];
 
 export type DismantlerFilters = {
   brand: string;
@@ -26,6 +41,7 @@ export type DismantlerFilters = {
 
 export type PartsFilters = {
   brand: string;
+  model: string;
   category: string;
   priceMin: string;
   priceMax: string;
@@ -53,11 +69,14 @@ export default function FilterModal({
 }: FilterModalProps) {
   const [openDropdown, setOpenDropdown] = useState<string | null>(null);
   const [carBrands, setCarBrands] = useState<string[]>([]);
-  const [carModels, setCarModels] = useState<string[]>([]);
+  const [dismantlerModels, setDismantlerModels] = useState<string[]>([]);
+  const [partsModels, setPartsModels] = useState<string[]>([]);
   const [brandSearchQuery, setBrandSearchQuery] = useState('');
   const [partsCategories, setPartsCategories] = useState<string[]>([]);
   const [localDismantlerFilters, setLocalDismantlerFilters] = useState<DismantlerFilters>(dismantlerFilters);
   const [localPartsFilters, setLocalPartsFilters] = useState<PartsFilters>(partsFilters);
+  /** აკორდეონი: ნაგულისხმევად ყველაფერი ჩაკეცილი */
+  const [expandedSection, setExpandedSection] = useState<string | null>(null);
 
   // Load car brands and categories
   useEffect(() => {
@@ -76,26 +95,47 @@ export default function FilterModal({
       loadCarData();
       setLocalDismantlerFilters(dismantlerFilters);
       setLocalPartsFilters(partsFilters);
+      setExpandedSection(null);
+      setOpenDropdown(null);
+      setBrandSearchQuery('');
     }
   }, [visible, dismantlerFilters, partsFilters]);
 
-  // Get models for selected brand
+  // მოდელები — დაშლილები
   useEffect(() => {
     const loadModels = async () => {
       if (localDismantlerFilters.brand) {
         try {
           const models = await carBrandsApi.getModelsByBrand(localDismantlerFilters.brand);
-          setCarModels(models || []);
+          setDismantlerModels(models || []);
         } catch (error) {
-          console.error('Error loading models:', error);
-          setCarModels([]);
+          console.error('Error loading dismantler models:', error);
+          setDismantlerModels([]);
         }
       } else {
-        setCarModels([]);
+        setDismantlerModels([]);
       }
     };
     loadModels();
   }, [localDismantlerFilters.brand]);
+
+  // მოდელები — ნაწილები
+  useEffect(() => {
+    const loadModels = async () => {
+      if (localPartsFilters.brand) {
+        try {
+          const models = await carBrandsApi.getModelsByBrand(localPartsFilters.brand);
+          setPartsModels(models || []);
+        } catch (error) {
+          console.error('Error loading parts models:', error);
+          setPartsModels([]);
+        }
+      } else {
+        setPartsModels([]);
+      }
+    };
+    loadModels();
+  }, [localPartsFilters.brand]);
 
   // Get filtered brands based on search
   const filteredBrands = carBrands.filter(brand =>
@@ -251,6 +291,7 @@ export default function FilterModal({
     });
     setLocalPartsFilters({
       brand: '',
+      model: '',
       category: '',
       priceMin: '',
       priceMax: '',
@@ -265,6 +306,78 @@ export default function FilterModal({
       return Object.values(localPartsFilters).filter(v => v).length;
     }
   };
+
+  const toggleSection = (id: string) => {
+    setOpenDropdown(null);
+    setExpandedSection((prev) => (prev === id ? null : id));
+  };
+
+  const Collapsible = ({
+    sectionId,
+    title,
+    summary,
+    children,
+  }: {
+    sectionId: string;
+    title: string;
+    summary: string;
+    children: React.ReactNode;
+  }) => {
+    const open = expandedSection === sectionId;
+    return (
+      <View style={styles.accordionBlock}>
+        <TouchableOpacity
+          style={[styles.accordionHeader, open && styles.accordionHeaderOpen]}
+          onPress={() => toggleSection(sectionId)}
+          activeOpacity={0.7}
+        >
+          <View style={styles.accordionHeaderText}>
+            <Text style={styles.accordionTitle}>{title}</Text>
+            <Text style={styles.accordionSummary} numberOfLines={1}>
+              {summary}
+            </Text>
+          </View>
+          <Ionicons name={open ? 'chevron-up' : 'chevron-down'} size={20} color="#6B7280" />
+        </TouchableOpacity>
+        {open ? <View style={styles.accordionBody}>{children}</View> : null}
+      </View>
+    );
+  };
+
+  const dismantlerCarSummary = (() => {
+    const b = localDismantlerFilters.brand;
+    const m = localDismantlerFilters.model;
+    if (!b && !m) return 'არ არის არჩეული';
+    return [b, m].filter(Boolean).join(' · ') || '—';
+  })();
+
+  const dismantlerYearSummary = (() => {
+    const a = localDismantlerFilters.yearFrom;
+    const b = localDismantlerFilters.yearTo;
+    if (!a && !b) return 'არ არის არჩეული';
+    if (a && b) return `${a} — ${b}`;
+    return a || b || '—';
+  })();
+
+  const dismantlerLocSummary = localDismantlerFilters.location || 'ყველა ქალაქი';
+
+  const partsCatBrandSummary = (() => {
+    const c = localPartsFilters.category;
+    const b = localPartsFilters.brand;
+    const m = localPartsFilters.model;
+    if (!c && !b && !m) return 'არ არის არჩეული';
+    return [c, b, m].filter(Boolean).join(' · ') || '—';
+  })();
+
+  const partsPriceSummary = (() => {
+    const a = localPartsFilters.priceMin;
+    const b = localPartsFilters.priceMax;
+    if (!a && !b) return 'შეზღუდვა არაა';
+    if (a && b) return `${a}₾ — ${b}₾`;
+    return a ? `დან ${a}₾` : `მდე ${b}₾`;
+  })();
+
+  const partsLocSummary = localPartsFilters.location || 'ყველა ქალაქი';
 
   return (
     <Modal
@@ -286,35 +399,44 @@ export default function FilterModal({
             </TouchableOpacity>
           </View>
 
-          <ScrollView style={styles.scroll} showsVerticalScrollIndicator={false}>
-            {/* Dismantler Filters */}
+          <ScrollView
+            style={styles.scroll}
+            showsVerticalScrollIndicator={false}
+            keyboardShouldPersistTaps="handled"
+            nestedScrollEnabled
+          >
+            <Text style={styles.hintText}>
+              დააჭირე ბლოკს რომ გაშალო — ნაგულისხმევად ფილტრები ჩაკეცილია.
+            </Text>
+
+            {/* Dismantler Filters — ჩაკეცილი ჯგუფები */}
             {activeTab === 'დაშლილები' && (
               <>
-                <View style={styles.filterSection}>
-                  <Text style={styles.sectionTitle}>ბრენდი</Text>
+                <Collapsible
+                  sectionId="dism-car"
+                  title="მანქანა"
+                  summary={dismantlerCarSummary}
+                >
+                  <Text style={styles.inlineLabel}>ბრენდი</Text>
                   {renderBrandDropdown(
                     'dismantler-brand',
                     localDismantlerFilters.brand,
                     'აირჩიეთ ბრენდი',
                     (value) => setLocalDismantlerFilters(prev => ({ ...prev, brand: value, model: '' }))
                   )}
-                </View>
-
-                <View style={styles.filterSection}>
-                  <Text style={styles.sectionTitle}>მოდელი</Text>
+                  <Text style={[styles.inlineLabel, styles.inlineLabelSpaced]}>მოდელი</Text>
                   <View style={[styles.dropdownContainer, !localDismantlerFilters.brand && styles.dropdownDisabled]}>
                     {renderDropdown(
                       'dismantler-model',
                       localDismantlerFilters.model,
                       localDismantlerFilters.brand ? 'აირჩიეთ მოდელი' : 'ჯერ აირჩიეთ ბრენდი',
-                      carModels,
+                      dismantlerModels,
                       (value) => setLocalDismantlerFilters(prev => ({ ...prev, model: value }))
                     )}
                   </View>
-                </View>
+                </Collapsible>
 
-                <View style={styles.filterSection}>
-                  <Text style={styles.sectionTitle}>წელი</Text>
+                <Collapsible sectionId="dism-year" title="წელი" summary={dismantlerYearSummary}>
                   <View style={styles.yearRangeContainer}>
                     <View style={styles.yearInputWrapper}>
                       <Text style={styles.yearLabel}>წლიდან</Text>
@@ -337,10 +459,9 @@ export default function FilterModal({
                       )}
                     </View>
                   </View>
-                </View>
+                </Collapsible>
 
-                <View style={styles.filterSection}>
-                  <Text style={styles.sectionTitle}>მდებარეობა</Text>
+                <Collapsible sectionId="dism-loc" title="მდებარეობა" summary={dismantlerLocSummary}>
                   {renderDropdown(
                     'dismantler-location',
                     localDismantlerFilters.location,
@@ -348,15 +469,15 @@ export default function FilterModal({
                     LOCATIONS,
                     (value) => setLocalDismantlerFilters(prev => ({ ...prev, location: value }))
                   )}
-                </View>
+                </Collapsible>
               </>
             )}
 
-            {/* Parts Filters */}
+            {/* Parts Filters — ჩაკეცილი ჯგუფები */}
             {activeTab === 'ნაწილები' && (
               <>
-                <View style={styles.filterSection}>
-                  <Text style={styles.sectionTitle}>კატეგორია</Text>
+                <Collapsible sectionId="parts-cat" title="კატეგორია, ბრენდი და მოდელი" summary={partsCatBrandSummary}>
+                  <Text style={styles.inlineLabel}>კატეგორია</Text>
                   {renderDropdown(
                     'parts-category',
                     localPartsFilters.category,
@@ -364,20 +485,26 @@ export default function FilterModal({
                     partsCategories,
                     (value) => setLocalPartsFilters(prev => ({ ...prev, category: value }))
                   )}
-                </View>
-
-                <View style={styles.filterSection}>
-                  <Text style={styles.sectionTitle}>ბრენდი</Text>
+                  <Text style={[styles.inlineLabel, styles.inlineLabelSpaced]}>ბრენდი</Text>
                   {renderBrandDropdown(
                     'parts-brand',
                     localPartsFilters.brand,
                     'აირჩიეთ ბრენდი',
-                    (value) => setLocalPartsFilters(prev => ({ ...prev, brand: value }))
+                    (value) => setLocalPartsFilters(prev => ({ ...prev, brand: value, model: '' }))
                   )}
-                </View>
+                  <Text style={[styles.inlineLabel, styles.inlineLabelSpaced]}>მოდელი</Text>
+                  <View style={[styles.dropdownContainer, !localPartsFilters.brand && styles.dropdownDisabled]}>
+                    {renderDropdown(
+                      'parts-model',
+                      localPartsFilters.model,
+                      localPartsFilters.brand ? 'აირჩიეთ მოდელი' : 'ჯერ აირჩიეთ ბრენდი',
+                      partsModels,
+                      (value) => setLocalPartsFilters(prev => ({ ...prev, model: value }))
+                    )}
+                  </View>
+                </Collapsible>
 
-                <View style={styles.filterSection}>
-                  <Text style={styles.sectionTitle}>ფასი (₾)</Text>
+                <Collapsible sectionId="parts-price" title="ფასი (₾)" summary={partsPriceSummary}>
                   <View style={styles.priceInputsContainer}>
                     <View style={styles.priceInputWrapper}>
                       <Text style={styles.priceInputLabel}>დან</Text>
@@ -403,10 +530,9 @@ export default function FilterModal({
                       />
                     </View>
                   </View>
-                </View>
+                </Collapsible>
 
-                <View style={styles.filterSection}>
-                  <Text style={styles.sectionTitle}>მდებარეობა</Text>
+                <Collapsible sectionId="parts-loc" title="მდებარეობა" summary={partsLocSummary}>
                   {renderDropdown(
                     'parts-location',
                     localPartsFilters.location,
@@ -414,7 +540,7 @@ export default function FilterModal({
                     LOCATIONS,
                     (value) => setLocalPartsFilters(prev => ({ ...prev, location: value }))
                   )}
-                </View>
+                </Collapsible>
               </>
             )}
 
@@ -488,17 +614,69 @@ const styles = StyleSheet.create({
     flex: 1,
     paddingHorizontal: 20,
   },
-  // Filter Section
-  filterSection: {
-    marginTop: 24,
+  hintText: {
+    fontSize: 12,
+    fontFamily: 'HelveticaMedium',
+    color: '#9CA3AF',
+    marginTop: 12,
+    marginBottom: 8,
+    lineHeight: 17,
   },
-  sectionTitle: {
-    fontSize: 14,
+  /** overflow არ ვჭრით — absolute dropdown-ები აკორდეონში იჭრებოდა; ინლაინ სია მაინც ფიტავს */
+  accordionBlock: {
+    marginBottom: 8,
+    borderRadius: 12,
+    backgroundColor: '#F9FAFB',
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    overflow: 'visible',
+  },
+  accordionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    minHeight: 52,
+  },
+  accordionHeaderOpen: {
+    borderBottomWidth: 1,
+    borderBottomColor: '#E5E7EB',
+    backgroundColor: '#F3F4F6',
+  },
+  accordionHeaderText: {
+    flex: 1,
+    marginRight: 8,
+  },
+  accordionTitle: {
+    fontSize: 13,
+    fontFamily: 'HelveticaMedium',
+    textTransform: 'uppercase',
+    fontWeight: '700',
+    color: '#111827',
+    marginBottom: 2,
+  },
+  accordionSummary: {
+    fontSize: 12,
+    fontFamily: 'HelveticaMedium',
+    color: '#6B7280',
+  },
+  accordionBody: {
+    paddingHorizontal: 14,
+    paddingTop: 12,
+    paddingBottom: 14,
+    backgroundColor: '#FFFFFF',
+  },
+  inlineLabel: {
+    fontSize: 11,
     fontFamily: 'HelveticaMedium',
     textTransform: 'uppercase',
     fontWeight: '600',
-    color: '#111827',
-    marginBottom: 12,
+    color: '#6B7280',
+    marginBottom: 8,
+  },
+  inlineLabelSpaced: {
+    marginTop: 14,
   },
   // Dropdown
   dropdownContainer: {
@@ -529,26 +707,23 @@ const styles = StyleSheet.create({
   dropdownPlaceholder: {
     color: '#9CA3AF',
   },
+  /** ინლაინ: სრული სიმაღლე ჩანს, ScrollView-ით ირგვება — არ იჭრება აკორდეონის overflow-ით */
   dropdownOptions: {
-    position: 'absolute',
-    top: '100%',
-    left: 0,
-    right: 0,
+    marginTop: 8,
     backgroundColor: '#FFFFFF',
     borderRadius: 12,
     borderWidth: 1,
     borderColor: '#E5E7EB',
-    marginTop: 8,
-    maxHeight: 300,
-    zIndex: 1000,
+    maxHeight: 260,
+    zIndex: 1,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.1,
-    shadowRadius: 12,
-    elevation: 8,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.08,
+    shadowRadius: 8,
+    elevation: 4,
   },
   dropdownScroll: {
-    maxHeight: 300,
+    maxHeight: 220,
   },
   dropdownItem: {
     flexDirection: 'row',

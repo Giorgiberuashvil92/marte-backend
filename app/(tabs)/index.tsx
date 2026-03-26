@@ -14,6 +14,8 @@ import {
   Linking,
   Alert,
   FlatList,
+  Platform,
+  KeyboardAvoidingView,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Location from 'expo-location';
@@ -45,9 +47,9 @@ import { useEffect } from 'react';
 import { useFocusEffect } from 'expo-router';
 import { getResponsiveDimensions, getResponsiveCardWidth } from '../../utils/responsive';
 import { analyticsService } from '../../services/analytics';
-import CredoBankBannerTracker from '../../components/CredoBankBannerTracker';
 import AnalyticsTracker, { useButtonTracking } from '../../components/AnalyticsTracker';
 import { analyticsApi } from '../../services/analyticsApi';
+import PushEnablePrompt from '../../components/ui/PushEnablePrompt';
 
 const { screenWidth, contentWidth, horizontalMargin, isTablet } = getResponsiveDimensions();
 const H_MARGIN = 20;
@@ -61,7 +63,6 @@ const RENTAL_CARD_WIDTH = 280;
 export default function TabOneScreen() {
   const router = useRouter();
   const screenName = 'მთავარი';
-  // უბრალოდ light mode გამოვიყენოთ error-ის თავიდან ასაცილებლად
   const colors = Colors['light'];
   const { user, shouldOpenPremiumModal, clearPremiumModalFlag, logout } = useUser();
   const { subscription, hasActiveSubscription, isPremiumUser } = useSubscription();
@@ -174,19 +175,19 @@ export default function TabOneScreen() {
       route: '/radars' as any,
     },
     {
-      key: 'services',
-      title: 'სერვისები',
-      subtitle: 'ავტოსერვისები და მოვლა',
-      icon: 'settings-outline',
-      colors: ['#F59E0B', '#D97706'],
-      route: '/services-new' as any,
+      key: 'financing',
+      title: 'განვადება',
+      subtitle: '0%-იანი განვადება Credo Bank-თან',
+      icon: 'card-outline',
+      colors: ['#0EA5E9', '#0284C7'],
+      route: '/financing-info' as any,
     },
     {
       key: 'fuel',
       title: 'საწვავი',
-      subtitle: 'ფასების შედარება და რეკომენდაციები',
+      subtitle: 'აიღე Marte-ს ბარათი · −17თეთრი',
       icon: 'flame-outline',
-      colors: ['#10B981', '#059669'],
+      colors: ['#3B82F6', '#2563EB'],
       route: '/fuel-stations' as any,
     },
     {
@@ -512,7 +513,6 @@ export default function TabOneScreen() {
     return () => { active = false; clearInterval(t); };
   }, [user?.id]);
 
-  
   const styles = StyleSheet.create({
     container: {
       flex: 1,
@@ -782,6 +782,112 @@ export default function TabOneScreen() {
     categoriesSection: {
       paddingTop: 20,
       // paddingHorizontal: 16,
+    },
+    financingHeroTouchable: {
+      marginBottom: 14,
+    },
+    financingHeroCard: {
+      borderRadius: 20,
+      overflow: 'hidden' as const,
+      height: 152,
+      backgroundColor: '#0F172A',
+      borderWidth: 1,
+      borderColor: '#E2E8F0',
+      shadowColor: '#0F172A',
+      shadowOffset: { width: 0, height: 6 },
+      shadowOpacity: 0.12,
+      shadowRadius: 16,
+      elevation: 6,
+    },
+    financingHeroBg: {
+      width: '100%' as const,
+      height: '100%' as const,
+      justifyContent: 'center' as const,
+    },
+    financingHeroImageStyle: {
+      borderRadius: 20,
+      resizeMode: 'cover' as const,
+    },
+    financingHeroGradient: {
+      flex: 1,
+      flexDirection: 'row' as const,
+      alignItems: 'center' as const,
+      paddingHorizontal: 16,
+      paddingVertical: 14,
+      position: 'relative' as const,
+    },
+    financingHeroTextCol: {
+      flex: 1,
+      paddingRight: 52,
+    },
+    financingHeroEyebrow: {
+      fontSize: 10,
+      fontFamily: 'HelveticaMedium',
+      fontWeight: '700' as const,
+      color: '#7DD3FC',
+      letterSpacing: 1.2,
+      textTransform: 'uppercase' as const,
+      marginBottom: 6,
+    },
+    financingHeroTitle: {
+      fontSize: 17,
+      fontFamily: 'HelveticaMedium',
+      fontWeight: '800' as const,
+      color: '#FFFFFF',
+      letterSpacing: -0.3,
+      lineHeight: 22,
+      marginBottom: 6,
+    },
+    financingHeroSub: {
+      fontSize: 11,
+      fontFamily: 'HelveticaMedium',
+      color: 'rgba(255,255,255,0.82)',
+      lineHeight: 15,
+    },
+    financingHeroArrowWrap: {
+      width: 44,
+      height: 44,
+      alignItems: 'center' as const,
+      justifyContent: 'center' as const,
+    },
+    financingHeroArrowImage: {
+      width: 44,
+      height: 44,
+    },
+    financingHeroZeroBadge: {
+      position: 'absolute' as const,
+      top: 12,
+      right: 12,
+      backgroundColor: '#38BDF8',
+      paddingHorizontal: 10,
+      paddingVertical: 4,
+      borderRadius: 10,
+    },
+    financingHeroZeroBadgeText: {
+      fontSize: 12,
+      fontFamily: 'HelveticaMedium',
+      fontWeight: '800' as const,
+      color: '#0F172A',
+    },
+    categoryFuelPromoBadge: {
+      position: 'absolute' as const,
+      top: -4,
+      right: -6,
+      paddingHorizontal: 6,
+      paddingVertical: 3,
+      borderRadius: 10,
+      backgroundColor: '#EFF6FF',
+      alignItems: 'center' as const,
+      justifyContent: 'center' as const,
+      borderWidth: 1,
+      borderColor: '#BFDBFE',
+    },
+    categoryFuelPromoBadgeText: {
+      fontSize: 8,
+      fontFamily: 'HelveticaMedium',
+      fontWeight: '700' as const,
+      color: '#1D4ED8',
+      letterSpacing: -0.2,
     },
     categoriesGrid: {
       flexDirection: 'row' as const,
@@ -1668,43 +1774,63 @@ export default function TabOneScreen() {
           />
         </View>
 
-        {/* Credo Bank Financing Banner */}
-        <CredoBankBannerTracker 
-          onView={() => analyticsService.logCredoBankBannerView(user?.id)}
-        />
-        <View style={{ paddingHorizontal: 2, marginBottom: 16, marginTop: 16 }}>
-          <TouchableOpacity
-            activeOpacity={0.9}
-            onPress={() => {
-              analyticsService.logCredoBankBannerClick(user?.id, 'click');
-              analyticsService.logButtonClick('განვადება Credo Bank', 'მთავარი', undefined, user?.id);
-              if (!isPremiumUser) {
-                setShowSubscriptionModal(true);
-              } else {
-                router.push('/financing-info');
-              }
-            }}
-            style={{ borderRadius: 16, overflow: 'hidden', shadowColor: '#000', shadowOffset: { width: 0, height: 10 }, shadowOpacity: 0.22, shadowRadius: 18, elevation: 10 }}
-          >
-            <LinearGradient colors={["#1E293B", "#0F172A"]} style={{ paddingHorizontal: 16, paddingVertical: 24, minHeight: 160, justifyContent: 'center' }}>
-              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-                <View style={{ flex: 1, paddingRight: 12 }}>
-                  
-                  <Text style={{ color: '#FFFFFF', fontSize: 18, fontWeight: '800', letterSpacing: -0.2, marginBottom: 8, fontFamily: 'HelveticaMedium', textTransform: 'uppercase' }}>0%-იანი განვადება ყველაფერზე</Text>
-                  <Text style={{ color: '#CBD5E1', fontSize: 13, fontFamily: 'HelveticaMedium', textTransform: 'uppercase' }}>გჭირდება ფული ნაწილისთვის ? შეავსე ფორმა და იყიდე ნებისმიერი ნივთი</Text>
-                </View>
-                <View style={{ backgroundColor: 'rgba(255,255,255,0.08)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.12)', padding: 12, borderRadius: 12 }}>
-                  <Ionicons name="arrow-forward" size={18} color="#FFFFFF" />
-                </View>
-              </View>
-            </LinearGradient>
-          </TouchableOpacity>
-        </View>
-       
-
-        {/* კატეგორიების სექცია - 4x2 გრიდი */}
+        {/* კატეგორიების სექცია — საწვავის პრომო hero + გრიდი */}
         <View style={styles.categoriesSection}>
           <Text style={styles.sectionTitle}>კატეგორიები</Text>
+
+          <TouchableOpacity
+            style={styles.financingHeroTouchable}
+            activeOpacity={0.9}
+            onPress={() => {
+              analyticsService.logButtonClick('საწვავი ფასდაკლება ბანერი', 'მთავარი', { promo: 'fuel_discount_17t_hero' }, user?.id);
+              analyticsApi
+                .trackEvent(
+                  'home_fuel_promo_click',
+                  'მთავარი — საწვავის პრომო (hero)',
+                  user?.id,
+                  'მთავარი',
+                  { promo: 'fuel_discount_17t_hero' },
+                )
+                .catch(() => {});
+              router.push('/exclusive-fuel-offer' as any);
+            }}
+          >
+            <View style={styles.financingHeroCard}>
+              <ImageBackground
+                source={require('../../assets/images/car1.png')}
+                style={styles.financingHeroBg}
+                imageStyle={styles.financingHeroImageStyle}
+                resizeMode="cover"
+              >
+                <LinearGradient
+                  colors={['rgba(15,23,42,0.94)', 'rgba(15,23,42,0.55)', 'rgba(15,23,42,0.15)']}
+                  locations={[0, 0.45, 1]}
+                  start={{ x: 0, y: 0.5 }}
+                  end={{ x: 1, y: 0.5 }}
+                  style={styles.financingHeroGradient}
+                >
+                  <View style={styles.financingHeroTextCol}>
+                    <Text style={styles.financingHeroEyebrow}>საწვავი · Marte</Text>
+                    <Text style={styles.financingHeroTitle}>−17 თეთრი ფასდაკლება</Text>
+                    <Text style={styles.financingHeroSub} numberOfLines={2}>
+                      ბენზინი და დიზელი · აიღე ბარათი და გადაიხადე 17 თეთრით ნაკლები
+                    </Text>
+                  </View>
+                  <View style={styles.financingHeroArrowWrap}>
+                    <Image
+                      source={require('../../assets/images/frm.png')}
+                      style={styles.financingHeroArrowImage}
+                      resizeMode="contain"
+                    />
+                  </View>
+                </LinearGradient>
+              </ImageBackground>
+              <View style={styles.financingHeroZeroBadge} pointerEvents="none">
+                <Text style={styles.financingHeroZeroBadgeText}>−17თთ</Text>
+              </View>
+            </View>
+          </TouchableOpacity>
+
           <View style={styles.categoriesGrid}>
             {quickActionsList.map((action) => (
               <TouchableOpacity
@@ -1737,6 +1863,11 @@ export default function TabOneScreen() {
                   {action.key === 'fines' && finesCount > 0 && (
                     <View style={styles.categoryCountBadge}>
                       <Text style={styles.categoryCountBadgeText}>{finesCount > 99 ? '99+' : finesCount}</Text>
+                    </View>
+                  )}
+                  {action.key === 'fuel' && (
+                    <View style={styles.categoryFuelPromoBadge}>
+                      <Text style={styles.categoryFuelPromoBadgeText}>−17თთ</Text>
                     </View>
                   )}
                 </View>
@@ -1909,12 +2040,13 @@ export default function TabOneScreen() {
         }}
       />
 
+      <PushEnablePrompt userId={user?.id} />
+
       <NotificationsModal
         visible={notificationsModalVisible}
         onClose={() => setNotificationsModalVisible(false)}
       />
 
-      {/* Subscription Modal */}
       <SubscriptionModal
         visible={showSubscriptionModal}
         onClose={() => setShowSubscriptionModal(false)}
@@ -1923,8 +2055,7 @@ export default function TabOneScreen() {
         }}
       />
 
-      {/* Premium Info Modal - opens when shouldOpenPremiumModal is true AND user is on premium/basic plan, OR when badge is clicked */}
-      {/* თუ plan არის free, PremiumInfoModal-ის ნაცვლად გაიხსნება SubscriptionModal */}
+      
       <PremiumInfoModal
         visible={
           Boolean(
@@ -1956,7 +2087,6 @@ export default function TabOneScreen() {
           const address = selectedService.address || selectedService.location || '';
           const basePrice = selectedService.price || undefined;
           
-          // Dynamic features based on service type
           const getFeatures = () => {
             const baseFeatures = [
               { icon: 'checkmark-circle', label: 'ხარისხიანი სერვისი' },
@@ -2093,15 +2223,26 @@ export default function TabOneScreen() {
         </View>
       </TouchableOpacity>
 
-      {/* Feedback Modal */}
+      {/* Feedback Modal — კლავიატურა აღარ ფარავს „გაგზავნას“ */}
       <Modal
         visible={showFeedbackModal}
         transparent
         animationType="fade"
         onRequestClose={() => setShowFeedbackModal(false)}
       >
-        <View style={feedbackStyles.modalOverlay}>
-          <View style={feedbackStyles.modalCard}>
+        <KeyboardAvoidingView
+          style={feedbackStyles.modalKbRoot}
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          keyboardVerticalOffset={Platform.OS === 'ios' ? insets.top + 8 : 0}
+        >
+          <ScrollView
+            keyboardShouldPersistTaps="handled"
+            keyboardDismissMode="on-drag"
+            showsVerticalScrollIndicator={false}
+            contentContainerStyle={feedbackStyles.modalScrollContent}
+            bounces={false}
+          >
+            <View style={feedbackStyles.modalCard}>
             {/* Header */}
             <View style={feedbackStyles.modalHeader}>
               <View style={feedbackStyles.modalHeaderLeft}>
@@ -2204,8 +2345,9 @@ export default function TabOneScreen() {
                 )}
               </TouchableOpacity>
             </View>
-          </View>
-        </View>
+            </View>
+          </ScrollView>
+        </KeyboardAvoidingView>
       </Modal>
 
     </View>
@@ -2232,16 +2374,20 @@ const feedbackStyles = StyleSheet.create({
     shadowRadius: 12,
     elevation: 10,
   },
-  modalOverlay: {
+  modalKbRoot: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.6)',
-    alignItems: 'center',
+  },
+  modalScrollContent: {
+    flexGrow: 1,
     justifyContent: 'center',
     padding: 24,
+    paddingBottom: 32,
   },
   modalCard: {
     width: '100%',
     maxWidth: 400,
+    alignSelf: 'center',
     backgroundColor: '#FFFFFF',
     borderRadius: 24,
     padding: 24,

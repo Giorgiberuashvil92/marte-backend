@@ -5,13 +5,10 @@ import {
   StyleSheet,
   TouchableOpacity,
   Image,
-  ImageBackground,
   StatusBar,
   FlatList,
   Dimensions,
   ActivityIndicator,
-  Modal,
-  TextInput,
   Platform,
   ViewToken,
 } from 'react-native';
@@ -23,7 +20,6 @@ import { addItemApi } from '../services/addItemApi';
 import { useUser } from '../contexts/UserContext';
 import { DetailItem } from '../components/ui/DetailModal';
 import AddModal, { AddModalType } from '../components/ui/AddModal';
-import { engagementApi } from '../services/engagementApi';
 import FilterModal, { DismantlerFilters, PartsFilters } from '../components/ui/FilterModal';
 import { specialOffersApi } from '../services/specialOffersApi';
 import SpecialOfferModal, { SpecialOfferModalData } from '../components/ui/SpecialOfferModal';
@@ -32,7 +28,6 @@ import { analyticsService } from '../services/analytics';
 
 const { width } = Dimensions.get('window');
 
-// Skeleton Component
 const SkeletonCard = () => (
   <View style={styles.skeletonCard}>
     <View style={styles.skeletonImage} />
@@ -59,39 +54,46 @@ const SkeletonListItem = () => (
 const isAndroid = Platform.OS === 'android';
 const headerIconSize = isAndroid ? 20 : 24;
 
-const EMPTY_PARTS_FILTERS: PartsFilters = {
+const EMPTY_DISMANTLER_FILTERS: DismantlerFilters = {
   brand: '',
   model: '',
-  category: '',
-  priceMin: '',
-  priceMax: '',
+  yearFrom: '',
+  yearTo: '',
   location: '',
 };
 
-export default function PartsNewScreen() {
+const PARTS_PAGE_SIZE = 20;
+
+function formatPartPrice(part: any): string {
+  const p = part?.price;
+  if (p == null || p === '') return '';
+  if (typeof p === 'string' && p.includes('₾')) return p;
+  return `${p}₾`;
+}
+
+export default function PartsBrowseScreen() {
   const router = useRouter();
   const params = useLocalSearchParams();
   const { user } = useUser();
   const [showFilterModal, setShowFilterModal] = useState(false);
   const [showAddModal, setShowAddModal] = useState(false);
-  
-  // Filter states
-  const [dismantlerFilters, setDismantlerFilters] = useState<DismantlerFilters>({
+
+  const [partsFilters, setPartsFilters] = useState<PartsFilters>({
     brand: '',
     model: '',
-    yearFrom: '',
-    yearTo: '',
+    category: '',
+    priceMin: '',
+    priceMax: '',
     location: '',
   });
 
-  // Data states
-  const [vipDismantlers, setVipDismantlers] = useState<any[]>([]);
-  const [loading, setLoading] = useState(false); // საწყისი ჩატვირთვა / ტაბის ან ფილტრების შეცვლა
-  const [isLoadingMore, setIsLoadingMore] = useState(false); // "load more" pagination
-  const [displayedDismantlers, setDisplayedDismantlers] = useState<any[]>([]);
-  const [dismantlersPage, setDismantlersPage] = useState(1);
-  const [dismantlersHasMore, setDismantlersHasMore] = useState(true);
-  const DISMANTLERS_PAGE_SIZE = 20;
+  const [vipParts, setVipParts] = useState<any[]>([]);
+  const [displayedParts, setDisplayedParts] = useState<any[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [isLoadingMore, setIsLoadingMore] = useState(false);
+  const [partsPage, setPartsPage] = useState(1);
+  const [partsHasMore, setPartsHasMore] = useState(true);
+
   const [specialOffers, setSpecialOffers] = useState<any[]>([]);
   const [showSpecialOfferModal, setShowSpecialOfferModal] = useState(false);
   const [selectedOffer, setSelectedOffer] = useState<SpecialOfferModalData | null>(null);
@@ -108,13 +110,12 @@ export default function PartsNewScreen() {
         const key = String(itemId);
         if (vipImpressionsRef.current.has(key)) return;
         vipImpressionsRef.current.add(key);
-
-        const itemName = String(it?.name || '');
+        const itemName = String(it?.title || it?.name || '');
         analyticsService.logSalesItemImpression(
           key,
           itemName,
-          'dismantler',
-          'დაშლილი_მანქანები',
+          'part',
+          'ნაწილები',
           user?.id,
           { placement: 'vip' }
         );
@@ -123,65 +124,56 @@ export default function PartsNewScreen() {
   ).current;
 
   useFocusEffect(
-    React.useCallback(() => {
-      analyticsService.logScreenViewWithBackend('დაშლილი მანქანები', 'PartsNewScreen', user?.id);
+    useCallback(() => {
+      analyticsService.logScreenViewWithBackend('ნაწილები', 'PartsBrowseScreen', user?.id);
+      analyticsService.logSalesPageView('ნაწილები', user?.id);
     }, [user?.id])
   );
 
-  // Debug: current device screen size (Android/iOS)
-  useEffect(() => {
-    const { width: deviceWidth, height: deviceHeight } = Dimensions.get('window');
-    console.log('📱 Device size -> width:', deviceWidth, 'height:', deviceHeight);
-  }, []);
-
-  // Load data
-  const loadDismantlers = async (page: number = 1, append: boolean = false) => {
+  const loadParts = async (
+    page: number = 1,
+    append: boolean = false,
+    filterOverride?: PartsFilters
+  ) => {
+    const f = filterOverride ?? partsFilters;
     try {
       if (append) {
         setIsLoadingMore(true);
       } else {
         setLoading(true);
       }
-      const filters: any = {
-        limit: DISMANTLERS_PAGE_SIZE,
+
+      const apiFilters: Record<string, string | number> = {
         page,
+        limit: PARTS_PAGE_SIZE,
       };
-      if (dismantlerFilters.brand) filters.brand = dismantlerFilters.brand;
-      if (dismantlerFilters.model) filters.model = dismantlerFilters.model;
-      if (dismantlerFilters.yearFrom) filters.yearFrom = dismantlerFilters.yearFrom;
-      if (dismantlerFilters.yearTo) filters.yearTo = dismantlerFilters.yearTo;
-      if (dismantlerFilters.location) filters.location = dismantlerFilters.location;
-      
-      console.log('🔍 Request filters:', filters);
-      const response = await addItemApi.getDismantlers(filters);
-      console.log('📡 API Response:', response);
+      if (f.brand) apiFilters.brand = f.brand;
+      if (f.model) apiFilters.model = f.model;
+      if (f.category) apiFilters.category = f.category;
+      if (f.priceMin) apiFilters.minPrice = Number(f.priceMin);
+      if (f.priceMax) apiFilters.maxPrice = Number(f.priceMax);
+      if (f.location) apiFilters.location = f.location;
+
+      const response = await addItemApi.getParts(apiFilters as any);
       if (response.success && response.data) {
-        const pageDismantlers = response.data;
-        console.log('📊 Dismantlers page received:', pageDismantlers.length);
-        
-        const vip = page === 1
-          ? pageDismantlers.filter((d: any) => d.isVip === true)
-          : vipDismantlers;
-        const regular = pageDismantlers.filter((d: any) => d.isVip !== true);
-        
-        console.log('⭐ VIP dismantlers:', vip.length);
-        console.log('📋 Regular dismantlers:', regular.length);
-        
+        const pageParts = response.data;
+        const vip =
+          page === 1 ? pageParts.filter((p: any) => p.isVip === true) : vipParts;
+        const regular = pageParts.filter((p: any) => p.isVip !== true);
+
         if (append) {
-          setVipDismantlers(vip);
-          setDisplayedDismantlers((prev) => [...prev, ...regular]);
+          setVipParts(vip);
+          setDisplayedParts((prev) => [...prev, ...regular]);
         } else {
-          setVipDismantlers(vip);
-          setDisplayedDismantlers(regular);
+          setVipParts(vip);
+          setDisplayedParts(regular);
         }
 
-        // თუ საერთოდ გვერდზე რამე მაინც მოვიდა, კიდევ ვცდილობთ შემდეგ გვერდს
-        // (hasMore გახდება false მხოლოდ მაშინ, როცა გვერდი ცარიელია)
-        setDismantlersHasMore(pageDismantlers.length === DISMANTLERS_PAGE_SIZE);
-        setDismantlersPage(page);
+        setPartsHasMore(pageParts.length === PARTS_PAGE_SIZE);
+        setPartsPage(page);
       }
-    } catch (error) {
-      console.error('Error loading dismantlers:', error);
+    } catch (e) {
+      console.error('Error loading parts:', e);
     } finally {
       if (append) {
         setIsLoadingMore(false);
@@ -192,9 +184,9 @@ export default function PartsNewScreen() {
   };
 
   useEffect(() => {
-    setDismantlersPage(1);
-    setDismantlersHasMore(true);
-    loadDismantlers(1, false);
+    setPartsPage(1);
+    setPartsHasMore(true);
+    loadParts(1, false);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -203,195 +195,204 @@ export default function PartsNewScreen() {
     specialOffersApi.getSpecialOffers(true).then((data) => {
       if (!cancelled) setSpecialOffers(Array.isArray(data) ? data : []);
     });
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
-  const handleApplyFilters = (newDismantlerFilters: DismantlerFilters, _newPartsFilters: PartsFilters) => {
+  const handleApplyFilters = (_d: DismantlerFilters, newPartsFilters: PartsFilters) => {
     analyticsService.logButtonClick(
       'ფილტრის გამოყენება',
-      'დაშლილი_მანქანები',
-      { dismantler_filters: newDismantlerFilters },
+      'ნაწილები',
+      { parts_filters: newPartsFilters },
       user?.id
     );
-    setDismantlerFilters(newDismantlerFilters);
-    setDismantlersPage(1);
-    setDismantlersHasMore(true);
-    loadDismantlers(1, false);
+    setPartsFilters(newPartsFilters);
+    setPartsPage(1);
+    setPartsHasMore(true);
+    loadParts(1, false, newPartsFilters);
   };
 
   const handleResetFilters = () => {
-    analyticsService.logButtonClick('ფილტრის გასუფთავება', 'დაშლილი_მანქანები', {}, user?.id);
-    setDismantlerFilters({
+    analyticsService.logButtonClick('ფილტრის გასუფთავება', 'ნაწილები', {}, user?.id);
+    setPartsFilters({
       brand: '',
       model: '',
-      yearFrom: '',
-      yearTo: '',
+      category: '',
+      priceMin: '',
+      priceMax: '',
       location: '',
     });
   };
 
-  // Convert functions
-  const convertDismantlerToDetailItem = (dismantler: any): DetailItem => {
-    const mainImage = dismantler.photos?.[0] || dismantler.images?.[0] || dismantler.image || 'https://images.unsplash.com/photo-1563298723-dcfebaa392e3?q=80&w=800&auto=format&fit=crop';
+  const convertPartToDetailItem = (part: any): DetailItem => {
+    const mainImage =
+      part.photos?.[0] ||
+      part.images?.[0] ||
+      part.image ||
+      'https://images.unsplash.com/photo-1486262715619-67b85e0b08d3?q=80&w=800&auto=format&fit=crop';
     return {
-      id: dismantler.id || dismantler._id,
-      title: dismantler.name,
-      description: dismantler.description,
+      id: part.id || part._id,
+      title: part.title || part.name,
+      description: part.description,
+      price: part.price,
       image: mainImage,
-      type: 'dismantler',
-      location: dismantler.location,
-      phone: dismantler.phone,
-      gallery: dismantler.photos || [mainImage],
+      type: 'part',
+      location: part.location,
+      phone: part.phone,
+      gallery: part.photos || part.images || [mainImage],
       specifications: {
-        'ბრენდი': dismantler.brand || '',
-        'მოდელი': dismantler.model || '',
-        'წლები': (dismantler.yearFrom && dismantler.yearTo) ? `${dismantler.yearFrom} - ${dismantler.yearTo}` : '',
-        'მდებარეობა': dismantler.location || '',
-        'ტელეფონი': dismantler.phone || '',
-      }
+        ბრენდი: part.brand || '',
+        კატეგორია: part.category || '',
+        მდგომარეობა: part.condition || '',
+        მდებარეობა: part.location || '',
+        ტელეფონი: part.phone || '',
+      },
     };
   };
 
-  // Render VIP Card (Horizontal) - Memoized for performance
-  const renderVIPCard = React.useCallback(({ item }: { item: any }) => {
-    const image = item.photos?.[0] || item.images?.[0] || item.image || 'https://images.unsplash.com/photo-1563298723-dcfebaa392e3?q=80&w=800&auto=format&fit=crop';
-    
-    return (
-      <TouchableOpacity
-        style={styles.vipCard}
-        onPress={() => {
-          const itemId = item.id || item._id;
-          if (itemId) {
-            analyticsService.logSalesItemClick(
-              String(itemId),
-              String(item.name || ''),
-              'dismantler',
-              'დაშლილი_მანქანები',
-              user?.id
-            );
-          }
-          const detailItem = convertDismantlerToDetailItem(item);
-          router.push({
-            pathname: '/parts-details-new',
-            params: { item: JSON.stringify(detailItem) }
-          });
-        }}
-        activeOpacity={0.8}
-      >
-        <Image 
-          source={{ uri: image }} 
-          style={styles.vipCardImage}
-          resizeMode="cover"
-        />
-        <LinearGradient
-          colors={['transparent', 'rgba(0,0,0,0.8)']}
-          style={styles.vipCardGradient}
-        >
-          <View style={styles.vipBadge}>
-            <Ionicons name="star" size={12} color="#F59E0B" />
-            <Text style={styles.vipBadgeText}>VIP</Text>
-          </View>
-          <View style={styles.vipCardContent}>
-            <Text style={styles.vipCardTitle} numberOfLines={2}>
-              {item.name}
-            </Text>
-            {item.location && (
-              <View style={styles.vipCardMeta}>
-                <Ionicons name="location" size={14} color="#FFFFFF" />
-                <Text style={styles.vipCardLocation}>{item.location}</Text>
-              </View>
-            )}
-          </View>
-        </LinearGradient>
-      </TouchableOpacity>
-    );
-  }, []);
+  const partDisplayTitle = (item: any) => String(item.title || item.name || 'ნაწილი');
 
-  // Render List Item (Vertical) - Memoized for performance
-  const renderListItem = React.useCallback(({ item, index }: { item: any; index: number }) => {
-    const itemId = item.id || item._id;
-    const image = item.photos?.[0] || item.images?.[0] || item.image || 'https://images.unsplash.com/photo-1563298723-dcfebaa392e3?q=80&w=800&auto=format&fit=crop';
-    
-    return (
-      <TouchableOpacity
-        style={styles.listItem}
-        onPress={() => {
-          if (itemId) {
-            analyticsService.logSalesItemClick(
-              String(itemId),
-              String(item.name || ''),
-              'dismantler',
-              'დაშლილი_მანქანები',
-              user?.id
-            );
-          }
-          const detailItem = convertDismantlerToDetailItem(item);
-          router.push({
-            pathname: '/parts-details-new',
-            params: { item: JSON.stringify(detailItem) }
-          });
-        }}
-        activeOpacity={0.7}
-      >
-        <Image 
-          source={{ uri: image }} 
-          style={styles.listItemThumbnail}
-          resizeMode="cover"
-        />
-        <View style={styles.listItemContent}>
-          <Text style={styles.listItemTitle} numberOfLines={2}>
-            {item.name}
-          </Text>
-          {item.brand && item.model && (
-            <Text style={styles.listItemSubtitle} numberOfLines={1}>
-              {item.brand} {item.model}
-            </Text>
-          )}
-          {item.location && (
-            <View style={styles.listItemMeta}>
-              <Ionicons name="location-outline" size={12} color="#6B7280" />
-              <Text style={styles.listItemLocation}>{item.location}</Text>
-            </View>
-          )}
-        </View>
+  const renderVIPCard = useCallback(
+    ({ item }: { item: any }) => {
+      const image =
+        item.photos?.[0] ||
+        item.images?.[0] ||
+        item.image ||
+        'https://images.unsplash.com/photo-1558618666-fcd25c85cd64?q=80&w=800&auto=format&fit=crop';
+      const priceStr = formatPartPrice(item);
+
+      return (
         <TouchableOpacity
-          style={styles.listItemIndicator}
-          onPress={(e) => {
-            e.stopPropagation();
+          style={styles.vipCard}
+          onPress={() => {
+            const itemId = item.id || item._id;
             if (itemId) {
               analyticsService.logSalesItemClick(
                 String(itemId),
-                String(item.name || ''),
-                'dismantler',
-                'დაშლილი_მანქანები',
+                partDisplayTitle(item),
+                'part',
+                'ნაწილები',
                 user?.id
               );
             }
-            const detailItem = convertDismantlerToDetailItem(item);
+            const detailItem = convertPartToDetailItem(item);
             router.push({
               pathname: '/parts-details-new',
-              params: { item: JSON.stringify(detailItem) }
+              params: { item: JSON.stringify(detailItem) },
             });
           }}
+          activeOpacity={0.8}
         >
-          <Ionicons name="chevron-forward" size={20} color="#9CA3AF" />
+          <Image source={{ uri: image }} style={styles.vipCardImage} resizeMode="cover" />
+          <LinearGradient
+            colors={['transparent', 'rgba(0,0,0,0.8)']}
+            style={styles.vipCardGradient}
+          >
+            <View style={styles.vipBadge}>
+              <Ionicons name="star" size={12} color="#F59E0B" />
+              <Text style={styles.vipBadgeText}>VIP</Text>
+            </View>
+            <View style={styles.vipCardContent}>
+              <Text style={styles.vipCardTitle} numberOfLines={2}>
+                {partDisplayTitle(item)}
+              </Text>
+              {item.location ? (
+                <View style={styles.vipCardMeta}>
+                  <Ionicons name="location" size={14} color="#FFFFFF" />
+                  <Text style={styles.vipCardLocation}>{item.location}</Text>
+                </View>
+              ) : null}
+              {priceStr ? (
+                <View style={styles.vipCardMeta}>
+                  <Ionicons name="cash" size={14} color="#FFFFFF" />
+                  <Text style={styles.vipCardLocation}>{priceStr}</Text>
+                </View>
+              ) : null}
+            </View>
+          </LinearGradient>
         </TouchableOpacity>
-      </TouchableOpacity>
-    );
-  }, []);
+      );
+    },
+    [user?.id, router]
+  );
+
+  const renderListItem = useCallback(
+    ({ item }: { item: any; index: number }) => {
+      const itemId = item.id || item._id;
+      const image =
+        item.photos?.[0] ||
+        item.images?.[0] ||
+        item.image ||
+        'https://images.unsplash.com/photo-1558618666-fcd25c85cd64?q=80&w=600&auto=format&fit=crop';
+      const priceStr = formatPartPrice(item);
+
+      const openDetail = () => {
+        if (itemId) {
+          analyticsService.logSalesItemClick(
+            String(itemId),
+            partDisplayTitle(item),
+            'part',
+            'ნაწილები',
+            user?.id
+          );
+        }
+        router.push({
+          pathname: '/parts-details-new',
+          params: { item: JSON.stringify(convertPartToDetailItem(item)) },
+        });
+      };
+
+      return (
+        <TouchableOpacity style={styles.listItem} onPress={openDetail} activeOpacity={0.7}>
+          <Image source={{ uri: image }} style={styles.listItemThumbnail} resizeMode="cover" />
+          <View style={styles.listItemContent}>
+            <Text style={styles.listItemTitle} numberOfLines={2}>
+              {partDisplayTitle(item)}
+            </Text>
+            {item.category ? (
+              <Text style={styles.listItemSubtitle} numberOfLines={1}>
+                {item.category}
+              </Text>
+            ) : null}
+            {item.brand ? (
+              <Text style={styles.listItemSubtitle} numberOfLines={1}>
+                {item.brand}
+                {item.model ? ` ${item.model}` : ''}
+              </Text>
+            ) : null}
+            {item.location ? (
+              <View style={styles.listItemMeta}>
+                <Ionicons name="location-outline" size={12} color="#6B7280" />
+                <Text style={styles.listItemLocation}>{item.location}</Text>
+              </View>
+            ) : null}
+            {priceStr ? <Text style={styles.listItemPrice}>{priceStr}</Text> : null}
+          </View>
+          <TouchableOpacity
+            style={styles.listItemIndicator}
+            onPress={(e) => {
+              e.stopPropagation();
+              openDetail();
+            }}
+          >
+            <Ionicons name="chevron-forward" size={20} color="#9CA3AF" />
+          </TouchableOpacity>
+        </TouchableOpacity>
+      );
+    },
+    [user?.id, router]
+  );
 
   const handleAddItem = (type: AddModalType, _data: any) => {
-    if (type === 'part') {
-      router.push('/parts-browse' as any);
+    if (type === 'dismantler') {
+      router.push('/parts-new' as any);
       return;
     }
-    loadDismantlers(1, false);
+    loadParts(1, false);
   };
 
-  const currentData = displayedDismantlers;
-  const currentVipData = vipDismantlers;
-
-  const renderSpecialOfferCard = ({ item: offer }: { item: any; index: number }) => {
+  const renderSpecialOfferCard = ({ item: offer }: { item: any }) => {
     const offerData: SpecialOfferModalData = {
       id: offer.id,
       storeId: offer.storeId,
@@ -413,20 +414,16 @@ export default function PartsNewScreen() {
       />
     );
   };
-  
-  // Load more dismantlers when scrolling
-  const loadMoreDismantlers = () => {
-    if (loading || isLoadingMore || !dismantlersHasMore) return;
-    const nextPage = dismantlersPage + 1;
-    console.log('📜 Loading more dismantlers. Next page:', nextPage);
-    loadDismantlers(nextPage, true);
+
+  const loadMoreParts = () => {
+    if (loading || isLoadingMore || !partsHasMore) return;
+    loadParts(partsPage + 1, true);
   };
 
   return (
     <View style={styles.container}>
       <StatusBar barStyle="dark-content" backgroundColor="#FFFFFF" translucent />
-      
-      {/* Top White Header */}
+
       <View style={styles.topBar}>
         <SafeAreaView edges={['top']}>
           <View style={styles.topBarContent}>
@@ -438,27 +435,27 @@ export default function PartsNewScreen() {
                     pathname: '/category',
                     params: {
                       type: params.categoryType || 'part',
-                      categoryId: params.categoryId,
-                      name: params.categoryName,
-                    }
+                      categoryId: params.categoryId as string,
+                      name: params.categoryName as string,
+                    },
                   });
                 } else if (router.canGoBack()) {
                   router.back();
                 } else {
-                  router.push('/(tabs)' as any);
+                  router.push('/(tabs)/marketplace' as any);
                 }
               }}
             >
               <Ionicons name="arrow-back" size={headerIconSize} color="#111827" />
             </TouchableOpacity>
-            
-            <Text style={styles.topBarTitle}>დაშლილი მანქანები</Text>
-            
+
+            <Text style={styles.topBarTitle}>ავტონაწილები</Text>
+
             <View style={styles.topBarRight}>
               <TouchableOpacity
                 style={styles.topBarButton}
                 onPress={() => {
-                  analyticsService.logButtonClick('ფილტრი', 'დაშლილი_მანქანები', {}, user?.id);
+                  analyticsService.logButtonClick('ფილტრი', 'ნაწილები', {}, user?.id);
                   setShowFilterModal(true);
                 }}
               >
@@ -467,7 +464,7 @@ export default function PartsNewScreen() {
               <TouchableOpacity
                 style={styles.topBarButton}
                 onPress={() => {
-                  analyticsService.logButtonClick('დამატება', 'დაშლილი_მანქანები', {}, user?.id);
+                  analyticsService.logButtonClick('დამატება', 'ნაწილები', {}, user?.id);
                   setShowAddModal(true);
                 }}
               >
@@ -480,40 +477,36 @@ export default function PartsNewScreen() {
 
       <FlatList
         style={styles.content}
-        data={currentData}
+        data={displayedParts}
         keyExtractor={(item: any, index: number) => {
           const id = item.id || item._id;
-          return id ? `dismantler-${id}` : `dismantler-${index}`;
+          return id ? `part-${id}` : `part-${index}`;
         }}
-        renderItem={({ item, index }: { item: any; index: number }) =>
-          renderListItem({ item, index })
-        }
+        renderItem={({ item, index }) => renderListItem({ item, index })}
         showsVerticalScrollIndicator={false}
         contentContainerStyle={styles.verticalList}
         ListHeaderComponent={
           <>
-            {/* Section Title - Skeleton */}
-            {loading && currentData.length === 0 ? (
+            {loading && displayedParts.length === 0 ? (
               <View style={styles.sectionTitleSkeleton} />
             ) : (
               <View style={styles.sectionTitleContainer}>
-                <Text style={styles.sectionTitle}>VIP დაშლილები</Text>
+                <Text style={styles.sectionTitle}>VIP ნაწილები</Text>
               </View>
             )}
 
-            {/* Horizontal Scroll - VIP Cards */}
-            {loading && currentVipData.length === 0 ? (
+            {loading && vipParts.length === 0 ? (
               <View style={styles.horizontalScroll}>
                 <SkeletonCard />
                 <SkeletonCard />
                 <SkeletonCard />
               </View>
-            ) : currentVipData.length > 0 ? (
+            ) : vipParts.length > 0 ? (
               <FlatList
                 horizontal
-                data={currentVipData}
+                data={vipParts}
                 renderItem={renderVIPCard}
-                keyExtractor={(item, index) => item.id || item._id || `vip-${index}`}
+                keyExtractor={(item, index) => item.id || item._id || `vip-p-${index}`}
                 showsHorizontalScrollIndicator={false}
                 contentContainerStyle={styles.horizontalScroll}
                 removeClippedSubviews={Platform.OS === 'ios'}
@@ -522,7 +515,7 @@ export default function PartsNewScreen() {
                 windowSize={2}
                 onViewableItemsChanged={onViewableVipItemsChanged}
                 viewabilityConfig={vipViewabilityConfigRef.current}
-                getItemLayout={(data, index) => ({
+                getItemLayout={(_, index) => ({
                   length: width * 0.65 + 16,
                   offset: (width * 0.65 + 16) * index,
                   index,
@@ -530,80 +523,72 @@ export default function PartsNewScreen() {
               />
             ) : null}
 
-            {/* სპეციალური შეთავაზებები */}
-           
 
-            {/* Section Title - List */}
-            {loading && currentData.length === 0 ? (
+            {loading && displayedParts.length === 0 ? (
               <View style={styles.sectionTitleSkeleton} />
             ) : (
               <View style={styles.sectionTitleContainer}>
-                <Text style={styles.sectionTitle}>დაშლილების მაღაზიები</Text>
+                <Text style={styles.sectionTitle}>პოპულარული ნაწილები</Text>
               </View>
             )}
 
-            {/* Vertical skeleton while loading */}
-            {loading && currentData.length === 0 && (
+            {loading && displayedParts.length === 0 ? (
               <View style={styles.verticalList}>
                 <SkeletonListItem />
                 <SkeletonListItem />
                 <SkeletonListItem />
                 <SkeletonListItem />
               </View>
-            )}
+            ) : null}
           </>
         }
         ListEmptyComponent={
-          !loading && currentData.length === 0 ? (
+          !loading && displayedParts.length === 0 ? (
             <View style={styles.emptyState}>
-              <Text style={styles.emptyText}>დაშლილები არ მოიძებნა</Text>
+              <Text style={styles.emptyText}>ნაწილები არ მოიძებნა</Text>
             </View>
           ) : null
         }
         ListFooterComponent={
           <>
-            {isLoadingMore && (
+            {isLoadingMore ? (
               <View style={styles.loadingMoreContainer}>
                 <ActivityIndicator size="small" color="#111827" />
                 <Text style={styles.loadingMoreText}>იტვირთება...</Text>
               </View>
-            )}
+            ) : null}
             <View style={{ height: 100 }} />
           </>
         }
-        onEndReached={loadMoreDismantlers}
+        onEndReached={loadMoreParts}
         onEndReachedThreshold={0.5}
         removeClippedSubviews
         initialNumToRender={5}
         maxToRenderPerBatch={3}
         windowSize={5}
         updateCellsBatchingPeriod={100}
-        getItemLayout={(data, index) => ({
+        getItemLayout={(_, index) => ({
           length: 120,
           offset: 120 * index,
           index,
         })}
       />
 
-
-
-      {/* Filter Modal */}
       <FilterModal
         visible={showFilterModal}
-        activeTab="დაშლილები"
-        dismantlerFilters={dismantlerFilters}
-        partsFilters={EMPTY_PARTS_FILTERS}
+        activeTab="ნაწილები"
+        dismantlerFilters={EMPTY_DISMANTLER_FILTERS}
+        partsFilters={partsFilters}
         onClose={() => setShowFilterModal(false)}
         onApply={handleApplyFilters}
         onReset={handleResetFilters}
       />
 
-      {/* Add Modal */}
       <AddModal
         visible={showAddModal}
         onClose={() => setShowAddModal(false)}
         onSave={handleAddItem}
-        defaultType="dismantler"
+        defaultType="part"
       />
 
       <SpecialOfferModal
@@ -618,12 +603,12 @@ export default function PartsNewScreen() {
   );
 }
 
+/** იგივე სტილები რაც app/parts-new.tsx */
 const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#FFFFFF',
   },
-  // Top White Header
   topBar: {
     backgroundColor: '#FFFFFF',
     paddingBottom: 12,
@@ -658,49 +643,11 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: Platform.select({ android: 8, default: 12 }),
   },
-  // Navigation Section
-  navSection: {
-    paddingHorizontal: Platform.select({ android: 16, default: 20 }),
-    paddingVertical: Platform.select({ android: 12, default: 16 }),
-    backgroundColor: '#FFFFFF',
-    borderBottomWidth: 1,
-    borderBottomColor: '#E5E7EB',
-  },
-  segmentControl: {
-    flexDirection: 'row',
-    backgroundColor: '#F3F4F6',
-    borderRadius: 12,
-    padding: 4,
-  },
-  segmentItem: {
-    flex: 1,
-    paddingVertical: Platform.select({ android: 8, default: 10 }),
-    paddingHorizontal: Platform.select({ android: 12, default: 16 }),
-    borderRadius: 8,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  segmentItemActive: {
-    backgroundColor: '#111827',
-  },
-  segmentText: {
-    fontSize: Platform.select({ android: 12, default: 14 }),
-    fontFamily: 'HelveticaMedium',
-    textTransform: 'uppercase',
-    color: '#6B7280',
-    fontWeight: '600',
-  },
-  segmentTextActive: {
-    color: '#FFFFFF',
-  },
-  // Content
   content: {
     flex: 1,
     backgroundColor: '#FFFFFF',
   },
-  // Section Title
   sectionTitleContainer: {
-    // paddingHorizontal: Platform.select({ android: 16, default: 20 }),
     paddingTop: Platform.select({ android: 18, default: 24 }),
     paddingBottom: 12,
   },
@@ -720,7 +667,6 @@ const styles = StyleSheet.create({
     marginTop: 24,
     marginBottom: 12,
   },
-  // Horizontal Scroll - VIP Cards
   horizontalScroll: {
     paddingLeft: 20,
     paddingRight: 4,
@@ -788,76 +734,6 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontWeight: '500',
   },
-  // Offer Card (სპეციალური შეთავაზებები)
-  offerCard: {
-    width: width * 0.65,
-    height: 160,
-    borderRadius: 16,
-    overflow: 'hidden',
-    marginRight: 12,
-    backgroundColor: '#111827',
-  },
-  offerCardImage: {
-    width: '100%',
-    height: '100%',
-  },
-  offerCardImageStyle: {
-    resizeMode: 'cover',
-  },
-  offerCardGradient: {
-    position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
-    height: '60%',
-    justifyContent: 'flex-end',
-    padding: 16,
-  },
-  offerDiscountBadge: {
-    position: 'absolute',
-    top: 12,
-    left: 12,
-    backgroundColor: '#EF4444',
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 12,
-  },
-  offerDiscountBadgeText: {
-    fontSize: 12,
-    fontFamily: 'HelveticaMedium',
-    textTransform: 'uppercase',
-    fontWeight: '700',
-    color: '#FFFFFF',
-  },
-  offerCardContent: {
-    gap: 8,
-  },
-  offerCardTitle: {
-    fontSize: Platform.select({ android: 14, default: 16 }),
-    fontFamily: 'HelveticaMedium',
-    fontWeight: '700',
-    color: '#FFFFFF',
-  },
-  offerPriceRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    marginTop: 4,
-  },
-  offerOldPrice: {
-    fontSize: 14,
-    fontFamily: 'HelveticaMedium',
-    color: '#9CA3AF',
-    textDecorationLine: 'line-through',
-    fontWeight: '500',
-  },
-  offerNewPrice: {
-    fontSize: 16,
-    fontFamily: 'HelveticaMedium',
-    fontWeight: '700',
-    color: '#FFFFFF',
-  },
-  // Vertical List
   verticalList: {
     paddingHorizontal: Platform.select({ android: 16, default: 20 }),
     gap: 12,
@@ -932,24 +808,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     marginLeft: 8,
   },
-  // Floating Action Button
-  fab: {
-    position: 'absolute',
-    bottom: 24,
-    right: 24,
-    width: Platform.select({ android: 48, default: 56 }),
-    height: Platform.select({ android: 48, default: 56 }),
-    borderRadius: Platform.select({ android: 24, default: 28 }),
-    backgroundColor: '#111827',
-    alignItems: 'center',
-    justifyContent: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.3,
-    shadowRadius: 16,
-    elevation: 8,
-  },
-  // Empty State
   emptyState: {
     padding: 40,
     alignItems: 'center',
@@ -962,7 +820,6 @@ const styles = StyleSheet.create({
     color: '#9CA3AF',
     fontWeight: '500',
   },
-  // Skeletons
   skeletonCard: {
     width: width * 0.65,
     height: 160,
@@ -1019,7 +876,6 @@ const styles = StyleSheet.create({
     backgroundColor: '#E5E7EB',
     marginLeft: 8,
   },
-  // Loading More
   loadingMoreContainer: {
     paddingVertical: 20,
     alignItems: 'center',
