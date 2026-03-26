@@ -185,12 +185,16 @@ export class SubscriptionsService {
         } else if (context.includes('premium')) {
           finalPlanId = 'premium';
           this.logger.log('   → Setting planId to: premium (from context)');
+        } else if (context === 'subscription' && amount > 0) {
+          // ფასიანი app subscription — metadata ზოგჯერ არ მოდის callback-ში; basic არ უნდა მივაწოთ
+          finalPlanId = 'premium';
+          this.logger.log(
+            '   → Setting planId to: premium (context=subscription, paid amount)',
+          );
         } else {
-          // ⚠️ DEFAULT: თუ planId არ გადაეცა და context-ში არ არის 'basic' ან 'premium',
-          // მაშინ default-ად ვაყენებთ 'basic'-ს, არა 'premium'-ს!
           finalPlanId = 'basic';
           this.logger.warn(
-            '   ⚠️ Context-ში არ არის planId ინფორმაცია, default-ად ვაყენებთ: basic',
+            '   ⚠️ planId/metadata არ საკმარისია, default: basic',
           );
         }
       } else {

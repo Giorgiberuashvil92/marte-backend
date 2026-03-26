@@ -204,9 +204,10 @@ export class NotificationsController {
           success: result.success,
           sent: result.sent,
           failed: result.failed,
-          message: result.success
-            ? `Notification sent to ${result.sent} devices`
-            : `Sent: ${result.sent}, failed: ${result.failed}`,
+          message:
+            result.failed > 0
+              ? `${result.sent} ტელეფონზე მივიდა, ${result.failed} ვერ მივიდა`
+              : `${result.sent} ტელეფონზე მივიდა`,
         };
       }
 
@@ -219,16 +220,20 @@ export class NotificationsController {
           (id): id is string => typeof id === 'string' && id.length > 0,
         );
         if (userIds.length > 0) {
-          await this.notificationsService.sendPushToUsers(
+          const result = await this.notificationsService.sendPushToUsers(
             userIds,
             payload,
             'system',
           );
           return {
             success: true,
-            sent: userIds.length,
-            total: userIds.length,
-            message: `Notification sent to ${userIds.length} users`,
+            sent: result.sent,
+            failed: result.failed,
+            total: result.sent + result.failed,
+            message:
+              result.failed > 0
+                ? `${result.sent} ტელეფონზე მივიდა, ${result.failed} ვერ მივიდა`
+                : `${result.sent} ტელეფონზე მივიდა`,
           };
         }
       }
@@ -245,21 +250,26 @@ export class NotificationsController {
           return {
             success: false,
             sent: 0,
+            failed: 0,
             total: 0,
             message: 'No users found matching the criteria',
           };
         }
 
-        await this.notificationsService.sendPushToUsers(
+        const result = await this.notificationsService.sendPushToUsers(
           userIds,
           payload,
           'system',
         );
         return {
           success: true,
-          sent: userIds.length,
-          total: userIds.length,
-          message: `Notification sent to ${userIds.length} users`,
+          sent: result.sent,
+          failed: result.failed,
+          total: result.sent + result.failed,
+          message:
+            result.failed > 0
+              ? `${result.sent} ტელეფონზე მივიდა, ${result.failed} ვერ მივიდა`
+              : `${result.sent} ტელეფონზე მივიდა`,
         };
       }
 

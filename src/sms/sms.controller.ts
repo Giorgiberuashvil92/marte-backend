@@ -75,8 +75,10 @@ export class SmsController {
     if (body.phoneNumbers && body.phoneNumbers.length > 0) {
       users = body.phoneNumbers.map((phone) => ({ phone }));
     } else {
-      // წინააღმდეგ შემთხვევაში, მივიღოთ ტელეფონის ნომრები და სახელები ბაზიდან
-      const filter: { role?: string; active?: boolean } = {};
+      // ბაზიდან მხოლოდ იმ იუზერები, ვისაც ჰქონდათ შესვლა 28 დეკემბერი 2025-ის შემდეგ
+      const filter: { role?: string; active?: boolean; loginAfter?: string } = {
+        loginAfter: '2025-12-28T00:00:00.000Z',
+      };
       if (body.role) filter.role = body.role;
       if (typeof body.active === 'boolean') filter.active = body.active;
 

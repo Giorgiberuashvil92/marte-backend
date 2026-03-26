@@ -5,6 +5,7 @@ import {
   HttpStatus,
   OnModuleInit,
 } from '@nestjs/common';
+import { Cron } from '@nestjs/schedule';
 import { ConfigService } from '@nestjs/config';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
@@ -16,8 +17,22 @@ import {
   CarFinesSubscription,
   CarFinesSubscriptionDocument,
 } from '../schemas/car-fines-subscription.schema';
+import {
+  FinesRegistrationLog,
+  FinesRegistrationLogDocument,
+} from '../schemas/fines-registration-log.schema';
 import { User, UserDocument } from '../schemas/user.schema';
 import { SubscriptionsService } from '../subscriptions/subscriptions.service';
+import { NotificationsService } from '../notifications/notifications.service';
+import {
+  FinesDailyReminder,
+  FinesDailyReminderDocument,
+} from '../schemas/fines-daily-reminder.schema';
+import {
+  FinesPenaltyCache,
+  FinesPenaltyCacheDocument,
+} from '../schemas/fines-penalty-cache.schema';
+import { SubscriptionDocument } from '../schemas/subscription.schema';
 
 const SA_IDENTITY_URL = 'https://api-identity.sa.gov.ge/connect/token';
 const SA_PUBLIC_API_URL = 'https://api-public.sa.gov.ge/api/v1';
@@ -73,6 +88,9 @@ export interface VehicleRegistration {
   cancelDate?: string;
 }
 
+type UnpaidAggRow = { _id: string; unpaidCount: number };
+type VehiclesAggRow = { _id: string; activeVehicles: number };
+
 const SA_CLIENT_ID = 'martegeo';
 const SA_CLIENT_SECRET = 'VJ.e35U~9M6£zQY';
 
@@ -81,6 +99,8 @@ export class FinesService implements OnModuleInit {
   private readonly logger = new Logger(FinesService.name);
   private accessToken: string | null = null;
   private tokenExpiry: number = 0;
+  private readonly finesReminderTz = 'Asia/Tbilisi';
+  private isSendingFinesReminders = false;
 
   constructor(
     private configService: ConfigService,
@@ -88,9 +108,16 @@ export class FinesService implements OnModuleInit {
     private finesVehicleModel: Model<FinesVehicleDocument>,
     @InjectModel(CarFinesSubscription.name)
     private carFinesSubscriptionModel: Model<CarFinesSubscriptionDocument>,
+    @InjectModel(FinesRegistrationLog.name)
+    private finesRegistrationLogModel: Model<FinesRegistrationLogDocument>,
     @InjectModel(User.name)
     private userModel: Model<UserDocument>,
+    @InjectModel(FinesDailyReminder.name)
+    private finesDailyReminderModel: Model<FinesDailyReminderDocument>,
+    @InjectModel(FinesPenaltyCache.name)
+    private finesPenaltyCacheModel: Model<FinesPenaltyCacheDocument>,
     private subscriptionsService: SubscriptionsService,
+    private notificationsService: NotificationsService,
   ) {}
 
   onModuleInit() {
@@ -128,6 +155,75 @@ export class FinesService implements OnModuleInit {
       .trim()
       .toUpperCase()
       .replace(/[^A-Z0-9]/g, '');
+  }
+
+  private getTbilisiYmdAndMinutes(d: Date): {
+    ymd: string;
+    minutesSinceMidnight: number;
+  } {
+    const fmt = new Intl.DateTimeFormat('en-CA', {
+      timeZone: this.finesReminderTz,
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false,
+    });
+    const parts = fmt.formatToParts(d);
+    const g = (t: Intl.DateTimeFormatPart['type']) =>
+      parts.find((p) => p.type === t)?.value ?? '0';
+    const hour = parseInt(g('hour'), 10);
+    const minute = parseInt(g('minute'), 10);
+    return {
+      ymd: `${g('year')}-${g('month')}-${g('day')}`,
+      minutesSinceMidnight: hour * 60 + minute,
+    };
+  }
+
+  private tbilisiDayStartUtcMs(ymd: string): number {
+    const [y, m, d] = ymd.split('-').map(Number);
+    return Date.UTC(y, m - 1, d) - 4 * 60 * 60 * 1000;
+  }
+
+  private tbilisiDayEndUtcMs(ymd: string): number {
+    return this.tbilisiDayStartUtcMs(ymd) + 24 * 60 * 60 * 1000 - 1;
+  }
+
+  private shouldFireFinesReminderWindow(
+    nowMs: number,
+    targetUtcMs: number,
+    catchupEndUtcMs: number,
+  ): boolean {
+    const winBefore = targetUtcMs - 5 * 60 * 1000;
+    const winAfter = targetUtcMs + 5 * 60 * 1000;
+    if (nowMs >= winBefore && nowMs <= winAfter) return true;
+    return nowMs > winAfter && nowMs <= catchupEndUtcMs;
+  }
+
+  /** დღეში ორჯერ: 10:00 და 19:00 თბილისი; დილის catch-up 14:00-მდე, საღამოს — დღის ბოლომდე. */
+  private finesReminderSlotKey(nowMs: number): '10' | '19' | null {
+    const { ymd } = this.getTbilisiYmdAndMinutes(new Date(nowMs));
+    const dayStart = this.tbilisiDayStartUtcMs(ymd);
+    const t10 = dayStart + 10 * 60 * 60 * 1000;
+    const catchMorningEnd = dayStart + 14 * 60 * 60 * 1000 - 1;
+    if (this.shouldFireFinesReminderWindow(nowMs, t10, catchMorningEnd)) {
+      return '10';
+    }
+    const t19 = dayStart + 19 * 60 * 60 * 1000;
+    const catchEveningEnd = this.tbilisiDayEndUtcMs(ymd);
+    if (this.shouldFireFinesReminderWindow(nowMs, t19, catchEveningEnd)) {
+      return '19';
+    }
+    return null;
+  }
+
+  private userHasPremiumForFinesReminders(
+    sub: SubscriptionDocument | null,
+  ): boolean {
+    if (!sub || sub.status !== 'active') return false;
+    const p = String(sub.planId || '').toLowerCase();
+    return p === 'premium' || p.startsWith('premium-');
   }
 
   /**
@@ -543,14 +639,36 @@ export class FinesService implements OnModuleInit {
         : typeof resp.Id === 'number'
           ? resp.Id
           : undefined;
-    const saVehicleIdToSave =
+    let saVehicleIdToSave =
       saVehicleId !== undefined && saVehicleId !== null
         ? Number(saVehicleId)
         : 0;
     if (saVehicleIdToSave === 0) {
+      const resolvedSaId = await this.resolveSaVehicleIdFromActiveList(
+        formattedVehicleNumber,
+        techPassportNumber.trim(),
+      );
+      if (resolvedSaId && resolvedSaId > 0) {
+        saVehicleIdToSave = resolvedSaId;
+      }
+    }
+    if (saVehicleIdToSave === 0) {
       this.logger.warn(
         `⚠️ SA API did not return vehicle id; raw response keys: ${Object.keys(rawResponse || {}).join(', ')}`,
       );
+    }
+
+    // ყოველთვის ვწერთ ლოგში ვინ დაარეგისტრირა (გარაჟში არ უნდა ჰქონდეს მანქანა)
+    try {
+      await this.finesRegistrationLogModel.create({
+        userId,
+        vehicleNumber: formattedVehicleNumber,
+        techPassportNumber: techPassportNumber.trim(),
+        saVehicleId: saVehicleIdToSave,
+        addDate: new Date().toISOString(),
+      });
+    } catch (logErr) {
+      this.logger.warn(`⚠️ Fines registration log save failed: ${logErr}`);
     }
 
     // შენახვა ჩვენს ბაზაში
@@ -626,6 +744,29 @@ export class FinesService implements OnModuleInit {
     return this.authenticatedRequest<VehicleRegistration[]>(
       '/patrolpenalties/vehicles/active',
     );
+  }
+
+  private async resolveSaVehicleIdFromActiveList(
+    vehicleNumberRaw: string,
+    techPassportNumberRaw: string,
+  ): Promise<number | null> {
+    const vehicleNumber = this.normalizeVehicleNumber(vehicleNumberRaw);
+    const techPassportNumber = String(techPassportNumberRaw || '').trim();
+    if (!vehicleNumber || !techPassportNumber) return null;
+    try {
+      const active = await this.getActiveVehicles();
+      const hit = active.find((v) => {
+        const n = this.normalizeVehicleNumber(v.vehicleNumber || '');
+        const tp = String(v.techPassportNumber || '').trim();
+        return n === vehicleNumber && tp === techPassportNumber;
+      });
+      return hit?.id ? Number(hit.id) : null;
+    } catch (error) {
+      this.logger.warn(
+        `⚠️ resolveSaVehicleIdFromActiveList failed (${vehicleNumber}): ${error}`,
+      );
+      return null;
+    }
   }
 
   /**
@@ -705,6 +846,311 @@ export class FinesService implements OnModuleInit {
         email?: string;
       } | null;
     })[];
+  }
+
+  /**
+   * SA-ში რეგისტრაციის ლოგი — ვინ დაარეგისტრირა (ადმინისთვის, გარაჟის გარეშეც)
+   * ყოველი saVehicleId-სთვის ბოლო ჩანაწერი + იუზერის სახელი
+   */
+  async getSaRegistrationsWithOwners(): Promise<
+    {
+      saVehicleId: number;
+      userId: string;
+      vehicleNumber: string;
+      techPassportNumber: string;
+      addDate?: string;
+      owner?: { firstName?: string; lastName?: string } | null;
+    }[]
+  > {
+    const logs = await this.finesRegistrationLogModel
+      .find({})
+      .sort({ createdAt: -1 })
+      .lean()
+      .exec();
+
+    const bySaId = new Map<
+      number,
+      {
+        userId: string;
+        vehicleNumber: string;
+        techPassportNumber: string;
+        addDate?: string;
+      }
+    >();
+    for (const row of logs as {
+      saVehicleId: number;
+      userId: string;
+      vehicleNumber: string;
+      techPassportNumber: string;
+      addDate?: string;
+    }[]) {
+      if (row.saVehicleId != null && !bySaId.has(row.saVehicleId)) {
+        bySaId.set(row.saVehicleId, {
+          userId: row.userId,
+          vehicleNumber: row.vehicleNumber,
+          techPassportNumber: row.techPassportNumber,
+          addDate: row.addDate,
+        });
+      }
+    }
+
+    // ძველი ჩანაწერები (ლოგის გარეშე): FinesVehicle-იდან
+    const fromDb = await this.finesVehicleModel
+      .find({ isActive: true, saVehicleId: { $gt: 0 } })
+      .lean()
+      .exec();
+    for (const v of fromDb as {
+      saVehicleId: number;
+      userId: string;
+      vehicleNumber: string;
+      techPassportNumber: string;
+      addDate?: string;
+    }[]) {
+      if (v.saVehicleId != null && !bySaId.has(v.saVehicleId)) {
+        bySaId.set(v.saVehicleId, {
+          userId: v.userId,
+          vehicleNumber: v.vehicleNumber,
+          techPassportNumber: v.techPassportNumber,
+          addDate: v.addDate,
+        });
+      }
+    }
+
+    const userIds = [
+      ...new Set([...bySaId.values()].map((v) => v.userId).filter(Boolean)),
+    ];
+    const users = await this.userModel
+      .find({ id: { $in: userIds } })
+      .select('id firstName lastName')
+      .lean()
+      .exec();
+
+    const userMap = new Map<
+      string,
+      { firstName?: string; lastName?: string }
+    >();
+    users.forEach(
+      (u: { id: string; firstName?: string; lastName?: string }) => {
+        userMap.set(String(u.id), {
+          firstName: u.firstName,
+          lastName: u.lastName,
+        });
+      },
+    );
+
+    return [...bySaId.entries()].map(([saVehicleId, v]) => ({
+      saVehicleId,
+      userId: v.userId,
+      vehicleNumber: v.vehicleNumber,
+      techPassportNumber: v.techPassportNumber,
+      addDate: v.addDate,
+      owner: v.userId ? (userMap.get(String(v.userId)) ?? null) : null,
+    }));
+  }
+
+  /**
+   * ადმინის გვერდისთვის ყველა მონაცემი ერთი request-ით
+   */
+  async getFinesAdminDashboardData(): Promise<{
+    active: VehicleRegistration[];
+    vehicles: (FinesVehicleDocument & {
+      owner?: {
+        id: string;
+        phone: string;
+        firstName?: string;
+        lastName?: string;
+        email?: string;
+      } | null;
+    })[];
+    saRegistrations: {
+      saVehicleId: number;
+      userId: string;
+      vehicleNumber: string;
+      techPassportNumber: string;
+      addDate?: string;
+      owner?: { firstName?: string; lastName?: string } | null;
+    }[];
+  }> {
+    const [active, vehicles, saRegistrations] = await Promise.all([
+      this.getActiveVehicles(),
+      this.getRegisteredVehiclesWithOwners(),
+      this.getSaRegistrationsWithOwners(),
+    ]);
+    return { active, vehicles, saRegistrations };
+  }
+
+  /**
+   * ჯარიმების cache (debug/admin):
+   * - კონკრეტული იუზერისთვის ინახული penalties
+   * - აქტიური და არქივიც (resolved) ერთად
+   */
+  async getPenaltyCacheByUser(userId: string): Promise<{
+    userId: string;
+    total: number;
+    active: number;
+    unpaidActive: number;
+    items: FinesPenaltyCacheDocument[];
+  }> {
+    const items = await this.finesPenaltyCacheModel
+      .find({ userId })
+      .sort({ isActive: -1, isPayable: -1, lastSeenAt: -1, createdAt: -1 })
+      .lean()
+      .exec();
+
+    const total = items.length;
+    const active = items.filter((i) => i.isActive).length;
+    const unpaidActive = items.filter((i) => i.isActive && i.isPayable).length;
+
+    return {
+      userId,
+      total,
+      active,
+      unpaidActive,
+      items: items as unknown as FinesPenaltyCacheDocument[],
+    };
+  }
+
+  async reconcileMissingSaVehicleIds(limit = 500): Promise<{
+    scanned: number;
+    updated: number;
+    unresolved: number;
+  }> {
+    const docs = await this.finesVehicleModel
+      .find({ isActive: true, saVehicleId: { $in: [0, null] } })
+      .limit(Math.max(1, Math.min(limit, 5000)))
+      .exec();
+
+    let updated = 0;
+    let unresolved = 0;
+    for (const d of docs) {
+      const resolvedSaId = await this.resolveSaVehicleIdFromActiveList(
+        d.vehicleNumber,
+        d.techPassportNumber,
+      );
+      if (resolvedSaId && resolvedSaId > 0) {
+        d.saVehicleId = resolvedSaId;
+        await d.save();
+        updated++;
+      } else {
+        unresolved++;
+      }
+    }
+
+    this.logger.log(
+      `🔧 reconcileMissingSaVehicleIds: scanned=${docs.length}, updated=${updated}, unresolved=${unresolved}`,
+    );
+    return { scanned: docs.length, updated, unresolved };
+  }
+
+  async syncAllActiveFinesUsersCache(): Promise<{
+    usersScanned: number;
+    usersWithUnpaid: number;
+    totalUnpaid: number;
+  }> {
+    const vehicles = await this.finesVehicleModel
+      .find({ isActive: true })
+      .lean()
+      .exec();
+
+    if (vehicles.length === 0) {
+      return { usersScanned: 0, usersWithUnpaid: 0, totalUnpaid: 0 };
+    }
+
+    const byUser = new Map<string, (typeof vehicles)[number][]>();
+    for (const v of vehicles) {
+      const uid = String(v.userId || '').trim();
+      if (!uid) continue;
+      const list = byUser.get(uid) ?? [];
+      list.push(v);
+      byUser.set(uid, list);
+    }
+
+    let usersScanned = 0;
+    for (const [userId, userVehicles] of byUser) {
+      usersScanned++;
+      for (const v of userVehicles) {
+        try {
+          await this.syncPenaltyCacheForVehicle(
+            userId,
+            this.normalizeVehicleNumber(v.vehicleNumber),
+            String(v.techPassportNumber || '').trim(),
+          );
+        } catch (e) {
+          this.logger.warn(
+            `Cache sync failed for user=${userId}, vehicle=${v.vehicleNumber}: ${e}`,
+          );
+        }
+      }
+    }
+
+    const rows = await this.finesPenaltyCacheModel.aggregate<UnpaidAggRow>([
+      { $match: { isActive: true, isPayable: true } },
+      { $group: { _id: '$userId', unpaidCount: { $sum: 1 } } },
+    ]);
+
+    const usersWithUnpaid = rows.length;
+    const totalUnpaid = rows.reduce(
+      (acc: number, r: { unpaidCount?: number }) =>
+        acc + Number(r.unpaidCount || 0),
+      0,
+    );
+
+    return { usersScanned, usersWithUnpaid, totalUnpaid };
+  }
+
+  async getUnpaidUsersFromCache(): Promise<
+    { userId: string; unpaidCount: number; activeVehicles: number }[]
+  > {
+    const rows = await this.finesPenaltyCacheModel.aggregate<UnpaidAggRow>([
+      { $match: { isActive: true, isPayable: true } },
+      { $group: { _id: '$userId', unpaidCount: { $sum: 1 } } },
+      { $sort: { unpaidCount: -1 } },
+    ]);
+
+    const vehicleRows = await this.finesVehicleModel.aggregate<VehiclesAggRow>([
+      { $match: { isActive: true } },
+      { $group: { _id: '$userId', activeVehicles: { $sum: 1 } } },
+    ]);
+    const vehicleMap = new Map<string, number>(
+      vehicleRows.map((r: { _id: string; activeVehicles?: number }) => [
+        String(r._id),
+        Number(r.activeVehicles || 0),
+      ]),
+    );
+
+    return rows.map((r: { _id: string; unpaidCount?: number }) => ({
+      userId: String(r._id),
+      unpaidCount: Number(r.unpaidCount || 0),
+      activeVehicles: vehicleMap.get(String(r._id)) || 0,
+    }));
+  }
+
+  async sendCustomPushToUnpaidUsers(
+    title: string,
+    body: string,
+  ): Promise<{ targets: number; sent: number }> {
+    const unpaidUsers = await this.getUnpaidUsersFromCache();
+    const targets = unpaidUsers.map((u) => ({ userId: u.userId }));
+    if (targets.length === 0) return { targets: 0, sent: 0 };
+
+    await this.notificationsService.sendPushToTargets(
+      targets,
+      {
+        title,
+        body,
+        data: {
+          type: 'garage_fines_reminder',
+          screen: 'GarageFines',
+          source: 'admin_manual',
+          timestamp: new Date().toISOString(),
+        },
+        sound: 'default',
+        badge: 1,
+      },
+      'system',
+    );
+
+    return { targets: targets.length, sent: targets.length };
   }
 
   /**
@@ -1044,6 +1490,222 @@ export class FinesService implements OnModuleInit {
     return expired.modifiedCount;
   }
 
+  private async syncPenaltyCacheForVehicle(
+    userId: string,
+    vehicleNumberRaw: string,
+    techPassportNumber: string,
+  ): Promise<number> {
+    const vehicleNumber = this.normalizeVehicleNumber(vehicleNumberRaw);
+    const tp = String(techPassportNumber || '').trim();
+    if (!vehicleNumber || !tp) return 0;
+
+    const now = new Date();
+    const penalties = await this.getPenalties(vehicleNumber, tp);
+    const currentProtocolIds = new Set<number>();
+
+    if (penalties.length > 0) {
+      const ops = penalties.map((p) => {
+        const protocolId = Number(p.protocolId);
+        currentProtocolIds.add(protocolId);
+        return {
+          updateOne: {
+            filter: { userId, vehicleNumber, protocolId },
+            update: {
+              $setOnInsert: { firstSeenAt: now },
+              $set: {
+                techPassportNumber: tp,
+                penaltyNumber: p.penaltyNumber,
+                penaltyTypeName: p.penaltyTypeName,
+                finalAmount: p.finalAmount,
+                isPayable: Boolean(p.isPayable),
+                violationDate: p.violationDate,
+                fineDate: p.fineDate,
+                penaltyDate: p.penaltyDate,
+                raw: p as unknown as Record<string, unknown>,
+                isActive: true,
+                lastSeenAt: now,
+                resolvedAt: null,
+              },
+            },
+            upsert: true,
+          },
+        };
+      });
+      if (ops.length > 0) {
+        await this.finesPenaltyCacheModel.bulkWrite(ops, { ordered: false });
+      }
+    }
+
+    const protocolIds = [...currentProtocolIds];
+    if (protocolIds.length > 0) {
+      await this.finesPenaltyCacheModel.updateMany(
+        {
+          userId,
+          vehicleNumber,
+          isActive: true,
+          protocolId: { $nin: protocolIds },
+        },
+        { $set: { isActive: false, isPayable: false, resolvedAt: now } },
+      );
+    } else {
+      await this.finesPenaltyCacheModel.updateMany(
+        { userId, vehicleNumber, isActive: true },
+        { $set: { isActive: false, isPayable: false, resolvedAt: now } },
+      );
+    }
+
+    return penalties.filter((p) => p.isPayable).length;
+  }
+
+  private async getCachedUnpaidCountForUser(userId: string): Promise<number> {
+    return this.finesPenaltyCacheModel.countDocuments({
+      userId,
+      isActive: true,
+      isPayable: true,
+    });
+  }
+
+  /**
+   * გარაჟში დარეგისტრირებული მანქანების გადასახდელი ჯარიმების შეხსენება.
+   * ჯარიმების ინფო (push) მხოლოდ აქტიური პრემიუმისას: (1) SA-ზე შემოწმებამდე,
+   * (2) გაგზავნამდე ხელახლა — რომ გაუქმებული პრემიუმისას არ გაეგზავნოს.
+   * დღეში 2x — ~10:00 და ~19:00 თბილისი (+ იმავე ფანჯრის catch-up).
+   */
+  @Cron('*/5 * * * *', { timeZone: 'Asia/Tbilisi' })
+  async sendGarageUnpaidFinesReminderPushes(
+    forceRun = false,
+    targetUserId?: string,
+  ): Promise<{ usersProcessed: number; pushes: number; slotKey: string }> {
+    const now = Date.now();
+    const slotKey = forceRun
+      ? `manual_${new Date(now).toISOString()}`
+      : this.finesReminderSlotKey(now);
+    if (!slotKey) return { usersProcessed: 0, pushes: 0, slotKey: '' };
+    if (this.isSendingFinesReminders) {
+      return { usersProcessed: 0, pushes: 0, slotKey };
+    }
+
+    this.isSendingFinesReminders = true;
+    const todayStr = this.getTbilisiYmdAndMinutes(new Date(now)).ymd;
+    let usersProcessed = 0;
+    let pushes = 0;
+
+    try {
+      const vehicles = await this.finesVehicleModel
+        .find({ isActive: true })
+        .lean()
+        .exec();
+
+      if (vehicles.length === 0) {
+        return { usersProcessed: 0, pushes: 0, slotKey };
+      }
+
+      const byUser = new Map<string, (typeof vehicles)[number][]>();
+      for (const v of vehicles) {
+        const uid = String(v.userId);
+        const list = byUser.get(uid) ?? [];
+        list.push(v);
+        byUser.set(uid, list);
+      }
+
+      for (const [userId, userVehicles] of byUser) {
+        if (targetUserId && userId !== targetUserId) continue;
+        if (!forceRun) {
+          const sent = await this.finesDailyReminderModel
+            .findOne({ userId, ymd: todayStr })
+            .select('slots')
+            .lean()
+            .exec();
+          if (sent?.slots?.includes(slotKey)) continue;
+        }
+
+        const sub = await this.subscriptionsService.getUserSubscription(userId);
+        if (!this.userHasPremiumForFinesReminders(sub)) {
+          if (forceRun) continue;
+          await this.finesDailyReminderModel.updateOne(
+            { userId, ymd: todayStr },
+            { $addToSet: { slots: slotKey } },
+            { upsert: true },
+          );
+          continue;
+        }
+
+        let syncHadSuccess = false;
+        for (const v of userVehicles) {
+          const plateSa = this.normalizeVehicleNumber(v.vehicleNumber);
+          const tp = String(v.techPassportNumber || '').trim();
+          if (!plateSa || !tp) continue;
+          try {
+            await this.syncPenaltyCacheForVehicle(userId, plateSa, tp);
+            syncHadSuccess = true;
+          } catch (e) {
+            this.logger.warn(
+              `Fines reminder: cache sync failed for ${plateSa} (user ${userId}): ${e}`,
+            );
+          }
+          await new Promise((r) => setTimeout(r, 120));
+        }
+
+        const totalPayable = await this.getCachedUnpaidCountForUser(userId);
+
+        usersProcessed++;
+
+        if (totalPayable > 0) {
+          const subNow =
+            await this.subscriptionsService.getUserSubscription(userId);
+          if (!this.userHasPremiumForFinesReminders(subNow)) {
+            this.logger.debug(
+              `Garage fines reminder: ჯარიმების push არ გაიგზავნა (userId=${userId}) — აქტიური პრემიუმი არ არის`,
+            );
+          } else {
+            const body =
+              totalPayable === 1
+                ? 'გაქვს 1 გადასახდელი ჯარიმა — შეამოწმე გარაჟში.'
+                : `გაქვს ${totalPayable} გადასახდელი ჯარიმა — შეამოწმე გარაჟში.`;
+
+            await this.notificationsService.sendPushToTargets(
+              [{ userId }],
+              {
+                title: 'ჯარიმები',
+                body,
+                data: {
+                  type: 'garage_fines_reminder',
+                  screen: 'GarageFines',
+                  unpaidCount: String(totalPayable),
+                },
+              },
+              'system',
+            );
+            pushes++;
+          }
+        }
+
+        if (!syncHadSuccess) {
+          this.logger.debug(
+            `Fines reminder: user ${userId} - sync სრულად ჩავარდა, გამოყენებულია არსებული cache`,
+          );
+        }
+
+        if (!forceRun) {
+          await this.finesDailyReminderModel.updateOne(
+            { userId, ymd: todayStr },
+            { $addToSet: { slots: slotKey } },
+            { upsert: true },
+          );
+        }
+      }
+
+      if (usersProcessed > 0) {
+        this.logger.log(
+          `📣 Garage fines reminders [slot ${slotKey}]: users=${usersProcessed}, pushes=${pushes}`,
+        );
+      }
+      return { usersProcessed, pushes, slotKey };
+    } finally {
+      this.isSendingFinesReminders = false;
+    }
+  }
+
   /**
    * ყოველდღიური ჯარიმების შემოწმება აქტიური გამოწერებისთვის
    * (cron job-ისთვის)
@@ -1075,7 +1737,7 @@ export class FinesService implements OnModuleInit {
           this.logger.log(
             `⚠️ Found ${penalties.length} fines for ${sub.vehicleNumber} (user: ${sub.userId})`,
           );
-          // TODO: push notification-ის გაგზავნა
+          // Push: გარაჟის FinesVehicle + sendGarageUnpaidFinesReminderPushes
         }
       } catch (error) {
         this.logger.error(

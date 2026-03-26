@@ -15,6 +15,14 @@ import {
   ServiceHistoryDocument,
 } from '../schemas/service-history.schema';
 import { User, UserDocument } from '../schemas/user.schema';
+import {
+  FinesVehicle,
+  FinesVehicleDocument,
+} from '../schemas/fines-vehicle.schema';
+import {
+  FinesDailyReminder,
+  FinesDailyReminderDocument,
+} from '../schemas/fines-daily-reminder.schema';
 import { CreateCarDto } from './dto/create-car.dto';
 import { UpdateCarDto } from './dto/update-car.dto';
 import { CreateReminderDto } from './dto/create-reminder.dto';
@@ -27,6 +35,7 @@ import { NotificationsService } from '../notifications/notifications.service';
 @Injectable()
 export class GarageService {
   private readonly logger = new Logger(GarageService.name);
+  private readonly reminderTz = 'Asia/Tbilisi';
   private isSendingReminders = false; // Lock mechanism to prevent duplicate executions
 
   constructor(
@@ -37,11 +46,142 @@ export class GarageService {
     @InjectModel(ServiceHistory.name)
     private serviceHistoryModel: Model<ServiceHistoryDocument>,
     @InjectModel(User.name) private userModel: Model<UserDocument>,
+    @InjectModel(FinesVehicle.name)
+    private finesVehicleModel: Model<FinesVehicleDocument>,
+    @InjectModel(FinesDailyReminder.name)
+    private finesDailyReminderModel: Model<FinesDailyReminderDocument>,
     private notificationsService: NotificationsService,
   ) {}
 
   private toPlain<T = any>(doc: any): T {
     return typeof doc?.toJSON === 'function' ? (doc.toJSON() as T) : (doc as T);
+  }
+
+  /** YYYY-MM-DD + წუთები თბილისის დროით (notificationSentDate / „9 საათის“ შემოწმება) */
+  private getTbilisiYmdAndMinutes(d: Date): {
+    ymd: string;
+    minutesSinceMidnight: number;
+  } {
+    const fmt = new Intl.DateTimeFormat('en-CA', {
+      timeZone: this.reminderTz,
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false,
+    });
+    const parts = fmt.formatToParts(d);
+    const g = (t: Intl.DateTimeFormatPart['type']) =>
+      parts.find((p) => p.type === t)?.value ?? '0';
+    const hour = parseInt(g('hour'), 10);
+    const minute = parseInt(g('minute'), 10);
+    return {
+      ymd: `${g('year')}-${g('month')}-${g('day')}`,
+      minutesSinceMidnight: hour * 60 + minute,
+    };
+  }
+
+  /**
+   * თბილისის კალენდარული დღის YYYY-MM-DD → იმ დღის 00:00 თბილისში UTC-ში (UTC+4, DST არა).
+   */
+  private tbilisiDayStartUtcMs(ymd: string): number {
+    const [y, m, d] = ymd.split('-').map(Number);
+    return Date.UTC(y, m - 1, d) - 4 * 60 * 60 * 1000;
+  }
+
+  /** დღის დასასრული თბილისში (ინკლუზივ) UTC ms-ში */
+  private tbilisiDayEndUtcMs(ymd: string): number {
+    return this.tbilisiDayStartUtcMs(ymd) + 24 * 60 * 60 * 1000 - 1;
+  }
+
+  /** რამდენი კალენდარული დღითაა მოვლენა წინ (თბილისი): 0=დღეს, 1=ხვალ, ... */
+  private tbilisiCalendarDaysUntilEvent(
+    nowMs: number,
+    eventInstantMs: number,
+  ): number {
+    const n = this.getTbilisiYmdAndMinutes(new Date(nowMs)).ymd;
+    const e = this.getTbilisiYmdAndMinutes(new Date(eventInstantMs)).ymd;
+    const n0 = this.tbilisiDayStartUtcMs(n);
+    const e0 = this.tbilisiDayStartUtcMs(e);
+    return Math.round((e0 - n0) / (24 * 60 * 60 * 1000));
+  }
+
+  private normalizeReminderClock(raw?: string): string | null {
+    if (!raw || typeof raw !== 'string') return null;
+    const m = raw.trim().match(/^(\d{1,2}):(\d{2})/);
+    if (!m) return null;
+    const h = Math.min(23, Math.max(0, parseInt(m[1], 10)));
+    const min = Math.min(59, Math.max(0, parseInt(m[2], 10)));
+    return `${String(h).padStart(2, '0')}:${String(min).padStart(2, '0')}`;
+  }
+
+  /** დღეს (თბილისი) არჩეულ საათზე UTC instant */
+  private getTbilisiTodayAtClockUtcMs(nowMs: number, hhmm: string): number {
+    const clock = this.normalizeReminderClock(hhmm) || '09:00';
+    const [h, mi] = clock.split(':').map(Number);
+    const ymd = this.getTbilisiYmdAndMinutes(new Date(nowMs)).ymd;
+    return this.tbilisiDayStartUtcMs(ymd) + (h * 60 + mi) * 60 * 1000;
+  }
+
+  /**
+   * მიზნის UTC მომენტი ±5 წთ ან იმავე კალენდარულ დღეს catch-up (თბილისი) target დღისთვის.
+   */
+  private shouldFireAtTargetOrCatchup(
+    nowMs: number,
+    targetUtcMs: number,
+    targetDayYmdTbilisi: string,
+  ): boolean {
+    const winBefore = targetUtcMs - 5 * 60 * 1000;
+    const winAfter = targetUtcMs + 5 * 60 * 1000;
+    if (nowMs >= winBefore && nowMs <= winAfter) return true;
+    const end = this.tbilisiDayEndUtcMs(targetDayYmdTbilisi);
+    return nowMs > winAfter && nowMs <= end;
+  }
+
+  private wasReminderSlotSentToday(
+    reminder: any,
+    todayStrTbilisi: string,
+    slotKey: string,
+  ): boolean {
+    if ((reminder as any).notificationSentDate !== todayStrTbilisi)
+      return false;
+    const slots = String((reminder as any).notificationSentSlotsToday || '')
+      .split(',')
+      .map((s) => s.trim())
+      .filter(Boolean);
+    return slots.includes(slotKey);
+  }
+
+  private tbilisiWeekdayShort(ms: number): string {
+    return new Intl.DateTimeFormat('en-US', {
+      timeZone: this.reminderTz,
+      weekday: 'short',
+    }).format(new Date(ms));
+  }
+
+  /** weekly/monthly/yearly — დღეს უნდა ჩავარდეს თუ არა (anchor = reminderDate) */
+  private recurringMatchesCalendarDay(reminder: any, nowMs: number): boolean {
+    const interval = reminder.recurringInterval;
+    if (!interval || interval === 'none') return false;
+    if (interval === 'daily') return true;
+    const anchorMs = new Date(reminder.reminderDate).getTime();
+    const aYmd = this.getTbilisiYmdAndMinutes(new Date(anchorMs)).ymd;
+    const nYmd = this.getTbilisiYmdAndMinutes(new Date(nowMs)).ymd;
+    const [, am, ad] = aYmd.split('-').map(Number);
+    const [ny, nm, nd] = nYmd.split('-').map(Number);
+    if (interval === 'yearly') return am === nm && ad === nd;
+    if (interval === 'monthly') {
+      const lastN = new Date(ny, nm, 0).getDate();
+      const day = Math.min(ad, lastN);
+      return nd === day;
+    }
+    if (interval === 'weekly') {
+      return (
+        this.tbilisiWeekdayShort(anchorMs) === this.tbilisiWeekdayShort(nowMs)
+      );
+    }
+    return false;
   }
 
   private async attachCar(reminder: any) {
@@ -447,11 +587,10 @@ export class GarageService {
   /**
    * Cron job: გაიგზავნება push notifications reminder-ებისთვის
    * გაშვება: ყოველ 5 წუთში (Asia/Tbilisi timezone)
-   * ლოგიკა: იგზავნება notification, თუ reminderDate არის:
-   * - დღეს (0 დღე) - როცა დრო მოდის
-   * - 1 დღეში - როცა დრო მოდის
-   * - 3 დღეში (urgent reminders-ისთვის) - როცა დრო მოდის
-   * - Recurring reminders-ისთვის - recurringInterval-ის მიხედვით
+   * ლოგიკა (თბილისის დრო, მომხმარებლის reminderTime ან default 09:00):
+   * - დღეს: მოვლენის UTC instant ±5 წთ + იმავე დღის catch-up
+   * - ხვალ / 3 დღე (urgent): არჩეულ საათზე ±5 წთ + იმავე დღის catch-up
+   * - Recurring daily: თითო დრო ცალკე სლოტით (დღეში 2 ჯერ); weekly/monthly/yearly: იმავე კალენდარულ დღეს + არჩეული საათი
    */
   @Cron('*/5 * * * *', {
     name: 'send-reminder-notifications',
@@ -473,16 +612,12 @@ export class GarageService {
 
     try {
       const now = Date.now();
-      const today = new Date();
-      today.setHours(0, 0, 0, 0);
-      const todayStart = today.getTime();
-
+      const tbNow = this.getTbilisiYmdAndMinutes(new Date(now));
+      const todayStr = tbNow.ymd;
+      const todayStart = this.tbilisiDayStartUtcMs(todayStr);
       const todayEnd = todayStart + 24 * 60 * 60 * 1000;
-
       const threeDaysStart = todayEnd + 2 * 24 * 60 * 60 * 1000;
       const threeDaysEnd = threeDaysStart + 24 * 60 * 60 * 1000;
-
-      const todayStr = today.toISOString().split('T')[0];
 
       const candidates = await this.reminderModel
         .find({
@@ -493,7 +628,9 @@ export class GarageService {
             { notificationSentDate: { $ne: todayStr } },
             {
               notificationSentDate: todayStr,
-              notificationSentAt: { $lt: todayStart + 12 * 60 * 60 * 1000 }, // დილით გაიგზავნა (12 საათამდე)
+              notificationSentAt: {
+                $lt: todayStart + 12 * 60 * 60 * 1000,
+              },
             },
           ],
           reminderDate: {
@@ -510,121 +647,125 @@ export class GarageService {
       );
 
       let sent = 0;
-      const currentTime = new Date();
-      const currentHour = currentTime.getHours();
-      const currentMinute = currentTime.getMinutes();
 
       for (const reminder of candidates) {
         try {
-          // Recurring reminder-ებისთვის
           if (
             reminder.recurringInterval &&
             reminder.recurringInterval !== 'none'
           ) {
-            const shouldSendRecurring = this.shouldSendRecurringReminder(
+            const recurring = this.shouldSendRecurringReminder(
               reminder,
               now,
               todayStr,
             );
-            if (shouldSendRecurring.shouldSend) {
+            if (recurring.shouldSend) {
               await this.sendReminderNotification(
                 reminder,
-                shouldSendRecurring.title,
-                shouldSendRecurring.body,
+                recurring.title,
+                recurring.body,
                 now,
                 todayStr,
+                recurring.slotKey,
               );
               sent += 1;
             }
             continue;
           }
 
-          // ერთჯერადი reminder-ებისთვის
-          const reminderDate = new Date(reminder.reminderDate);
-          const reminderTimestamp = reminderDate.getTime();
-          const diffMs = reminderTimestamp - now;
-          const diffDays = Math.ceil(diffMs / (1000 * 60 * 60 * 24));
+          const reminderTimestamp = new Date(reminder.reminderDate).getTime();
+          const daysUntil = this.tbilisiCalendarDaysUntilEvent(
+            now,
+            reminderTimestamp,
+          );
 
           let shouldSend = false;
           let notificationTitle = '';
           let notificationBody = '';
+          let slotKey = '';
 
-          // შემოწმება, რომ დღეს უკვე გაიგზავნა თუ არა notification
-          const reminderSentDate = (reminder as any).notificationSentDate;
-          const alreadySentToday = reminderSentDate === todayStr;
+          const clock =
+            this.normalizeReminderClock(reminder.reminderTime) || '09:00';
 
-          // Test mode: გაიგზავნოს ნებისმიერ დროს
           if (testMode) {
-            if (diffDays === 0) {
+            if (daysUntil === 0) {
               shouldSend = true;
+              slotKey = '__test_today__';
               notificationTitle = '⏰ შეხსენება დღეს';
               notificationBody = `${reminder.title} • დღეს უნდა შესრულდეს`;
-            } else if (diffDays === 1) {
+            } else if (daysUntil === 1) {
               shouldSend = true;
+              slotKey = '__test_adv1__';
               notificationTitle = '📅 შეხსენება ხვალ';
               notificationBody = `${reminder.title} • ხვალ უნდა შესრულდეს`;
-            } else if (diffDays === 3 && reminder.isUrgent) {
+            } else if (daysUntil === 3 && reminder.isUrgent) {
               shouldSend = true;
+              slotKey = '__test_adv3__';
               notificationTitle = '🚨 გადაუდებელი შეხსენება';
               notificationBody = `${reminder.title} • 3 დღეში უნდა შესრულდეს`;
             }
-          }
-          // დღეს (0 დღე) - შემოწმება reminderTime-ის მიხედვით
-          else if (diffDays === 0) {
+          } else if (daysUntil === 0) {
+            const eventDayYmd = this.getTbilisiYmdAndMinutes(
+              new Date(reminderTimestamp),
+            ).ymd;
             if (reminder.reminderTime) {
-              const [hours, minutes] = reminder.reminderTime
-                .split(':')
-                .map(Number);
-              const reminderTime = new Date(reminderDate);
-              reminderTime.setHours(hours, minutes, 0, 0);
-              const reminderTimeMs = reminderTime.getTime();
-
-              // გაიგზავნოს 5 წუთით ადრე
-              const fiveMinutesBefore = reminderTimeMs - 5 * 60 * 1000;
-              const fiveMinutesAfter = reminderTimeMs + 5 * 60 * 1000;
-
-              if (
-                now >= fiveMinutesBefore &&
-                now <= fiveMinutesAfter &&
-                !alreadySentToday
+              slotKey = `event_${clock}`;
+              if (this.wasReminderSlotSentToday(reminder, todayStr, slotKey)) {
+                shouldSend = false;
+              } else if (
+                this.shouldFireAtTargetOrCatchup(
+                  now,
+                  reminderTimestamp,
+                  eventDayYmd,
+                )
               ) {
                 shouldSend = true;
                 notificationTitle = '⏰ შეხსენება დღეს';
                 notificationBody = `${reminder.title} • დღეს ${reminder.reminderTime}-ზე`;
               }
             } else {
-              // თუ reminderTime არ არის, გაიგზავნოს დილით 9:00
-              if (currentHour === 9 && currentMinute < 5 && !alreadySentToday) {
+              slotKey = '__today_no_clock__';
+              if (this.wasReminderSlotSentToday(reminder, todayStr, slotKey)) {
+                shouldSend = false;
+              } else {
+                const targetMs = this.getTbilisiTodayAtClockUtcMs(now, '09:00');
+                if (this.shouldFireAtTargetOrCatchup(now, targetMs, todayStr)) {
+                  shouldSend = true;
+                  notificationTitle = '⏰ შეხსენება დღეს';
+                  notificationBody = `${reminder.title} • დღეს უნდა შესრულდეს`;
+                }
+              }
+            }
+          } else if (daysUntil === 1) {
+            slotKey = '__adv1__';
+            if (!this.wasReminderSlotSentToday(reminder, todayStr, slotKey)) {
+              const targetMs = this.getTbilisiTodayAtClockUtcMs(now, clock);
+              if (this.shouldFireAtTargetOrCatchup(now, targetMs, todayStr)) {
                 shouldSend = true;
-                notificationTitle = '⏰ შეხსენება დღეს';
-                notificationBody = `${reminder.title} • დღეს უნდა შესრულდეს`;
+                notificationTitle = '📅 შეხსენება ხვალ';
+                notificationBody = `${reminder.title} • ხვალ ${clock}-ზე`;
+              }
+            }
+          } else if (daysUntil === 3 && reminder.isUrgent) {
+            slotKey = '__adv3__';
+            if (!this.wasReminderSlotSentToday(reminder, todayStr, slotKey)) {
+              const targetMs = this.getTbilisiTodayAtClockUtcMs(now, clock);
+              if (this.shouldFireAtTargetOrCatchup(now, targetMs, todayStr)) {
+                shouldSend = true;
+                notificationTitle = '🚨 გადაუდებელი შეხსენება';
+                notificationBody = `${reminder.title} • 3 დღეში (${clock})`;
               }
             }
           }
-          // 1 დღეში - გაიგზავნოს დილით 9:00
-          else if (diffDays === 1) {
-            if (currentHour === 9 && currentMinute < 5 && !alreadySentToday) {
-              shouldSend = true;
-              notificationTitle = '📅 შეხსენება ხვალ';
-              notificationBody = `${reminder.title} • ხვალ უნდა შესრულდეს`;
-            }
-          }
-          // 3 დღეში (urgent reminders-ისთვის) - გაიგზავნოს დილით 9:00
-          else if (diffDays === 3 && reminder.isUrgent) {
-            if (currentHour === 9 && currentMinute < 5 && !alreadySentToday) {
-              shouldSend = true;
-              notificationTitle = '🚨 გადაუდებელი შეხსენება';
-              notificationBody = `${reminder.title} • 3 დღეში უნდა შესრულდეს`;
-            }
-          }
 
-          if (shouldSend) {
+          if (shouldSend && slotKey) {
             await this.sendReminderNotification(
               reminder,
               notificationTitle,
               notificationBody,
               now,
               todayStr,
+              slotKey,
             );
             sent += 1;
           }
@@ -649,6 +790,126 @@ export class GarageService {
   }
 
   /**
+   * Cron job: ჯარიმების push შეხსენება დღეში 2-ჯერ (თბილისის დროით)
+   * - 10:00 (დილა)
+   * - 20:00 (საღამო)
+   *
+   * აგზავნის მხოლოდ იმ მომხმარებლებზე, ვისაც აქტიური fines-მანქანა აქვს.
+   * slot დუბლირება იზღუდება FinesDailyReminder კოლექციით (ymd + morning/evening).
+   */
+  @Cron('0 10,20 * * *', {
+    name: 'send-fines-reminder-notifications',
+    timeZone: 'Asia/Tbilisi',
+  })
+  async sendFinesReminderNotifications(): Promise<{ sent: number }> {
+    try {
+      const now = Date.now();
+      const tbNow = this.getTbilisiYmdAndMinutes(new Date(now));
+      const ymd = tbNow.ymd;
+      const hour = Math.floor(tbNow.minutesSinceMidnight / 60);
+      const slot = hour < 15 ? 'morning' : 'evening';
+
+      this.logger.log(
+        `🚨 [FINES REMINDER] დაწყებულია fines push reminder (${ymd}, ${slot})`,
+      );
+
+      const rows = await this.finesVehicleModel
+        .aggregate([
+          { $match: { isActive: true } },
+          {
+            $group: {
+              _id: '$userId',
+              vehiclesCount: { $sum: 1 },
+            },
+          },
+          { $project: { _id: 0, userId: '$_id', vehiclesCount: 1 } },
+          { $limit: 2000 },
+        ])
+        .exec();
+
+      if (!rows.length) {
+        this.logger.log(
+          `ℹ️ [FINES REMINDER] აქტიური fines მანქანები ვერ მოიძებნა (${ymd}, ${slot})`,
+        );
+        return { sent: 0 };
+      }
+
+      let sent = 0;
+      for (const row of rows) {
+        const userId = String(row.userId || '').trim();
+        const vehiclesCount = Number(row.vehiclesCount || 0);
+        if (!userId || vehiclesCount <= 0) continue;
+
+        try {
+          const alreadySent = await this.finesDailyReminderModel
+            .findOne({
+              userId,
+              ymd,
+              slots: slot,
+            })
+            .lean()
+            .exec();
+          if (alreadySent) continue;
+
+          const title =
+            slot === 'morning'
+              ? '🌤️ დილის შეხსენება — ჯარიმები'
+              : '🌙 საღამოს შეხსენება — ჯარიმები';
+          const body =
+            vehiclesCount === 1
+              ? 'ერთი მანქანა გაქვს მონიტორინგზე — გადაამოწმე ახალი ჯარიმები.'
+              : `${vehiclesCount} მანქანა გაქვს მონიტორინგზე — გადაამოწმე ახალი ჯარიმები.`;
+
+          await this.notificationsService.sendPushToTargets(
+            [{ userId }],
+            {
+              title,
+              body,
+              data: {
+                type: 'garage_fines_reminder',
+                screen: 'Fines',
+                slot,
+                ymd,
+                vehiclesCount: String(vehiclesCount),
+              },
+              sound: 'default',
+              badge: 1,
+            },
+            'system',
+          );
+
+          await this.finesDailyReminderModel
+            .updateOne(
+              { userId, ymd },
+              {
+                $setOnInsert: { userId, ymd },
+                $addToSet: { slots: slot },
+              },
+              { upsert: true },
+            )
+            .exec();
+
+          sent += 1;
+        } catch (error) {
+          this.logger.warn(
+            `⚠️ [FINES REMINDER] user ${userId}-ზე გაგზავნა ვერ მოხერხდა: ${(error as Error).message}`,
+          );
+        }
+      }
+
+      this.logger.log(
+        `✅ [FINES REMINDER] დასრულდა: გაიგზავნა ${sent} მომხმარებელზე (${ymd}, ${slot})`,
+      );
+      return { sent };
+    } catch (error) {
+      this.logger.error(
+        `❌ [FINES REMINDER] cron შეცდომა: ${(error as Error).message}`,
+      );
+      return { sent: 0 };
+    }
+  }
+
+  /**
    * Helper method: გაგზავნის reminder notification-ს
    */
   private async sendReminderNotification(
@@ -656,7 +917,8 @@ export class GarageService {
     title: string,
     body: string,
     now: number,
-    todayStr: string,
+    todayStrTbilisi: string,
+    slotKey: string,
   ): Promise<void> {
     // მოძებნა მანქანის ინფორმაცია
     const car = await this.carModel.findById(reminder.carId).lean().exec();
@@ -683,13 +945,28 @@ export class GarageService {
       'system',
     );
 
-    // მონიშვნა, რომ notification გაიგზავნა
+    const prevDate = (reminder as any).notificationSentDate as
+      | string
+      | undefined;
+    const prevSlotsRaw = String(
+      (reminder as any).notificationSentSlotsToday || '',
+    );
+    const slotsArr =
+      prevDate === todayStrTbilisi
+        ? prevSlotsRaw
+            .split(',')
+            .map((s) => s.trim())
+            .filter(Boolean)
+        : [];
+    if (!slotsArr.includes(slotKey)) slotsArr.push(slotKey);
+
     await this.reminderModel.updateOne(
       { _id: (reminder as any)._id },
       {
         $set: {
           notificationSentAt: now,
-          notificationSentDate: todayStr,
+          notificationSentDate: todayStrTbilisi,
+          notificationSentSlotsToday: slotsArr.join(','),
         },
       },
     );
@@ -706,101 +983,99 @@ export class GarageService {
     reminder: any,
     now: number,
     todayStr: string,
-  ): { shouldSend: boolean; title: string; body: string } {
-    const reminderSentDate = (reminder as any).notificationSentDate;
-    const alreadySentToday = reminderSentDate === todayStr;
+  ): { shouldSend: boolean; title: string; body: string; slotKey: string } {
+    const empty = { shouldSend: false, title: '', body: '', slotKey: '' };
 
-    if (alreadySentToday) {
-      return { shouldSend: false, title: '', body: '' };
+    if (reminder.recurringInterval === 'none' || !reminder.recurringInterval) {
+      return empty;
     }
 
-    // შემოწმება startDate და endDate
+    if (!this.recurringMatchesCalendarDay(reminder, now)) {
+      return empty;
+    }
+
     if (reminder.startDate) {
-      const startDate = new Date(reminder.startDate);
-      startDate.setHours(0, 0, 0, 0);
-      if (now < startDate.getTime()) {
-        return { shouldSend: false, title: '', body: '' };
-      }
+      const startMs = this.tbilisiDayStartUtcMs(
+        String(reminder.startDate).slice(0, 10),
+      );
+      if (now < startMs) return empty;
     }
 
     if (reminder.endDate) {
-      const endDate = new Date(reminder.endDate);
-      endDate.setHours(23, 59, 59, 999);
-      if (now > endDate.getTime()) {
-        return { shouldSend: false, title: '', body: '' };
-      }
+      const endMs = this.tbilisiDayEndUtcMs(
+        String(reminder.endDate).slice(0, 10),
+      );
+      if (now > endMs) return empty;
     }
 
-    // Daily reminders - შემოწმება reminderTime-ის მიხედვით
+    const trySlot = (
+      hhmmRaw: string | undefined,
+      slotSuffix: string,
+      title: string,
+      bodyLine: string,
+    ) => {
+      const clock =
+        this.normalizeReminderClock(hhmmRaw) ||
+        this.normalizeReminderClock(reminder.reminderTime) ||
+        '09:00';
+      const slotKey = `rec_${reminder.recurringInterval}_${slotSuffix}_${clock}`;
+      if (this.wasReminderSlotSentToday(reminder, todayStr, slotKey)) {
+        return empty;
+      }
+      const targetMs = this.getTbilisiTodayAtClockUtcMs(now, clock);
+      if (!this.shouldFireAtTargetOrCatchup(now, targetMs, todayStr)) {
+        return empty;
+      }
+      return {
+        shouldSend: true,
+        title,
+        body: bodyLine,
+        slotKey,
+      };
+    };
+
     if (reminder.recurringInterval === 'daily') {
       if (reminder.reminderTime) {
-        const [hours, minutes] = reminder.reminderTime.split(':').map(Number);
-        const currentTime = new Date(now);
-        const reminderTime = new Date(currentTime);
-        reminderTime.setHours(hours, minutes, 0, 0);
-        const reminderTimeMs = reminderTime.getTime();
-
-        // გაიგზავნოს 5 წუთით ადრე
-        const fiveMinutesBefore = reminderTimeMs - 5 * 60 * 1000;
-        const fiveMinutesAfter = reminderTimeMs + 5 * 60 * 1000;
-
-        if (now >= fiveMinutesBefore && now <= fiveMinutesAfter) {
-          return {
-            shouldSend: true,
-            title: 'MARTE: ⏰ შეხსენება',
-            body: `${reminder.title} • ${reminder.reminderTime}`,
-          };
-        }
+        const r = trySlot(
+          reminder.reminderTime,
+          't1',
+          'MARTE: ⏰ შეხსენება',
+          `${reminder.title} • ${reminder.reminderTime}`,
+        );
+        if (r.shouldSend) return r;
       }
-
-      // მეორე დრო (reminderTime2) - დღეში 2 ჯერ
       if (reminder.reminderTime2) {
-        const [hours, minutes] = reminder.reminderTime2.split(':').map(Number);
-        const currentTime = new Date(now);
-        const reminderTime = new Date(currentTime);
-        reminderTime.setHours(hours, minutes, 0, 0);
-        const reminderTimeMs = reminderTime.getTime();
-
-        const fiveMinutesBefore = reminderTimeMs - 5 * 60 * 1000;
-        const fiveMinutesAfter = reminderTimeMs + 5 * 60 * 1000;
-
-        if (now >= fiveMinutesBefore && now <= fiveMinutesAfter) {
-          return {
-            shouldSend: true,
-            title: '⏰ შეხსენება',
-            body: `${reminder.title} • ${reminder.reminderTime2}`,
-          };
-        }
+        const r = trySlot(
+          reminder.reminderTime2,
+          't2',
+          '⏰ შეხსენება',
+          `${reminder.title} • ${reminder.reminderTime2}`,
+        );
+        if (r.shouldSend) return r;
       }
+      return empty;
     }
 
-    // Weekly, Monthly, Yearly - გაიგზავნოს დილით 9:00
     if (
       reminder.recurringInterval === 'weekly' ||
       reminder.recurringInterval === 'monthly' ||
       reminder.recurringInterval === 'yearly'
     ) {
-      const currentTime = new Date(now);
-      const currentHour = currentTime.getHours();
-      const currentMinute = currentTime.getMinutes();
-
-      if (currentHour === 9 && currentMinute < 5) {
-        const intervalText =
-          reminder.recurringInterval === 'weekly'
-            ? 'ყოველ კვირაში'
-            : reminder.recurringInterval === 'monthly'
-              ? 'ყოველ თვეში'
-              : 'ყოველ წელს';
-
-        return {
-          shouldSend: true,
-          title: '⏰ შეხსენება',
-          body: `${reminder.title} • ${intervalText}`,
-        };
-      }
+      const intervalText =
+        reminder.recurringInterval === 'weekly'
+          ? 'ყოველ კვირაში'
+          : reminder.recurringInterval === 'monthly'
+            ? 'ყოველ თვეში'
+            : 'ყოველ წელს';
+      return trySlot(
+        reminder.reminderTime,
+        'wm',
+        '⏰ შეხსენება',
+        `${reminder.title} • ${intervalText}`,
+      );
     }
 
-    return { shouldSend: false, title: '', body: '' };
+    return empty;
   }
 
   // Service History Methods

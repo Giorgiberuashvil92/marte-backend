@@ -382,23 +382,34 @@ export class BOGController {
             .findOne({ orderId: order_id })
             .exec();
 
-          // თუ payment არ მოიძებნა, შევამოწმოთ external_order_id-ით (frontend-იდან შექმნილი payment-ი)
+          // თუ payment არ მოიძებნა, შევამოწმოთ external_order_id-ით.
+          // აპი POST /api/payments-ზე ხშირად ინახავს მხოლოდ orderId = იგივე string რაც BOG-ზე გაეგზავნა external_order_id-ად,
+          // externalOrderId ველს კი არ ავსებს — ამიტომ ორივე ველით ვეძებთ.
           if (!payment && external_order_id) {
             this.logger.log(
-              `   🔍 Payment არ მოიძებნა orderId-ით, ვცდილობთ external_order_id-ით: ${external_order_id}`,
+              `   🔍 Payment არ მოიძებნა BOG orderId-ით, ვცდილობთ external_order_id-ით (externalOrderId ან orderId ველი): ${external_order_id}`,
             );
             payment = await this.paymentModel
-              .findOne({ externalOrderId: external_order_id })
+              .findOne({
+                $or: [
+                  { externalOrderId: external_order_id },
+                  { orderId: external_order_id },
+                ],
+              })
               .exec();
 
             if (payment) {
-              this.logger.log(`   ✅ Payment ნაპოვნია external_order_id-ით!`);
-              // განვაახლოთ orderId BOG-ის order_id-ით, რომ მომავალში სწორად მოიძებნოს
+              this.logger.log(
+                `   ✅ Payment ნაპოვნია app-ის external order string-ით!`,
+              );
               await this.paymentModel
-                .findByIdAndUpdate(payment._id, { orderId: order_id })
+                .findByIdAndUpdate(payment._id, {
+                  orderId: order_id,
+                  externalOrderId: external_order_id,
+                })
                 .exec();
               this.logger.log(
-                `   ✅ Payment orderId განახლებულია: ${order_id}`,
+                `   ✅ Payment orderId → BOG id განახლებულია: ${order_id}`,
               );
             }
           }
@@ -682,32 +693,80 @@ export class BOGController {
             );
 
             let userId = 'unknown';
+            /** SubscriptionModal + payment-card: subscription_<planId>_<userId>_<timestamp> (planId-ში შეიძლება იყოს ჰიფენი, მაგ. premium-monthly) */
+            let subscriptionParsedPlanId: string | undefined;
 
-            // Pattern: test_payment_1234567890_userId, test_subscription_1234567890_userId, carapp_1234567890_userId, store_payment_storeId_timestamp_userId
             this.logger.log(
               `   🔍 Pattern matching-ის ცდა: ${externalOrderId}`,
             );
-            const userIdMatch =
-              externalOrderId.match(/test_payment_\d+_(.+)/) ||
-              externalOrderId.match(/test_subscription_\d+_(.+)/) ||
-              externalOrderId.match(/carapp_\d+_(.+)/) ||
-              externalOrderId.match(/subscription_\w+_\d+_(.+)/) || // subscription_basic_1234567890_userId
-              externalOrderId.match(/store_payment_\w+_\d+_(.+)/) || // store_payment_storeId_timestamp_userId
-              externalOrderId.match(/recurring_.*_(\d+)$/); // recurring_orderId_timestamp_userId
 
-            if (userIdMatch && userIdMatch[1]) {
+            const subscriptionUserPlanMatch = externalOrderId.match(
+              /^subscription_(.+?)_(usr_\d+|[a-f0-9]{24})_(\d{10,})$/i,
+            );
+            if (
+              subscriptionUserPlanMatch &&
+              subscriptionUserPlanMatch[1] &&
+              subscriptionUserPlanMatch[2]
+            ) {
+              subscriptionParsedPlanId = subscriptionUserPlanMatch[1];
+              userId = subscriptionUserPlanMatch[2];
+              this.logger.log(
+                `   ✅ Subscription external_order (app ფორმატი): planId=${subscriptionParsedPlanId}, userId=${userId}`,
+              );
+            }
+
+            // BOG ზოგჯერ external_order_id-ს ამოჭრის/ცვლის — მოქნილი fallback
+            if (userId === 'unknown' && externalOrderId) {
+              const looseUsr = externalOrderId.match(/(usr_\d+)/);
+              if (looseUsr) {
+                userId = looseUsr[1];
+                this.logger.log(`   ✅ User ID (loose usr_* match): ${userId}`);
+              }
+            }
+            if (
+              !subscriptionParsedPlanId &&
+              externalOrderId.includes('subscription')
+            ) {
+              const planLoose = externalOrderId.match(
+                /^subscription_(.+?)_usr_\d+/i,
+              );
+              if (planLoose?.[1]) {
+                subscriptionParsedPlanId = planLoose[1];
+                this.logger.log(
+                  `   ✅ Plan ID (loose, subscription_*_usr_*): ${subscriptionParsedPlanId}`,
+                );
+              }
+            }
+
+            // Pattern: test_payment_1234567890_userId, test_subscription_1234567890_userId, carapp_1234567890_userId, store_payment_storeId_timestamp_userId
+            const userIdMatch =
+              userId !== 'unknown'
+                ? null
+                : externalOrderId.match(/test_payment_\d+_(.+)/) ||
+                  externalOrderId.match(/test_subscription_\d+_(.+)/) ||
+                  externalOrderId.match(/carapp_\d+_(.+)/) ||
+                  // ძველი ფორმატი: subscription_<plan>_timestamp_<userId> (plan მხოლოდ word chars)
+                  externalOrderId.match(/subscription_\w+_\d+_(.+)/) ||
+                  externalOrderId.match(/store_payment_\w+_\d+_(.+)/) ||
+                  externalOrderId.match(/recurring_.*_(\d+)$/);
+
+            if (userId === 'unknown' && userIdMatch && userIdMatch[1]) {
               userId = userIdMatch[1];
               this.logger.log(`   ✅ User ID ნაპოვნია pattern-ით: ${userId}`);
-            } else {
+            } else if (userId === 'unknown') {
               // თუ pattern-ით ვერ მოიძებნა, შევეცადოთ external_order_id-დან პირდაპირ მოვძებნოთ
               // ან შევამოწმოთ არსებული payment-ში external_order_id-ით
               this.logger.log(
                 `   ⚠️ User ID pattern-ით ვერ მოიძებნა, ვცდილობთ payment-ის მოძებნას external_order_id-ით...`,
               );
 
-              // ვპოულობთ payment-ს external_order_id-ით (frontend-იდან შექმნილი payment-ი)
               const existingPaymentForUserId = await this.paymentModel
-                .findOne({ orderId: external_order_id })
+                .findOne({
+                  $or: [
+                    { orderId: external_order_id },
+                    { externalOrderId: external_order_id },
+                  ],
+                })
                 .exec();
 
               this.logger.log(
@@ -772,30 +831,49 @@ export class BOGController {
             let planCurrency: string | undefined;
             let planPeriod: string | undefined;
 
-            // შევამოწმოთ external_order_id-ში planId (pattern: subscription_planId_timestamp_userId)
-            const planIdMatch = external_order_id.match(
-              /subscription_(\w+)_\d+_(.+)/,
-            );
-            if (planIdMatch && planIdMatch[1]) {
-              planId = planIdMatch[1];
+            // Plan ID external_order-იდან (იგივე პარსინგი რაც userId-სთვის ზემოთ)
+            if (subscriptionParsedPlanId) {
+              planId = subscriptionParsedPlanId;
               this.logger.log(
-                `   ✅ Plan ID ნაპოვნია external_order_id-დან: ${planId}`,
+                `   ✅ Plan ID ნაპოვნია external_order_id-დან (app ფორმატი): ${planId}`,
               );
-
-              // Plan period-ის განსაზღვრა planId-დან
-              if (planId === 'premium-monthly') {
-                planPeriod = 'თვეში';
-                planName = planName || 'პრემიუმ - თვეში';
-              } else if (planId === 'basic') {
-                planPeriod = 'უფასო';
-                planName = planName || 'ძირითადი';
+            } else {
+              const planIdMatch = external_order_id.match(
+                /subscription_(\w+)_\d+_(.+)/,
+              );
+              if (planIdMatch && planIdMatch[1]) {
+                planId = planIdMatch[1];
+                this.logger.log(
+                  `   ✅ Plan ID ნაპოვნია external_order_id-დან (legacy): ${planId}`,
+                );
               }
+            }
+
+            if (planId === 'premium-monthly') {
+              planPeriod = planPeriod || 'თვეში';
+              planName = planName || 'პრემიუმ - თვეში';
+            } else if (
+              planId === 'premium-6months' ||
+              planId === 'premium-yearly'
+            ) {
+              planPeriod =
+                planPeriod ||
+                (planId === 'premium-yearly' ? 'წლიური' : '6 თვე');
+              planName = planName || 'პრემიუმ';
+            } else if (planId === 'basic') {
+              planPeriod = planPeriod || 'უფასო';
+              planName = planName || 'ძირითადი';
             }
 
             // თუ planId ვერ მოიძებნა, შევამოწმოთ არსებული payment-ში (external_order_id-ით)
             if (!planId) {
               const existingPaymentForPlan = await this.paymentModel
-                .findOne({ orderId: external_order_id })
+                .findOne({
+                  $or: [
+                    { orderId: external_order_id },
+                    { externalOrderId: external_order_id },
+                  ],
+                })
                 .exec();
 
               if (existingPaymentForPlan?.metadata?.planId) {

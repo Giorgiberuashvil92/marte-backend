@@ -3,6 +3,10 @@ import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import { User } from '../schemas/user.schema';
 import { Request } from '../schemas/request.schema';
+import {
+  LoginHistory,
+  LoginHistoryDocument,
+} from '../schemas/login-history.schema';
 
 type ListParams = {
   q?: string;
@@ -17,6 +21,8 @@ export class UsersService {
   constructor(
     @InjectModel(User.name) private readonly userModel: Model<User>,
     @InjectModel(Request.name) private readonly requestModel: Model<Request>,
+    @InjectModel(LoginHistory.name)
+    private readonly loginHistoryModel: Model<LoginHistoryDocument>,
   ) {}
 
   async list(params: ListParams) {
@@ -201,30 +207,52 @@ export class UsersService {
   }
 
   /**
-   * აბრუნებს მომხმარებლების ტელეფონის ნომრებს და სახელებს
-   * @param filter - ფილტრი (role, active, etc.)
-   * @returns მომხმარებლების ინფორმაცია (phone, firstName, lastName)
+   * აბრუნებს მომხმარებლების ტელეფონის ნომრებს და სახელებს.
+   * loginAfter მითითებისას მხოლოდ იმ იუზერები, ვისაც აქვს შესვლა ამ თარიღის შემდეგ.
    */
   async getPhoneNumbers(filter?: {
     role?: string;
     active?: boolean;
-  }): Promise<Array<{ phone: string; firstName?: string; lastName?: string }>> {
-    const queryFilter: any = {};
+    loginAfter?: string;
+  }): Promise<
+    Array<{
+      phone: string;
+      userId?: string;
+      firstName?: string;
+      lastName?: string;
+      email?: string;
+    }>
+  > {
+    const queryFilter: Record<string, unknown> = {};
     if (filter?.role) queryFilter.role = filter.role;
     if (typeof filter?.active === 'boolean')
       queryFilter.isActive = filter.active;
 
+    if (filter?.loginAfter) {
+      const after = new Date(filter.loginAfter);
+      const userIds = await this.loginHistoryModel
+        .distinct('userId', {
+          status: 'success',
+          loginAt: { $gte: after },
+        })
+        .exec();
+      if (userIds.length === 0) return [];
+      queryFilter.id = { $in: userIds };
+    }
+
     const users = await this.userModel
       .find(queryFilter)
-      .select('phone firstName lastName')
+      .select('id phone firstName lastName email')
       .lean();
 
     return users
-      .filter((u: any) => u.phone)
-      .map((u: any) => ({
-        phone: u.phone,
+      .filter((u: { phone?: string }) => u.phone)
+      .map((u: { id?: string; phone?: string; firstName?: string; lastName?: string; email?: string }) => ({
+        userId: u.id,
+        phone: u.phone!,
         firstName: u.firstName || undefined,
         lastName: u.lastName || undefined,
+        email: u.email || undefined,
       }));
   }
 }

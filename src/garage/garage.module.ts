@@ -10,6 +10,14 @@ import {
   ServiceHistorySchema,
 } from '../schemas/service-history.schema';
 import { User, UserSchema } from '../schemas/user.schema';
+import {
+  FinesVehicle,
+  FinesVehicleSchema,
+} from '../schemas/fines-vehicle.schema';
+import {
+  FinesDailyReminder,
+  FinesDailyReminderSchema,
+} from '../schemas/fines-daily-reminder.schema';
 import { NotificationsModule } from '../notifications/notifications.module';
 
 @Module({
@@ -20,6 +28,8 @@ import { NotificationsModule } from '../notifications/notifications.module';
       { name: FuelEntry.name, schema: FuelEntrySchema },
       { name: ServiceHistory.name, schema: ServiceHistorySchema },
       { name: User.name, schema: UserSchema },
+      { name: FinesVehicle.name, schema: FinesVehicleSchema },
+      { name: FinesDailyReminder.name, schema: FinesDailyReminderSchema },
     ]),
     NotificationsModule,
   ],

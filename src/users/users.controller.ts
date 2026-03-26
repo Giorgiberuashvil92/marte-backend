@@ -103,9 +103,14 @@ export class UsersController {
   async getPhoneNumbers(
     @Query('role') role?: string,
     @Query('active') active?: string,
+    @Query('loginAfter') loginAfter?: string,
   ) {
     const act = active === undefined ? undefined : active === 'true';
-    const users = await this.users.getPhoneNumbers({ role, active: act });
+    const users = await this.users.getPhoneNumbers({
+      role,
+      active: act,
+      loginAfter: loginAfter || undefined,
+    });
     return {
       success: true,
       data: users,

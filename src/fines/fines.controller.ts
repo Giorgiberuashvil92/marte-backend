@@ -190,6 +190,87 @@ export class FinesController {
   }
 
   /**
+   * SA-ში რეგისტრაციის ლოგი — ვინ დაარეგისტრირა (saVehicleId → იუზერის სახელი), ადმინისთვის
+   * GET /fines/vehicles/sa-registrations
+   */
+  @Get('vehicles/sa-registrations')
+  async getSaRegistrationsWithOwners() {
+    try {
+      return await this.finesService.getSaRegistrationsWithOwners();
+    } catch (error) {
+      if (error instanceof HttpException) {
+        throw error;
+      }
+      throw new HttpException(
+        'SA რეგისტრაციების ლოგის მოპოვება ვერ მოხერხდა',
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
+  }
+
+  /**
+   * ადმინის გვერდისთვის ყველა მონაცემი ერთი request-ით (active + vehicles + saRegistrations)
+   * GET /fines/vehicles/admin-dashboard
+   */
+  @Get('vehicles/admin-dashboard')
+  async getFinesAdminDashboard() {
+    try {
+      return await this.finesService.getFinesAdminDashboardData();
+    } catch (error) {
+      if (error instanceof HttpException) {
+        throw error;
+      }
+      throw new HttpException(
+        'ჯარიმების ადმინ მონაცემების მოპოვება ვერ მოხერხდა',
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
+  }
+
+  /**
+   * იუზერის ჯარიმების cache (debug/admin)
+   * GET /fines/cache/:userId
+   */
+  @Get('cache/:userId')
+  async getPenaltyCacheByUser(@Param('userId') userId: string) {
+    try {
+      return await this.finesService.getPenaltyCacheByUser(userId);
+    } catch (error) {
+      if (error instanceof HttpException) {
+        throw error;
+      }
+      throw new HttpException(
+        'ჯარიმების cache-ის წამოღება ვერ მოხერხდა',
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
+  }
+
+  /**
+   * saVehicleId = 0/NULL ჩანაწერების მასობრივი გასწორება SA Active სიიდან
+   * POST /fines/vehicles/reconcile-sa-ids
+   * body: { limit?: number }
+   */
+  @Post('vehicles/reconcile-sa-ids')
+  async reconcileMissingSaIds(@Body() body: { limit?: number } = {}) {
+    try {
+      const limit =
+        typeof body.limit === 'number' && body.limit > 0 ? body.limit : 500;
+      const result =
+        await this.finesService.reconcileMissingSaVehicleIds(limit);
+      return { success: true, ...result };
+    } catch (error) {
+      if (error instanceof HttpException) {
+        throw error;
+      }
+      throw new HttpException(
+        'SA ID-ების reconcile ვერ შესრულდა',
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
+  }
+
+  /**
    * მანქანის ამოღება ჯარიმების სისტემიდან
    * POST /fines/vehicles/remove
    */
@@ -388,6 +469,107 @@ export class FinesController {
       }
       throw new HttpException(
         'გამოწერის გაუქმება ვერ მოხერხდა',
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
+  }
+
+  /**
+   * ჯარიმების reminder push-ის ხელით გაშვება (admin/debug)
+   * POST /fines/reminders/send-now
+   * body: { userId?: string }
+   */
+  @Post('reminders/send-now')
+  async sendFinesRemindersNow(@Body() body: { userId?: string } = {}) {
+    try {
+      const result =
+        await this.finesService.sendGarageUnpaidFinesReminderPushes(
+          true,
+          body?.userId?.trim() || undefined,
+        );
+      return {
+        success: true,
+        message: 'Fines reminder push გაშვებულია ხელით',
+        ...result,
+      };
+    } catch (error) {
+      if (error instanceof HttpException) {
+        throw error;
+      }
+      throw new HttpException(
+        'Fines reminder push-ის ხელით გაშვება ვერ მოხერხდა',
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
+  }
+
+  /**
+   * ყველა აქტიური fines მანქანის cache-sync (admin/debug)
+   * POST /fines/cache/sync-all
+   */
+  @Post('cache/sync-all')
+  async syncAllFinesCache() {
+    try {
+      const result = await this.finesService.syncAllActiveFinesUsersCache();
+      return { success: true, ...result };
+    } catch (error) {
+      if (error instanceof HttpException) throw error;
+      throw new HttpException(
+        'Fines cache sync ვერ შესრულდა',
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
+  }
+
+  /**
+   * ყველა იუზერი, ვისაც cache-ში unpaid აქვს
+   * GET /fines/cache/unpaid-users
+   */
+  @Get('cache/unpaid-users')
+  async getUnpaidUsersFromCache() {
+    try {
+      const users = await this.finesService.getUnpaidUsersFromCache();
+      return {
+        success: true,
+        totalUsers: users.length,
+        users,
+      };
+    } catch (error) {
+      if (error instanceof HttpException) throw error;
+      throw new HttpException(
+        'Fines unpaid users ვერ მოიძებნა',
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
+  }
+
+  /**
+   * ერთი ტექსტის გაგზავნა ყველა unpaid იუზერზე (admin/manual)
+   * POST /fines/reminders/send-custom
+   */
+  @Post('reminders/send-custom')
+  async sendCustomFinesPush(
+    @Body() body: { title?: string; body?: string } = {},
+  ) {
+    try {
+      const title = String(body.title || '').trim();
+      const text = String(body.body || '').trim();
+      if (!title || !text) {
+        throw new HttpException(
+          'title და body სავალდებულოა',
+          HttpStatus.BAD_REQUEST,
+        );
+      }
+
+      const result = await this.finesService.sendCustomPushToUnpaidUsers(
+        title,
+        text,
+      );
+      return { success: true, ...result };
+    } catch (error) {
+      if (error instanceof HttpException) throw error;
+      throw new HttpException(
+        'Custom fines push გაგზავნა ვერ მოხერხდა',
         HttpStatus.INTERNAL_SERVER_ERROR,
       );
     }

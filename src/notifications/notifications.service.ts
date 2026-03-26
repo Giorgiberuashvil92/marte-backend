@@ -244,7 +244,7 @@ export class NotificationsService {
   private async sendFcm(
     tokens: string[],
     payload: PushNotificationPayload,
-  ): Promise<void> {
+  ): Promise<{ successCount: number; failureCount: number }> {
     console.log(
       '🚀 [FCM] sendFcm called with tokens:',
       tokens?.length || 0,
@@ -253,7 +253,7 @@ export class NotificationsService {
     );
     if (!tokens || tokens.length === 0) {
       console.log('No tokens to send. Skipping.');
-      return;
+      return { successCount: 0, failureCount: 0 };
     }
 
     // გამოიყენე Firebase Admin SDK (HTTP v1 API) — normalize default/namespace
@@ -289,7 +289,7 @@ export class NotificationsService {
         }
       } catch (e) {
         console.log('❌ Lazy Firebase init failed, skipping push.', e);
-        return;
+        return { successCount: 0, failureCount: 0 };
       }
     }
 
@@ -349,10 +349,14 @@ export class NotificationsService {
         }
       }
 
-      // თუ 500+ tokens არის, გაგზავნე დანარჩენი
+      let totalSuccess = response.successCount;
+      let totalFailed = response.failureCount;
       if (tokens.length > 500) {
-        await this.sendFcm(tokens.slice(500), payload);
+        const rest = await this.sendFcm(tokens.slice(500), payload);
+        totalSuccess += rest.successCount;
+        totalFailed += rest.failureCount;
       }
+      return { successCount: totalSuccess, failureCount: totalFailed };
     } catch (error) {
       console.error('❌ FCM send error:', error);
 
@@ -397,10 +401,6 @@ export class NotificationsService {
               } as any);
               successCount += 1;
               sent = true;
-              console.log(
-                '✅ Single-send delivered to token:',
-                token.substring(0, 30) + '...',
-              );
             } catch (e: any) {
               lastErr = e;
               const code: string | undefined = e?.errorInfo?.code || e?.code;
@@ -414,10 +414,6 @@ export class NotificationsService {
                 (msg || '').toLowerCase().includes('not registered')
               ) {
                 invalidTokens.push(token);
-                console.log(
-                  '🗑️ Marking invalid token for deletion:',
-                  token.substring(0, 30) + '...',
-                );
                 break; // no retry for invalid token
               }
 
@@ -453,7 +449,9 @@ export class NotificationsService {
         console.log(
           `✅ FCM single-send summary: ${successCount} success, ${failureCount} failed`,
         );
+        return { successCount, failureCount };
       }
+      throw error;
     }
   }
 
@@ -497,13 +495,13 @@ export class NotificationsService {
     return this.getTokensForTargets(targets);
   }
 
-  /** Send push to specific users by IDs. Saves notifications and sends FCM. */
+  /** Send push to specific users by IDs. Saves notifications and sends FCM. Returns FCM delivery counts. */
   async sendPushToUsers(
     userIds: string[],
     payload: PushNotificationPayload,
     type: 'request' | 'offer' | 'message' | 'system' = 'system',
-  ): Promise<void> {
-    if (userIds.length === 0) return;
+  ): Promise<{ sent: number; failed: number }> {
+    if (userIds.length === 0) return { sent: 0, failed: 0 };
     const notifications = userIds.map((userId) => ({
       target: { userId },
       payload,
@@ -516,13 +514,13 @@ export class NotificationsService {
     console.log(
       `📲 Push: ${userIds.length} userIds → ${tokens.length} device tokens`,
     );
-    if (tokens.length > 0) {
-      await this.sendFcm(tokens, payload);
-      await this.notificationModel.updateMany(
-        { 'target.userId': { $in: userIds }, status: 'pending' },
-        { status: 'delivered', deliveredAt: Date.now() },
-      );
-    }
+    if (tokens.length === 0) return { sent: 0, failed: 0 };
+    const fcm = await this.sendFcm(tokens, payload);
+    await this.notificationModel.updateMany(
+      { 'target.userId': { $in: userIds }, status: 'pending' },
+      { status: 'delivered', deliveredAt: Date.now() },
+    );
+    return { sent: fcm.successCount, failed: fcm.failureCount };
   }
 
   /** Get user IDs by role and/or active flag */
@@ -565,8 +563,12 @@ export class NotificationsService {
       console.error('⚠️ Failed to save broadcast notification:', e);
     }
     try {
-      await this.sendFcm(tokens, payload);
-      return { success: true, sent: tokens.length, failed: 0 };
+      const fcm = await this.sendFcm(tokens, payload);
+      return {
+        success: true,
+        sent: fcm.successCount,
+        failed: fcm.failureCount,
+      };
     } catch (error) {
       console.error('❌ Broadcast error:', error);
       return { success: false, sent: 0, failed: tokens.length };

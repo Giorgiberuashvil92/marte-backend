@@ -35,6 +35,7 @@ import { RecurringPaymentsModule } from './recurring-payments/recurring-payments
 import { SubscriptionsModule } from './subscriptions/subscriptions.module';
 import { SmsModule } from './sms/sms.module';
 import { FeedbackModule } from './feedback/feedback.module';
+import { ExclusiveOfferModule } from './exclusive-offer/exclusive-offer.module';
 import { EngagementModule } from './engagement/engagement.module';
 import { SpecialOffersModule } from './special-offers/special-offers.module';
 import { CarBrandsModule } from './car-brands/car-brands.module';
@@ -179,6 +180,7 @@ import {
     SubscriptionsModule,
     SmsModule,
     FeedbackModule,
+    ExclusiveOfferModule,
     EngagementModule,
     SpecialOffersModule,
     CarBrandsModule,

@@ -94,6 +94,16 @@ export class LoginHistoryController {
     };
   }
 
+  @Get('engagement-analytics')
+  async getEngagementAnalytics() {
+    const result = await this.loginHistoryService.getEngagementAnalytics();
+    return {
+      success: true,
+      message: 'Engagement analytics წარმატებით ჩამოიტვირთა',
+      data: result,
+    };
+  }
+
   @Post('track')
   async trackLogin(@Body() body: TrackLoginDto) {
     if (!body.userId || !body.phone) {

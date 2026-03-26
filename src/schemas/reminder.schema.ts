@@ -60,6 +60,10 @@ export class Reminder {
 
   @Prop()
   notificationSentDate?: string; // YYYY-MM-DD format, რომ დავადგინოთ დღეში რამდენჯერ გაიგზავნა
+
+  /** იმავე დღეს რამდენიმე სლოტი (მაგ. ყოველდღე 2 დრო): "09:00,15:30,__adv1__" */
+  @Prop()
+  notificationSentSlotsToday?: string;
 }
 
 export const ReminderSchema = SchemaFactory.createForClass(Reminder);
