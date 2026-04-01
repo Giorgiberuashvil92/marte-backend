@@ -510,7 +510,14 @@ export default function PaymentCardScreen() {
         description: paymentData.description,
         success_url: successUrl,
         fail_url: failUrl,
-        save_card: isAppSubscriptionPayment || paymentData.context === 'dismantler' || paymentData.context === 'car_fines_subscription', // Subscription-ისა, დაშლილებისა და car fines subscription-ისთვის ბარათის დამახსოვრება
+        // რეკურინგისთვის BOG-ზე ბარათი უნდა დამახსოვრდეს (იგივე parent_order_id / subscribe API)
+        save_card:
+          isAppSubscriptionPayment ||
+          paymentData.context === 'dismantler' ||
+          paymentData.context === 'car_fines_subscription' ||
+          paymentData.context === 'service' ||
+          paymentData.context === 'mechanic' ||
+          paymentData.context === 'store',
       };
 
       console.log('💳 BOG Order Data:', {
@@ -530,14 +537,18 @@ export default function PaymentCardScreen() {
     }
   };
 
-  const savePaymentInfo = async () => {
+  const savePaymentInfo = async (resolvedBogOrderId?: string | null) => {
     try {
       if (!user?.id || !paymentData.amount || !paymentData.orderId) return;
 
+      // orderId DB-ში უნდა იყოს BOG-ის რეალური order UUID (recurring parent_order_id), არა shop external id
+      const orderIdForDb =
+        (resolvedBogOrderId && String(resolvedBogOrderId).trim()) ||
+        paymentData.orderId;
+
       const paymentInfo = {
         userId: user.id,
-        orderId: paymentData.orderId,
-        // BOG callback-ის ძებნა: იგივე მნიშვნელობა, რაც createOrder-ში external_order_id
+        orderId: orderIdForDb,
         externalOrderId: paymentData.orderId,
         amount: paymentData.amount,
         currency: paymentData.currency === '₾' ? 'GEL' : paymentData.currency,
@@ -791,7 +802,7 @@ export default function PaymentCardScreen() {
           onSuccess={async () => {
             setShowBOGPaymentModal(false);
             setShowSuccessModal(true);
-            await savePaymentInfo();
+            await savePaymentInfo(bogOrderId);
 
             if (isAppSubscriptionPayment) {
               try {
@@ -909,6 +920,7 @@ export default function PaymentCardScreen() {
                   latitude: formData.latitude,
                   longitude: formData.longitude,
                   isFeatured: metadata.tier === 'vip',
+                  bogCardToken: bogOrderId || undefined,
                 };
                 
                 await addItemApi.createStore(storeData, metadata.userId || user?.id || undefined);
@@ -1021,6 +1033,7 @@ export default function PaymentCardScreen() {
                   longitude: formData.longitude,
                   ownerId: normalizedOwnerId,
                   status: 'pending',
+                  bogCardToken: bogOrderId || undefined,
                 };
 
                 await addItemApi.createService(serviceData, metadata.userId || user?.id);
@@ -1111,6 +1124,7 @@ export default function PaymentCardScreen() {
                   longitude: formData.longitude,
                   ownerId: normalizedOwnerId,
                   status: 'pending',
+                  bogCardToken: bogOrderId || undefined,
                 };
 
                 // Upload avatar if exists

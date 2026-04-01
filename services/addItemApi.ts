@@ -69,6 +69,7 @@ export interface StoreData {
   employeeCount?: number;
   license?: string;
   isFeatured?: boolean;
+  bogCardToken?: string;
 }
 
 export interface ApiResponse<T> {
