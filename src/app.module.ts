@@ -107,27 +107,62 @@ import {
 } from './schemas/fines-vehicle.schema';
 
 /** Railway/.env: ზედმეტი ბრჭყალები ან ბოლოს `;` → Invalid scheme; ვხსნით. */
-function resolveMongoUri(envUri: string | undefined, fallback: string): string {
-  let s = (envUri ?? '').trim();
-  s = s.replace(/;+\s*$/g, '').trim();
+function trimMongoEnv(s: string | undefined): string {
+  let v = (s ?? '')
+    .trim()
+    .replace(/;+\s*$/g, '')
+    .trim();
   while (
-    (s.startsWith("'") && s.endsWith("'")) ||
-    (s.startsWith('"') && s.endsWith('"'))
+    (v.startsWith("'") && v.endsWith("'")) ||
+    (v.startsWith('"') && v.endsWith('"'))
   ) {
-    s = s.slice(1, -1).trim();
+    v = v.slice(1, -1).trim();
   }
-  if (s.startsWith('mongodb://') || s.startsWith('mongodb+srv://')) {
-    return s;
-  }
-  return fallback;
+  return v;
 }
 
-/** ფოლბექი თუ MONGODB_URI არასწორია/ცარიელია; პროდაქშენში უმჯობესია მხოლოდ env. */
+/**
+ * Atlas შაბლონი: mongodb+srv://<db_username>:<db_password>@host/?appName=…
+ * `<db_username>` / `<db_password>` არის placeholder — კოდში/`.env`-ში ჩაწერე რეალური მნიშვნელობები, ზღვარი ბრჭყალები არა.
+ * ან სრული `MONGODB_URI`, ან `MONGODB_USERNAME` + `MONGODB_PASSWORD` (mongosh-ის `--username` მსგავსად).
+ */
+function mongooseMongoConfig(): { uri: string } {
+  const full = trimMongoEnv(process.env.MONGODB_URI);
+  if (full.startsWith('mongodb://') || full.startsWith('mongodb+srv://')) {
+    return { uri: full };
+  }
 
-const MONGODB_FALLBACK_URI =
-  'mongodb+srv://<gberuashvili123>:<vhOQ0UhtFUM8S8eg>@carappx.lh8hx2q.mongodb.net/?appName=CarappX';
-// const MONGODB_FALLBACK_URI =
-//   'mongodb+srv://gberuashvili123:vhOQ0UhtFUM8S8eg@carappx.lh8hx2q.mongodb.net/carapp-v2?retryWrites=true&w=majority&appName=CarappX';
+  const user = trimMongoEnv(
+    process.env.MONGODB_USERNAME ??
+      process.env.MONGO_USERNAME ??
+      process.env.DB_USERNAME,
+  );
+  const pass = trimMongoEnv(
+    process.env.MONGODB_PASSWORD ??
+      process.env.MONGO_PASSWORD ??
+      process.env.DB_PASSWORD,
+  );
+  const host =
+    trimMongoEnv(process.env.MONGODB_HOST) || 'carappx.lh8hx2q.mongodb.net';
+  const dbName = trimMongoEnv(process.env.MONGODB_DATABASE) || 'carapp-v2';
+  const appName = trimMongoEnv(process.env.MONGODB_APP_NAME) || 'CarappX';
+
+  if (!user || !pass) {
+    throw new Error(
+      'MongoDB: დააყენე .env-ში MONGODB_URI (სრული connection string, უსკრიპტო user:pass) ან MONGODB_USERNAME + MONGODB_PASSWORD.',
+    );
+  }
+
+  const qs = new URLSearchParams({
+    appName,
+    retryWrites: 'true',
+    w: 'majority',
+    authSource: 'admin',
+  });
+  /** Atlas: user/pass URI-ში + authSource=admin — ცალკე mongoose user/pass ხშირად იძლევა bad auth-ს */
+  const uri = `mongodb+srv://${encodeURIComponent(user)}:${encodeURIComponent(pass)}@${host}/${encodeURIComponent(dbName)}?${qs.toString()}`;
+  return { uri };
+}
 
 @Module({
   imports: [
@@ -138,9 +173,7 @@ const MONGODB_FALLBACK_URI =
     }),
     ScheduleModule.forRoot(),
     MongooseModule.forRootAsync({
-      useFactory: () => ({
-        uri: resolveMongoUri(process.env.MONGODB_URI, MONGODB_FALLBACK_URI),
-      }),
+      useFactory: () => mongooseMongoConfig(),
     }),
     MongooseModule.forFeature([
       { name: User.name, schema: UserSchema },
