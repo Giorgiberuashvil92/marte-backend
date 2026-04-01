@@ -106,3 +106,6 @@ Thumbs.db
 # Firebase Admin SDK (security)
 firebase-adminsdk.json
 **/*firebase-adminsdk*
+
+# Local MongoDB JSON exports (large / sensitive)
+exports/

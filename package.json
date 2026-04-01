@@ -28,7 +28,10 @@
     "create:recurring-from-token": "node create-recurring-from-token.js",
     "process:recurring": "node process-recurring-payment.js",
     "test:debug": "node --inspect-brk -r tsconfig-paths/register -r ts-node/register node_modules/.bin/jest --runInBand",
-    "test:e2e": "jest --config ./test/jest-e2e.json"
+    "test:e2e": "jest --config ./test/jest-e2e.json",
+    "fix:bog-tokens": "node scripts/fix-bog-card-tokens.js",
+    "fix:bog-tokens:apply": "node scripts/fix-bog-card-tokens.js --apply",
+    "export:mongodb": "node scripts/export-mongodb-json.js"
   },
   "dependencies": {
     "@nestjs/common": "^11.0.1",

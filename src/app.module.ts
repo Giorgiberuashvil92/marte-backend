@@ -122,8 +122,9 @@ function resolveMongoUri(envUri: string | undefined, fallback: string): string {
   return fallback;
 }
 
+/** ფოლბექი თუ MONGODB_URI არასწორია/ცარიელია; პროდაქშენში უმჯობესია მხოლოდ env. */
 const MONGODB_FALLBACK_URI =
-  'mongodb+srv://gberuashvili92:aegzol2o3jC31sj3@cluster0.hqqyz.mongodb.net/carapp-v2?retryWrites=true&w=majority&appName=Cluster0';
+  'mongodb+srv://gberuashvili123:vhOQ0UhtFUM8S8eg@carappx.lh8hx2q.mongodb.net/carapp-v2?retryWrites=true&w=majority&appName=CarappX';
 
 @Module({
   imports: [
