@@ -123,8 +123,11 @@ function resolveMongoUri(envUri: string | undefined, fallback: string): string {
 }
 
 /** ფოლბექი თუ MONGODB_URI არასწორია/ცარიელია; პროდაქშენში უმჯობესია მხოლოდ env. */
+
 const MONGODB_FALLBACK_URI =
-  'mongodb+srv://gberuashvili123:vhOQ0UhtFUM8S8eg@carappx.lh8hx2q.mongodb.net/carapp-v2?retryWrites=true&w=majority&appName=CarappX';
+  'mongodb+srv://<gberuashvili123>:<vhOQ0UhtFUM8S8eg>@carappx.lh8hx2q.mongodb.net/?appName=CarappX';
+// const MONGODB_FALLBACK_URI =
+//   'mongodb+srv://gberuashvili123:vhOQ0UhtFUM8S8eg@carappx.lh8hx2q.mongodb.net/carapp-v2?retryWrites=true&w=majority&appName=CarappX';
 
 @Module({
   imports: [

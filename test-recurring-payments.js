@@ -2,7 +2,7 @@ const { MongoClient } = require('mongodb');
 
 const MONGODB_URI =
   process.env.MONGODB_URI ||
-  'mongodb+srv://gberuashvili92:aegzol2o3jC31sj3@cluster0.hqqyz.mongodb.net/carapp-v2?retryWrites=true&w=majority&appName=Cluster0';
+  'mongodb+srv://gberuashvili123:vhOQ0UhtFUM8S8eg@carappx.lh8hx2q.mongodb.net/carapp-v2?retryWrites=true&w=majority&appName=CarappX';
 
 const API_BASE_URL = process.env.API_BASE_URL || 'http://localhost:3000';
 
