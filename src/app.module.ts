@@ -106,6 +106,25 @@ import {
   FinesVehicleSchema,
 } from './schemas/fines-vehicle.schema';
 
+/** Railway/.env: ზედმეტი ბრჭყალები ან ბოლოს `;` → Invalid scheme; ვხსნით. */
+function resolveMongoUri(envUri: string | undefined, fallback: string): string {
+  let s = (envUri ?? '').trim();
+  s = s.replace(/;+\s*$/g, '').trim();
+  while (
+    (s.startsWith("'") && s.endsWith("'")) ||
+    (s.startsWith('"') && s.endsWith('"'))
+  ) {
+    s = s.slice(1, -1).trim();
+  }
+  if (s.startsWith('mongodb://') || s.startsWith('mongodb+srv://')) {
+    return s;
+  }
+  return fallback;
+}
+
+const MONGODB_FALLBACK_URI =
+  'mongodb+srv://gberuashvili92:aegzol2o3jC31sj3@cluster0.hqqyz.mongodb.net/carapp-v2?retryWrites=true&w=majority&appName=Cluster0';
+
 @Module({
   imports: [
     ConfigModule.forRoot({
@@ -116,9 +135,7 @@ import {
     ScheduleModule.forRoot(),
     MongooseModule.forRootAsync({
       useFactory: () => ({
-        uri:
-          process.env.MONGODB_URI ||
-          'mongodb+srv://gberuashvili92:aegzol2o3jC31sj3@cluster0.hqqyz.mongodb.net/carapp-v2?retryWrites=true&w=majority&appName=Cluster0',
+        uri: resolveMongoUri(process.env.MONGODB_URI, MONGODB_FALLBACK_URI),
       }),
     }),
     MongooseModule.forFeature([

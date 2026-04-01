@@ -1204,14 +1204,20 @@ export class BOGController {
               }
             }
 
-            // Dismantler-ისთვის ბარათის დამახსოვრება (თუ context არის 'dismantler')
-            if (paymentContext === 'dismantler') {
+            // დაშლილი / სერვისი / ხელოსანი / მაღაზია — BOG-ზე ბარათის დამახსოვრება (recurring / subscribe API)
+            const recurringListingContexts = [
+              'dismantler',
+              'service',
+              'mechanic',
+              'store',
+            ];
+            if (recurringListingContexts.includes(paymentContext)) {
               try {
                 this.logger.log(
                   '═══════════════════════════════════════════════════════',
                 );
                 this.logger.log(
-                  '💾 დაშლილებისთვის ბარათის დამახსოვრება recurring payments-ისთვის',
+                  `💾 ბარათის დამახსოვრება recurring-ისთვის (context: ${paymentContext})`,
                 );
                 this.logger.log(
                   '═══════════════════════════════════════════════════════',
@@ -1224,20 +1230,19 @@ export class BOGController {
                   order_id,
                 );
                 this.logger.log(
-                  `✅ ბარათი დამახსოვრებულია დაშლილებისთვის recurring payments-ისთვის order_id: ${order_id}-ისთვის`,
+                  `✅ ბარათი დამახსოვრებულია (${paymentContext}) recurring-ისთვის, order_id: ${order_id}`,
                 );
                 this.logger.log(
                   '═══════════════════════════════════════════════════════',
                 );
               } catch (saveCardError) {
-                // ბარათის დამახსოვრების შეცდომა არ უნდა შეაჩეროს payment-ის დამუშავება
                 const errorMessage =
                   saveCardError instanceof Error
                     ? saveCardError.message
                     : 'Unknown error';
 
                 this.logger.warn(
-                  `⚠️ ბარათის დამახსოვრება ვერ მოხერხდა დაშლილებისთვის: ${errorMessage}`,
+                  `⚠️ ბარათის დამახსოვრება ვერ მოხერხდა (${paymentContext}): ${errorMessage}`,
                 );
                 this.logger.warn(`   • Order ID: ${order_id}`);
               }
