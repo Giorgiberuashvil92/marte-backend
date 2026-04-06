@@ -179,6 +179,10 @@ export class CarBrandsService {
         );
         const country = brandData.country;
         const logo = brandData.logo;
+        const myautoManId =
+          brandData.myautoManId != null
+            ? String(brandData.myautoManId)
+            : undefined;
 
         const existingBrand = await this.findByName(brandName);
 
@@ -197,6 +201,7 @@ export class CarBrandsService {
               models,
               country,
               logo,
+              myautoManId,
               isActive: true,
             });
             result.updated++;
@@ -205,6 +210,7 @@ export class CarBrandsService {
           // Create new brand
           await this.create({
             name: brandName,
+            myautoManId,
             models,
             country,
             logo,

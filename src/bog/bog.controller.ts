@@ -11,7 +11,6 @@ import {
   HttpCode,
   HttpStatus,
   Headers,
-  HttpException,
 } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
@@ -324,14 +323,13 @@ export class BOGController {
           '═══════════════════════════════════════════════════════',
         );
 
-        // Rejected payment-ის შემთხვევაში ვაბრუნებთ 400 status code-ს
-        throw new HttpException(
-          {
-            success: false,
-            message: 'გადახდა უარყოფილია (rejected)',
-          },
-          HttpStatus.BAD_REQUEST,
-        );
+        // არ ვყრით HttpException-ს: გარე catch-მა მაინც დაიჭერს და ERROR ლოგში
+        // „შეცდომას“ დააწერს, თუნდაც callback უკვე სწორად დამუშავებული იყოს.
+        // @HttpCode(OK) callback-ზე 200-ს ტოვებს — BOG-სთვის დადასტურებაა, როგორც failed-ზე.
+        return {
+          success: false,
+          message: 'გადახდა უარყოფილია (rejected)',
+        };
       }
 
       if (status === 'completed' || status === 'success') {

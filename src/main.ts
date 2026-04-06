@@ -102,7 +102,9 @@ async function bootstrap() {
     'http://localhost:4000', // Admin Panel (Next.js local)
     'http://127.0.0.1:4000', // Admin Panel (Next.js local)
     'http://localhost:3001', // Backend self-reference
-    'http://127.0.0.1:3001', // Backend self-reference
+    'http://127.0.0.1:3001',
+    'http://localhost:3002', // Backend local (PORT=.env)
+    'http://127.0.0.1:3002',
     'https://free-nextjs-admin-dashboard-omega-green.vercel.app', // Admin Panel (Vercel)
     process.env.ADMIN_ORIGIN,
     ...extraOrigins,
@@ -126,6 +128,8 @@ async function bootstrap() {
 
   console.log('CORS enabled for origins:', corsOrigins);
 
-  await app.listen(process.env.PORT ?? 3000);
+  const port = Number(process.env.PORT) || 3000;
+  await app.listen(port);
+  console.log(`HTTP + Socket.IO → http://localhost:${port}`);
 }
 void bootstrap();

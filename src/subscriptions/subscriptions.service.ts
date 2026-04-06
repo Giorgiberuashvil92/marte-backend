@@ -102,6 +102,18 @@ export class SubscriptionsService {
           `⚠️ Active subscription already exists for user ${userId}, updating...`,
         );
 
+        const normExisting = this.normalizeAppPremiumPlanIds(
+          planId ?? existingSubscription.planId,
+          planPeriod,
+        );
+        existingSubscription.planId =
+          normExisting.planId || existingSubscription.planId;
+        if (normExisting.planPeriod || planPeriod) {
+          existingSubscription.period = this.parseBillingPeriod(
+            normExisting.planPeriod || planPeriod,
+          );
+        }
+
         // შევამოწმოთ არის თუ არა ახალი billing period (თუ nextBillingDate გავიდა)
         const now = new Date();
         const isNewBillingPeriod =
@@ -201,6 +213,20 @@ export class SubscriptionsService {
         this.logger.log(`   ✅ Using provided planId: ${finalPlanId}`);
       }
 
+      const planIdBeforeNorm = finalPlanId;
+      const norm = this.normalizeAppPremiumPlanIds(finalPlanId, planPeriod);
+      if (norm.planId !== undefined) {
+        finalPlanId = norm.planId;
+      }
+      if (norm.planPeriod !== undefined && norm.planPeriod !== '') {
+        planPeriod = norm.planPeriod;
+      }
+      if (finalPlanId !== planIdBeforeNorm) {
+        this.logger.log(
+          `   → App planId ნორმალიზებულია: ${planIdBeforeNorm} → ${finalPlanId} (period hint: ${planPeriod ?? '—'})`,
+        );
+      }
+
       if (!finalPlanName) {
         this.logger.warn(
           '⚠️ planName არ გადაეცა! გამოვიყენებთ planId-ის მიხედვით default მნიშვნელობას',
@@ -237,18 +263,7 @@ export class SubscriptionsService {
       this.logger.log(`   • Final planName: ${finalPlanName}`);
 
       // Period-ის განსაზღვრა planPeriod-დან
-      let period = 'monthly'; // default
-      if (planPeriod) {
-        if (planPeriod.includes('თვეში') || planPeriod === 'monthly') {
-          period = 'monthly';
-        } else if (planPeriod.includes('წლ') || planPeriod === 'yearly') {
-          period = 'yearly';
-        } else if (planPeriod.includes('6') || planPeriod.includes('6-month')) {
-          period = 'monthly'; // 6 თვე ასევე monthly-ს განვიხილავთ, მაგრამ nextBillingDate 6 თვეში იქნება
-        } else {
-          period = 'monthly';
-        }
-      }
+      const period = this.parseBillingPeriod(planPeriod);
 
       // შევქმნათ ახალი subscription
       const subscriptionData = {
@@ -314,6 +329,61 @@ export class SubscriptionsService {
   }
 
   /**
+   * App/UI planId (premium-monthly, …) → DB-ში მხოლოდ `premium` + period hint
+   */
+  private normalizeAppPremiumPlanIds(
+    rawPlanId?: string,
+    rawPlanPeriod?: string,
+  ): { planId?: string; planPeriod?: string } {
+    if (!rawPlanId) {
+      return {};
+    }
+    const id = rawPlanId.trim();
+    if (id === 'premium-monthly' || id === 'premium_monthly') {
+      return {
+        planId: 'premium',
+        planPeriod: rawPlanPeriod || 'monthly',
+      };
+    }
+    if (id === 'premium-yearly' || id === 'premium_yearly') {
+      return {
+        planId: 'premium',
+        planPeriod: rawPlanPeriod || 'yearly',
+      };
+    }
+    if (id === 'premium-6months' || id === 'premium_6months') {
+      return {
+        planId: 'premium',
+        planPeriod: rawPlanPeriod || '6months',
+      };
+    }
+    if (id.startsWith('premium-') || id.startsWith('premium_')) {
+      return { planId: 'premium', planPeriod: rawPlanPeriod };
+    }
+    return { planId: rawPlanId, planPeriod: rawPlanPeriod };
+  }
+
+  private parseBillingPeriod(planPeriod?: string): string {
+    if (!planPeriod) {
+      return 'monthly';
+    }
+    if (planPeriod.includes('თვეში') || planPeriod === 'monthly') {
+      return 'monthly';
+    }
+    if (planPeriod.includes('წლ') || planPeriod === 'yearly') {
+      return 'yearly';
+    }
+    if (
+      planPeriod.includes('6') ||
+      planPeriod.includes('6-month') ||
+      planPeriod === '6months'
+    ) {
+      return '6months';
+    }
+    return 'monthly';
+  }
+
+  /**
    * შემდეგი billing date-ის გამოთვლა period-ის მიხედვით
    */
   private calculateNextBillingDate(period: string, currentDate: Date): Date {
@@ -322,6 +392,9 @@ export class SubscriptionsService {
     switch (period) {
       case 'monthly':
         nextDate.setMonth(nextDate.getMonth() + 1);
+        break;
+      case '6months':
+        nextDate.setMonth(nextDate.getMonth() + 6);
         break;
       case 'yearly':
         nextDate.setFullYear(nextDate.getFullYear() + 1);
