@@ -857,7 +857,7 @@ export class GarageService {
               : '🌙 საღამოს შეხსენება — ჯარიმები';
           const body =
             vehiclesCount === 1
-              ? 'ერთი მანქანა გაქვს მონიტორინგზე — გადაამოწმე ახალი ჯარიმები.'
+              ? 'ჯარიმების შეხსენება გაქვს 1 მანქანაზე ჩართული — გადაამოწმე ახალი ჯარიმები.'
               : `${vehiclesCount} მანქანა გაქვს მონიტორინგზე — გადაამოწმე ახალი ჯარიმები.`;
 
           await this.notificationsService.sendPushToTargets(

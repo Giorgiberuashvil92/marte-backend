@@ -6,6 +6,10 @@ export class CarBrand {
   @Prop({ required: true, unique: true })
   name: string;
 
+  /** my.ge / myAuto მწარმოებლის ID (იმპორტი myauto-manufacturers.json-იდან) */
+  @Prop({ sparse: true, unique: true })
+  myautoManId?: string;
+
   @Prop()
   country?: string;
 

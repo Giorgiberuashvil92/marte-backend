@@ -241,6 +241,219 @@ export class NotificationsService {
     return tokens;
   }
 
+  /** FCM-ის ლიმიტი 500, მაგრამ პატარა batch ნაკლებად ტვირთავს HTTP კავშირს → ნაკლები EPIPE */
+  private static readonly FCM_BATCH_SIZE = 100;
+  private static readonly FCM_INTER_BATCH_DELAY_MS = 80;
+
+  private sleepMs(ms: number): Promise<void> {
+    return new Promise((r) => setTimeout(r, ms));
+  }
+
+  private isTransientFcmTransportError(error: any): boolean {
+    const code = String(error?.errorInfo?.code || error?.code || '');
+    const msg = String(
+      error?.errorInfo?.message || error?.message || '',
+    ).toLowerCase();
+    if (code === 'app/network-error') return true;
+    if (
+      msg.includes('epipe') ||
+      msg.includes('econnreset') ||
+      msg.includes('etimedout') ||
+      msg.includes('socket hang up') ||
+      msg.includes('eai_again') ||
+      msg.includes('network error') ||
+      msg.includes('fetch failed')
+    ) {
+      return true;
+    }
+    return false;
+  }
+
+  private mergeFcmMulticastResults(
+    a: { successCount: number; failureCount: number; responses: any[] },
+    b: { successCount: number; failureCount: number; responses: any[] },
+  ) {
+    return {
+      successCount: a.successCount + b.successCount,
+      failureCount: a.failureCount + b.failureCount,
+      responses: [...a.responses, ...b.responses],
+    };
+  }
+
+  private async deleteInvalidTokensFromMulticastResponse(
+    chunk: string[],
+    response: { failureCount: number; responses: any[] },
+  ): Promise<void> {
+    if (response.failureCount <= 0 || !response.responses?.length) return;
+    const failedTokens: string[] = [];
+    response.responses.forEach((resp, idx) => {
+      if (!resp.success && chunk[idx]) {
+        failedTokens.push(chunk[idx]);
+        console.log('❌ Failed token:', chunk[idx], resp.error?.message);
+      }
+    });
+    if (failedTokens.length > 0) {
+      await this.deviceTokenModel.deleteMany({ token: { $in: failedTokens } });
+      console.log(`🗑️ Removed ${failedTokens.length} invalid tokens`);
+    }
+  }
+
+  /**
+   * ერთი token-ების ჯგუფის გაგზავნა: retry + exponential backoff + დაყოფა ქსელური შეცდომისას
+   */
+  private async sendFcmMulticastOneChunk(
+    messaging: any,
+    notification: { title: string; body: string },
+    data: Record<string, any>,
+    android: any,
+    apns: any,
+    tokenChunk: string[],
+  ): Promise<{ successCount: number; failureCount: number; responses: any[] }> {
+    const maxAttempts = 4;
+    for (let attempt = 0; attempt < maxAttempts; attempt++) {
+      try {
+        return await messaging.sendMulticast({
+          notification,
+          data,
+          android,
+          apns,
+          tokens: tokenChunk,
+        });
+      } catch (e: any) {
+        const transient = this.isTransientFcmTransportError(e);
+        if (transient && attempt < maxAttempts - 1) {
+          const backoff = 250 * Math.pow(2, attempt);
+          console.warn(
+            `[FCM] transient transport (${attempt + 1}/${maxAttempts}), wait ${backoff}ms:`,
+            e?.errorInfo?.message || e?.message,
+          );
+          await this.sleepMs(backoff);
+          continue;
+        }
+        if (transient && tokenChunk.length > 1) {
+          const mid = Math.floor(tokenChunk.length / 2);
+          console.warn(
+            `[FCM] split batch ${tokenChunk.length} → ${mid} + ${tokenChunk.length - mid} (transport)`,
+          );
+          const first = await this.sendFcmMulticastOneChunk(
+            messaging,
+            notification,
+            data,
+            android,
+            apns,
+            tokenChunk.slice(0, mid),
+          );
+          const second = await this.sendFcmMulticastOneChunk(
+            messaging,
+            notification,
+            data,
+            android,
+            apns,
+            tokenChunk.slice(mid),
+          );
+          return this.mergeFcmMulticastResults(first, second);
+        }
+        throw e;
+      }
+    }
+    throw new Error('FCM: unreachable sendFcmMulticastOneChunk');
+  }
+
+  private fcmSingleSendIsTransient(code?: string, msg?: string): boolean {
+    const m = (msg || '').toLowerCase();
+    return (
+      code === 'internal' ||
+      code === 'unavailable' ||
+      code === 'deadline-exceeded' ||
+      code === 'app/network-error' ||
+      m.includes('internal error') ||
+      m.includes('backend error') ||
+      m.includes('503') ||
+      m.includes('epipe') ||
+      m.includes('econnreset') ||
+      m.includes('network error')
+    );
+  }
+
+  /** ბოლო საშუალება: ერთი chunk-ისთვის token-ობრივი გაგზავნა (არა მთელი 623) */
+  private async sendFcmChunkPerTokenFallback(
+    messaging: any,
+    notification: { title: string; body: string },
+    data: Record<string, any>,
+    android: any,
+    apns: any,
+    chunk: string[],
+  ): Promise<{ successCount: number; failureCount: number }> {
+    let successCount = 0;
+    let failureCount = 0;
+    const invalidTokens: string[] = [];
+
+    for (const token of chunk) {
+      let attempt = 0;
+      let sent = false;
+      while (attempt < 3 && !sent) {
+        try {
+          await messaging.send({
+            notification,
+            data,
+            android,
+            apns,
+            token,
+          } as any);
+          successCount += 1;
+          sent = true;
+        } catch (e: any) {
+          const code: string | undefined = e?.errorInfo?.code || e?.code;
+          const msg: string | undefined = e?.errorInfo?.message || e?.message;
+
+          if (
+            code === 'messaging/registration-token-not-registered' ||
+            code === 'messaging/invalid-registration-token' ||
+            (msg || '').toLowerCase().includes('not registered')
+          ) {
+            invalidTokens.push(token);
+            break;
+          }
+
+          if (this.fcmSingleSendIsTransient(code, msg) && attempt < 2) {
+            const backoffMs = 200 * Math.pow(2, attempt);
+            console.log(
+              `⏳ FCM single-send retry in ${backoffMs}ms (${attempt + 1}/3)`,
+            );
+            await this.sleepMs(backoffMs);
+            attempt += 1;
+            continue;
+          }
+
+          failureCount += 1;
+          console.log('❌ Failed token (single send):', token, msg || e);
+          break;
+        }
+      }
+    }
+
+    if (invalidTokens.length > 0) {
+      await this.deviceTokenModel.deleteMany({ token: { $in: invalidTokens } });
+      console.log(
+        `🗑️ Removed ${invalidTokens.length} invalid tokens (single-send fallback)`,
+      );
+    }
+
+    console.log(
+      `✅ FCM single-send chunk summary: ${successCount} ok, ${failureCount} fail (${chunk.length} tokens)`,
+    );
+    return { successCount, failureCount };
+  }
+
+  private shouldFallbackToPerTokenSend(error: any): boolean {
+    const errMsg = String(error?.errorInfo?.message || error?.message || '');
+    return (
+      errMsg.includes('/batch') ||
+      errMsg.includes('404') ||
+      this.isTransientFcmTransportError(error)
+    );
+  }
+
   private async sendFcm(
     tokens: string[],
     payload: PushNotificationPayload,
@@ -295,164 +508,84 @@ export class NotificationsService {
 
     const messaging = admin.messaging();
 
-    // გაგზავნე multicast message (ერთდროულად რამდენიმე token-ზე)
-    const message = {
+    const notification = {
+      title: payload.title,
+      body: payload.body,
+    };
+    const data = payload.data || {};
+    const android = {
       notification: {
-        title: payload.title,
-        body: payload.body,
+        sound: payload.sound || 'default',
+        channelId: 'default',
       },
-      data: payload.data || {},
-      android: {
-        notification: {
+    };
+    const apns = {
+      payload: {
+        aps: {
           sound: payload.sound || 'default',
-          channelId: 'default',
+          badge: payload.badge || 1,
         },
       },
-      apns: {
-        payload: {
-          aps: {
-            sound: payload.sound || 'default',
-            badge: payload.badge || 1,
-          },
-        },
-      },
-      tokens: tokens.slice(0, 500), // FCM limit: 500 tokens per request
     };
 
-    try {
+    const batchSize = NotificationsService.FCM_BATCH_SIZE;
+    let totalSuccess = 0;
+    let totalFailed = 0;
+
+    for (let offset = 0; offset < tokens.length; offset += batchSize) {
+      const chunk = tokens.slice(offset, offset + batchSize);
       console.log(
-        '📦 [FCM] Attempting batch sendMulticast to',
-        message.tokens.length,
+        '📦 [FCM] batch',
+        `${offset / batchSize + 1}/${Math.ceil(tokens.length / batchSize)}`,
+        '→',
+        chunk.length,
         'tokens',
       );
-      const response = await messaging.sendMulticast(message);
-      console.log(
-        `✅ FCM sent: ${response.successCount} success, ${response.failureCount} failed`,
-      );
 
-      // თუ არის failed tokens, წაშალე invalid tokens
-      if (response.failureCount > 0) {
-        const failedTokens: string[] = [];
-        response.responses.forEach((resp, idx) => {
-          if (!resp.success) {
-            failedTokens.push(tokens[idx]);
-            console.log('❌ Failed token:', tokens[idx], resp.error?.message);
-          }
-        });
-
-        // წაშალე invalid tokens database-დან
-        if (failedTokens.length > 0) {
-          await this.deviceTokenModel.deleteMany({
-            token: { $in: failedTokens },
-          });
-          console.log(`🗑️ Removed ${failedTokens.length} invalid tokens`);
-        }
-      }
-
-      let totalSuccess = response.successCount;
-      let totalFailed = response.failureCount;
-      if (tokens.length > 500) {
-        const rest = await this.sendFcm(tokens.slice(500), payload);
-        totalSuccess += rest.successCount;
-        totalFailed += rest.failureCount;
-      }
-      return { successCount: totalSuccess, failureCount: totalFailed };
-    } catch (error) {
-      console.error('❌ FCM send error:', error);
-
-      // Fallback: some environments return 404 on /batch endpoint.
-      // Try per-token send using messages:send API instead of batch.
-      const errMsg = error?.errorInfo?.message || String(error);
-      if (errMsg.includes('/batch') || errMsg.includes('404')) {
-        console.log(
-          '⚠️ Falling back to per-token send... tokens:',
-          tokens.length,
+      try {
+        const response = await this.sendFcmMulticastOneChunk(
+          messaging,
+          notification,
+          data,
+          android,
+          apns,
+          chunk,
         );
-        let successCount = 0;
-        let failureCount = 0;
-        const invalidTokens: string[] = [];
+        totalSuccess += response.successCount;
+        totalFailed += response.failureCount;
+        await this.deleteInvalidTokensFromMulticastResponse(chunk, response);
+        console.log(
+          `✅ FCM batch ok: ${response.successCount} success, ${response.failureCount} failed`,
+        );
+      } catch (error: any) {
+        console.error('❌ FCM batch error:', error);
 
-        // Helper: exponential backoff sleep
-        const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
-        const isTransient = (code?: string, msg?: string) => {
-          const m = (msg || '').toLowerCase();
-          return (
-            code === 'internal' ||
-            code === 'unavailable' ||
-            code === 'deadline-exceeded' ||
-            m.includes('internal error') ||
-            m.includes('backend error') ||
-            m.includes('503')
-          );
-        };
-
-        for (const token of tokens) {
-          let attempt = 0;
-          let sent = false;
-          let lastErr: any = null;
-          while (attempt < 3 && !sent) {
-            try {
-              await messaging.send({
-                notification: message.notification,
-                data: message.data,
-                android: message.android as any,
-                apns: message.apns as any,
-                token,
-              } as any);
-              successCount += 1;
-              sent = true;
-            } catch (e: any) {
-              lastErr = e;
-              const code: string | undefined = e?.errorInfo?.code || e?.code;
-              const msg: string | undefined =
-                e?.errorInfo?.message || e?.message;
-
-              // Collect invalid tokens to clean up
-              if (
-                code === 'messaging/registration-token-not-registered' ||
-                code === 'messaging/invalid-registration-token' ||
-                (msg || '').toLowerCase().includes('not registered')
-              ) {
-                invalidTokens.push(token);
-                break; // no retry for invalid token
-              }
-
-              // Retry on transient errors
-              if (isTransient(code, msg) && attempt < 2) {
-                const backoffMs = 200 * Math.pow(2, attempt); // 200ms, 400ms
-                console.log(
-                  `⏳ Transient FCM error (${code}). Retrying in ${backoffMs}ms (attempt ${attempt + 1}/3)`,
-                );
-                await sleep(backoffMs);
-                attempt += 1;
-                continue;
-              }
-
-              // Non-transient failure
-              failureCount += 1;
-              console.log('❌ Failed token (single send):', token, msg || e);
-              break;
-            }
-          }
-        }
-
-        // Cleanup invalid tokens from DB
-        if (invalidTokens.length > 0) {
-          await this.deviceTokenModel.deleteMany({
-            token: { $in: invalidTokens },
-          });
+        if (this.shouldFallbackToPerTokenSend(error)) {
           console.log(
-            `🗑️ Removed ${invalidTokens.length} invalid tokens (single-send)`,
+            '⚠️ Falling back to per-token send for this chunk only, size:',
+            chunk.length,
           );
+          const fb = await this.sendFcmChunkPerTokenFallback(
+            messaging,
+            notification,
+            data,
+            android,
+            apns,
+            chunk,
+          );
+          totalSuccess += fb.successCount;
+          totalFailed += fb.failureCount;
+        } else {
+          totalFailed += chunk.length;
         }
-
-        console.log(
-          `✅ FCM single-send summary: ${successCount} success, ${failureCount} failed`,
-        );
-        return { successCount, failureCount };
       }
-      throw error;
+
+      if (offset + batchSize < tokens.length) {
+        await this.sleepMs(NotificationsService.FCM_INTER_BATCH_DELAY_MS);
+      }
     }
+
+    return { successCount: totalSuccess, failureCount: totalFailed };
   }
 
   async sendPushToTargets(

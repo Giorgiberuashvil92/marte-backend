@@ -1,5 +1,6 @@
 export class UpdateCarBrandDto {
   name?: string;
+  myautoManId?: string;
   country?: string;
   logo?: string;
   models?: string[];

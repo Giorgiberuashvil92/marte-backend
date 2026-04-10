@@ -1,5 +1,8 @@
 # Environment variables
 .env
+# დიდი Supabase იმპორტის JSON (ლოკალურად შეინახე, არ ატვირთო)
+/data/supabase-services.json
+
 .env.local
 .env.development
 .env.production

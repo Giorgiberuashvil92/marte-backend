@@ -53,7 +53,7 @@ export class SubscriptionsService {
       this.logger.log(`📊 Fetching subscription for user: ${userId}`);
 
       const subscription = await this.subscriptionModel
-        .findOne({ userId, status: 'active' })
+        .findOne(this.activeAppSubscriptionFilter(userId))
         .sort({ createdAt: -1 })
         .exec();
 

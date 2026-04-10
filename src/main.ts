@@ -117,6 +117,7 @@ async function bootstrap() {
       'Content-Type',
       'Authorization',
       'x-user-id',
+      'x-support-agent-key',
       'cache-control',
       'Cache-Control',
       'X-Requested-With',

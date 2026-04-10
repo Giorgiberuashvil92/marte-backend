@@ -60,6 +60,10 @@ export class Mechanic {
   @Prop()
   bogCardToken?: string; // BOG order_id recurring payments-ისთვის
 
+  /** იმპორტის დუბლიკატების თავიდან ასაცილებლად (მაგ. supabase:service:620) */
+  @Prop({ sparse: true })
+  importSourceKey?: string;
+
   @Prop({ type: Date })
   createdAt?: Date; // Mongoose timestamps: true
 
@@ -74,3 +78,4 @@ export const MechanicSchema = SchemaFactory.createForClass(Mechanic);
 MechanicSchema.index({ ownerId: 1 });
 MechanicSchema.index({ status: 1 });
 MechanicSchema.index({ isFeatured: 1 });
+MechanicSchema.index({ importSourceKey: 1 }, { unique: true, sparse: true });

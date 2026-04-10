@@ -31,7 +31,11 @@
     "test:e2e": "jest --config ./test/jest-e2e.json",
     "fix:bog-tokens": "node scripts/fix-bog-card-tokens.js",
     "fix:bog-tokens:apply": "node scripts/fix-bog-card-tokens.js --apply",
-    "export:mongodb": "node scripts/export-mongodb-json.js"
+    "export:mongodb": "node scripts/export-mongodb-json.js",
+    "import:supabase-mechanics": "node scripts/import-supabase-mechanic-services.js",
+    "build:myauto-brands": "node scripts/build-myauto-brands-json.js",
+    "import:myauto-brands": "node scripts/import-myauto-brands.js",
+    "import:nhtsa-car-models": "node scripts/import-nhtsa-car-models.js"
   },
   "dependencies": {
     "@nestjs/common": "^11.0.1",

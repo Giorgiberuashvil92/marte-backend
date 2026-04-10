@@ -1,0 +1,15 @@
+{
+  "charges": [
+    {
+      "userId": "usr_1772276877206",
+      "bogCardToken": "9bc5baa0-7c4f-427f-a6ea-ad3875d130e0",
+      "planId": "premium",
+      "planName": "CarAppX პრემიუმ - თვეში პაკეტი",
+      "planPrice": 2.99,
+      "currency": "GEL",
+      "period": "monthly",
+      "billingCycles": 1,
+      "lastChargeOrderId": "optional-bog-order-id-of-this-successful-charge"
+    }
+  ]
+}

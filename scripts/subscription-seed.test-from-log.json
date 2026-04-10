@@ -1,0 +1,107 @@
+{
+  "charges": [
+    {
+      "userId": "usr_1771607090777",
+      "bogCardToken": "186fed17-3125-4087-84f7-a64942b5a05d",
+      "planId": "premium",
+      "planName": "CarAppX პრემიუმ - თვეში პაკეტი",
+      "planPrice": 2.99,
+      "currency": "GEL",
+      "period": "monthly",
+      "billingCycles": 1,
+      "totalPaid": 2.99,
+      "lastChargeOrderId": "88a73697-1357-4664-ae9e-4ae0591b94e2",
+      "nextBillingDate": "2026-03-29T20:00:00.000Z",
+      "_note": "rejected 2026-03-29 insufficient funds; parent_order_id=token recurring-ისთვის; order 88a73697-*; subscription 699895e9389f7176e0c71ee9 — ხელახალი ჩამოჭრის ცდა"
+    },
+    {
+      "userId": "usr_1769622603607",
+      "bogCardToken": "7047a317-20be-4466-b134-1ae18d4841ad",
+      "planId": "premium-monthly",
+      "planName": "CarAppX პრემიუმ - თვეში პაკეტი - თვეში",
+      "planPrice": 3.99,
+      "currency": "GEL",
+      "period": "monthly",
+      "billingCycles": 1,
+      "totalPaid": 3.99,
+      "lastChargeOrderId": "7047a317-20be-4466-b134-1ae18d4841ad",
+      "nextBillingDate": "2026-04-24T13:01:41.785Z",
+      "_note": "completed subscription payment (status completed, code 100); paymentToken=orderId; externalOrderId იყო subscription_premium-monthly_usr_1769622603607_1774357231213 — DB-ში userId ზოგჯერ unknown ეწერა, აქ external-იდან"
+    },
+    {
+      "userId": "usr_1771253311756",
+      "bogCardToken": "cbad00fb-725e-4078-ade5-3dfbb1e18117",
+      "planId": "premium",
+      "planName": "პრემიუმ - თვეში",
+      "planPrice": 2.99,
+      "currency": "GEL",
+      "period": "monthly",
+      "billingCycles": 2,
+      "totalPaid": 5.98,
+      "lastChargeOrderId": "cbad00fb-725e-4078-ade5-3dfbb1e18117",
+      "nextBillingDate": "2026-04-29T20:00:05.045Z",
+      "_note": "BOG completed 2026-03-29; recurring_6996cd23389f7176e0c6cfb1_*; parent_order_id bacdd0b2-d3ff-42c1-9c3e-ca99e5213d74; ლოგში bogCardToken: cbad00fb-*; subscriptionId 6996cd23389f7176e0c6cfb1"
+    },
+    {
+      "userId": "usr_1771314424497",
+      "bogCardToken": "b24d4776-2eea-408e-8dab-36e96897dfe4",
+      "planId": "premium",
+      "planName": "CarAppX პრემიუმ - თვეში პაკეტი - თვეში",
+      "planPrice": 2.99,
+      "currency": "GEL",
+      "period": "monthly",
+      "billingCycles": 1,
+      "totalPaid": 2.99,
+      "lastChargeOrderId": "9f50aae9-d0dc-4e70-bc7d-a61bcc8fa0fc",
+      "nextBillingDate": "2026-03-29T20:00:00.000Z",
+      "_note": "rejected 2026-03-29 insufficient funds (107); parent_order_id=bogCardToken; subscription 69942966389f7176e0c617b5 — ხელახალი ჩამოჭრა"
+    },
+    {
+      "userId": "usr_1772276877206",
+      "bogCardToken": "9bc5baa0-7c4f-427f-a6ea-ad3875d130e0",
+      "planId": "premium",
+      "planName": "CarAppX პრემიუმ - თვეში პაკეტი - თვეში",
+      "planPrice": 2.99,
+      "currency": "GEL",
+      "period": "monthly",
+      "billingCycles": 1,
+      "totalPaid": 2.99,
+      "lastChargeOrderId": "6917c2a1-abe1-4d8e-beac-8b50af6d8038",
+      "nextBillingDate": "2026-03-29T20:00:00.000Z",
+      "_note": "rejected 2026-03-29 card usage limited (101); parent_order_id=bogCardToken; subscription 69a49a5a081bc87819cc0fbd — ხელახალი ჩამოჭრა"
+    },
+    {
+      "userId": "usr_1772408973748",
+      "bogCardToken": "4a25d94e-3008-493e-95a3-8be9d0ccf369",
+      "planId": "premium",
+      "planName": "CarAppX პრემიუმ - თვეში პაკეტი - თვეში",
+      "planPrice": 2.99,
+      "currency": "GEL",
+      "period": "monthly",
+      "billingCycles": 1,
+      "totalPaid": 2.99,
+      "lastChargeOrderId": "a4c49661-f81e-4ce5-bd15-e532b18423f7",
+      "nextBillingDate": "2026-03-29T20:00:00.000Z",
+      "_note": "rejected 2026-03-29 insufficient funds (107); parent_order_id=bogCardToken; subscription 69a4d1b3081bc87819cc1a1b — ხელახალი ჩამოჭრა"
+    },
+    {
+      "userId": "usr_1772283414274",
+      "bogCardToken": "e1cb78f1-c874-43de-9920-724d3a6429b7",
+      "planId": "premium",
+      "planName": "პრემიუმ - თვეში",
+      "planPrice": 2.99,
+      "currency": "GEL",
+      "period": "monthly",
+      "billingCycles": 1,
+      "totalPaid": 2.99,
+      "lastChargeOrderId": "e1cb78f1-c874-43de-9920-724d3a6429b7",
+      "nextBillingDate": "2026-04-19T08:00:04.528Z",
+      "_note": "2026-03-19 BOG: subscription შექმნილი active; subscriptionId 69a320160902103a094f6d32; პირველი order=bogCardToken e1cb78f1-*; ლოგში WARN: ბარათის დამახსოვრება გამოტოვებულია (სტატუსი ქართულად „წარმატებული“, key არა completed/success)"
+    },
+    {
+      "_skip": true,
+      "userId": "usr_1772363110783",
+      "_note": "Railway 2026-03-19 ~08:00 UTC: აქტიური subscription + „Found 3 payments“ — მაგრამ ამ ლოგში არ ჩანს BOG order_id / parent_order_id / External Order ID, ამიტომ bogCardToken ვერ ამოიღე. Railway-ში ძებნა: usr_1772363110783 + „Order ID:“ ან „bogCardToken“ ან „recurring_“ ან BOG callback JSON parent_order_id. როცა იპოვი: ჩასვი bogCardToken (recurring-ისთვის parent_order_id), lastChargeOrderId (ბოლო ცდის order_id), _skip ამოაღე და plan/planPrice BOG item-იდან."
+    }
+  ]
+}
