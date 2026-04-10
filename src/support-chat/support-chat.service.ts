@@ -9,6 +9,7 @@ import {
   SupportMessage,
   SupportMessageDocument,
 } from '../schemas/support-message.schema';
+import { User, UserDocument } from '../schemas/user.schema';
 import { NotificationsService } from '../notifications/notifications.service';
 
 export type SupportChatMessageDto = {
@@ -43,6 +44,27 @@ function clipForLog(text: string, max = 600): string {
   return `${text.slice(0, max)}…`;
 }
 
+function displayNameForThreadUser(
+  userId: string,
+  u: {
+    firstName?: string;
+    lastName?: string;
+    phone?: string;
+    id?: string;
+  } | null,
+): string {
+  if (!u) {
+    if (userId.startsWith('guest:')) {
+      return `სტუმარი (${userId.slice('guest:'.length)})`;
+    }
+    return userId;
+  }
+  const name = [u.firstName, u.lastName].filter(Boolean).join(' ').trim();
+  if (name) return name;
+  if (u.phone?.trim()) return u.phone.trim();
+  return u.id || userId;
+}
+
 @Injectable()
 export class SupportChatService {
   private readonly logger = new Logger(SupportChatService.name);
@@ -52,6 +74,8 @@ export class SupportChatService {
     private readonly threadModel: Model<SupportThreadDocument>,
     @InjectModel(SupportMessage.name)
     private readonly messageModel: Model<SupportMessageDocument>,
+    @InjectModel(User.name)
+    private readonly userModel: Model<UserDocument>,
     private readonly notificationsService: NotificationsService,
   ) {}
 
@@ -137,10 +161,11 @@ export class SupportChatService {
     }));
   }
 
-  /** ადმინის სია: ბოლო მესიჯი თითო userId (მომხმარებელი ან guest) თრედზე */
+  /** ადმინის სია: ბოლო მესიჯი თითო userId (მომხმარებელი ან guest) თრედზე + სახელი users-იდან */
   async listThreadsForAdmin(): Promise<
     Array<{
       userId: string;
+      userDisplayName: string;
       lastMessage: string;
       lastAt: number;
       lastSender: 'user' | 'agent';
@@ -166,12 +191,28 @@ export class SupportChatService {
         { $limit: 400 },
       ])
       .exec();
-    return agg.map((r) => ({
-      userId: r._id,
-      lastMessage: r.lastMessage,
-      lastAt: r.lastAt,
-      lastSender: r.lastSender === 'agent' ? 'agent' : 'user',
-    }));
+
+    const userIds = [...new Set(agg.map((r) => r._id).filter(Boolean))];
+    const users = await this.userModel
+      .find({ id: { $in: userIds } })
+      .select('id phone firstName lastName')
+      .lean()
+      .exec();
+    const byId = new Map(
+      users.map((doc) => [doc.id, doc] as [string, (typeof users)[0]]),
+    );
+
+    return agg.map((r) => {
+      const userId = r._id;
+      const doc = byId.get(userId) ?? null;
+      return {
+        userId,
+        userDisplayName: displayNameForThreadUser(userId, doc),
+        lastMessage: r.lastMessage,
+        lastAt: r.lastAt,
+        lastSender: r.lastSender === 'agent' ? 'agent' : 'user',
+      };
+    });
   }
 
   async createUserMessage(

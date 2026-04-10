@@ -8,6 +8,7 @@ import {
   SupportMessage,
   SupportMessageSchema,
 } from '../schemas/support-message.schema';
+import { User, UserSchema } from '../schemas/user.schema';
 import { NotificationsModule } from '../notifications/notifications.module';
 import { SupportChatService } from './support-chat.service';
 import { SupportChatController } from './support-chat.controller';
@@ -18,6 +19,7 @@ import { SupportChatGateway } from './support-chat.gateway';
     MongooseModule.forFeature([
       { name: SupportThread.name, schema: SupportThreadSchema },
       { name: SupportMessage.name, schema: SupportMessageSchema },
+      { name: User.name, schema: UserSchema },
     ]),
     NotificationsModule,
   ],
