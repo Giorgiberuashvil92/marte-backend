@@ -22,6 +22,14 @@ export class SubscriptionsService {
     private notificationsService: NotificationsService,
   ) {}
 
+  /** აპის active გამოწერა (basic/premium) — ერთი ფილტრი getUserSubscription-ისთვის */
+  private activeAppSubscriptionFilter(userId: string): {
+    userId: string;
+    status: string;
+  } {
+    return { userId, status: 'active' };
+  }
+
   /**
    * ყველა subscription-ის მიღება
    */
