@@ -22,6 +22,13 @@ export class SupportThread {
    */
   @Prop({ type: Boolean, default: false })
   supportReadCursorBackfilled: boolean;
+
+  /**
+   * ბოლო დრო/ქურორი — რამდენამდეა ადმინმა (agent) „ნახა“ თრედი (მესიჯების ჩატვირთვაზე იხსნება).
+   * lastSender=user && lastAt > agentLastReadAt → ადმინს სჭირდება პასუხი (წითელი).
+   */
+  @Prop({ type: Number, default: 0 })
+  agentLastReadAt: number;
 }
 
 export const SupportThreadSchema = SchemaFactory.createForClass(SupportThread);

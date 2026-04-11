@@ -132,7 +132,9 @@ export class SupportChatController {
     if (!id) {
       throw new BadRequestException('userId სავალდებულოა');
     }
-    return this.supportChatService.listMessagesDto(id);
+    const messages = await this.supportChatService.listMessagesDto(id);
+    await this.supportChatService.markThreadReadByAgent(id);
+    return messages;
   }
 
   /**
@@ -178,7 +180,7 @@ export class SupportChatController {
   }
 
   @Get('agent/in-app/thread/:targetUserId/messages')
-  inAppThreadMessages(
+  async inAppThreadMessages(
     @Headers('x-user-id') requesterId: string | undefined,
     @Param('targetUserId') targetUserId: string,
   ) {
@@ -187,7 +189,9 @@ export class SupportChatController {
     if (!tid) {
       throw new BadRequestException('targetUserId სავალდებულოა');
     }
-    return this.supportChatService.listMessagesDto(tid);
+    const messages = await this.supportChatService.listMessagesDto(tid);
+    await this.supportChatService.markThreadReadByAgent(tid);
+    return messages;
   }
 
   @Post('agent/in-app/reply')

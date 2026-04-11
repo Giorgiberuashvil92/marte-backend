@@ -50,6 +50,7 @@ function displayNameForThreadUser(
     firstName?: string;
     lastName?: string;
     phone?: string;
+    email?: string;
     id?: string;
   } | null,
 ): string {
@@ -62,7 +63,8 @@ function displayNameForThreadUser(
   const name = [u.firstName, u.lastName].filter(Boolean).join(' ').trim();
   if (name) return name;
   if (u.phone?.trim()) return u.phone.trim();
-  return u.id || userId;
+  if (u.email?.trim()) return u.email.trim();
+  return String(u.id || userId);
 }
 
 @Injectable()
@@ -161,6 +163,28 @@ export class SupportChatService {
     }));
   }
 
+  /**
+   * ადმინმა გახსნა თრედი / ჩატვირთა მესიჯების სია — agentLastReadAt იწევა ბოლო მესიჯის ts-მდე.
+   */
+  async markThreadReadByAgent(userId: string): Promise<void> {
+    const trimmed = userId.trim();
+    if (!trimmed) return;
+    const thread = await this.threadModel.findOne({ userId: trimmed }).exec();
+    if (!thread) return;
+    const last = await this.messageModel
+      .findOne({ threadId: thread._id })
+      .sort({ timestamp: -1 })
+      .select('timestamp')
+      .lean()
+      .exec();
+    const t = last?.timestamp ?? Date.now();
+    const prev = thread.agentLastReadAt ?? 0;
+    const next = Math.max(prev, t);
+    await this.threadModel
+      .updateOne({ _id: thread._id }, { $set: { agentLastReadAt: next } })
+      .exec();
+  }
+
   /** ადმინის სია: ბოლო მესიჯი თითო userId (მომხმარებელი ან guest) თრედზე + სახელი users-იდან */
   async listThreadsForAdmin(): Promise<
     Array<{
@@ -169,6 +193,8 @@ export class SupportChatService {
       lastMessage: string;
       lastAt: number;
       lastSender: 'user' | 'agent';
+      /** true: ბოლო იუზერის მესიჯი ჯერ არ „ნახილია“ ადმინისთვის (წითელი / მოგწერეს) */
+      awaitingAgentReply: boolean;
     }>
   > {
     const agg = await this.messageModel
@@ -192,25 +218,52 @@ export class SupportChatService {
       ])
       .exec();
 
-    const userIds = [...new Set(agg.map((r) => r._id).filter(Boolean))];
+    const userIds = [
+      ...new Set(
+        agg
+          .map((r) => String(r._id ?? '').trim())
+          .filter((id) => id.length > 0),
+      ),
+    ];
     const users = await this.userModel
       .find({ id: { $in: userIds } })
-      .select('id phone firstName lastName')
+      .select('id phone firstName lastName email')
       .lean()
       .exec();
-    const byId = new Map(
-      users.map((doc) => [doc.id, doc] as [string, (typeof users)[0]]),
-    );
+    const byId = new Map<string, (typeof users)[0]>();
+    for (const doc of users) {
+      const id = String((doc as { id?: string }).id ?? '').trim();
+      if (id) byId.set(id, doc);
+    }
+
+    const threadDocs = await this.threadModel
+      .find({ userId: { $in: userIds } })
+      .select('userId agentLastReadAt')
+      .lean()
+      .exec();
+    const agentReadAt = new Map<string, number>();
+    for (const t of threadDocs) {
+      const uid = String(t.userId ?? '').trim();
+      const ar = Number((t as { agentLastReadAt?: number }).agentLastReadAt);
+      agentReadAt.set(uid, Number.isFinite(ar) ? ar : 0);
+    }
 
     return agg.map((r) => {
-      const userId = r._id;
+      const userId = String(r._id ?? '').trim();
       const doc = byId.get(userId) ?? null;
+      const lastSender: 'user' | 'agent' =
+        r.lastSender === 'agent' ? 'agent' : 'user';
+      const lastAt = r.lastAt;
+      const agentSeen = agentReadAt.get(userId) ?? 0;
+      const awaitingAgentReply =
+        lastSender === 'user' && lastAt > agentSeen;
       return {
         userId,
         userDisplayName: displayNameForThreadUser(userId, doc),
         lastMessage: r.lastMessage,
-        lastAt: r.lastAt,
-        lastSender: r.lastSender === 'agent' ? 'agent' : 'user',
+        lastAt,
+        lastSender,
+        awaitingAgentReply,
       };
     });
   }
@@ -284,6 +337,7 @@ export class SupportChatService {
         `[SUPPORT-CHAT] 📥 AGENT პასუხი | targetUserId=${targetUserId} | msgId=${dto.id} | ტექსტი: ${JSON.stringify(clipForLog(trimmed))}`,
       );
     }
+    await this.markThreadReadByAgent(targetUserId);
     return dto;
   }
 }
