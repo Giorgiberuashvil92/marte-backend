@@ -1,4 +1,14 @@
-import { Body, Controller, Get, Post, Query } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  NotFoundException,
+  Param,
+  Patch,
+  Post,
+  Query,
+} from '@nestjs/common';
+import { Types } from 'mongoose';
 import { ExclusiveOfferService } from './exclusive-offer.service';
 
 @Controller('exclusive-offer-requests')
@@ -12,8 +22,12 @@ export class ExclusiveOfferController {
     const personalId = String(body?.personalId ?? '')
       .trim()
       .replace(/\s/g, '');
-    const phone = String(body?.phone ?? '').trim().replace(/\s/g, '');
-    const email = String(body?.email ?? '').trim().toLowerCase();
+    const phone = String(body?.phone ?? '')
+      .trim()
+      .replace(/\s/g, '');
+    const email = String(body?.email ?? '')
+      .trim()
+      .toLowerCase();
     const userId =
       typeof body?.userId === 'string' && body.userId.trim()
         ? body.userId.trim()
@@ -53,10 +67,7 @@ export class ExclusiveOfferController {
   }
 
   @Get()
-  async list(
-    @Query('limit') limit?: string,
-    @Query('offset') offset?: string,
-  ) {
+  async list(@Query('limit') limit?: string, @Query('offset') offset?: string) {
     const parsedLimit = limit ? Number(limit) : undefined;
     const parsedOffset = offset ? Number(offset) : undefined;
     const result = await this.exclusiveOfferService.list({
@@ -64,5 +75,31 @@ export class ExclusiveOfferController {
       offset: parsedOffset,
     });
     return { success: true, ...result };
+  }
+
+  @Patch(':id')
+  async updateOne(
+    @Param('id') id: string,
+    @Body() body: Record<string, unknown>,
+  ) {
+    if (!Types.ObjectId.isValid(id)) {
+      return { success: false, error: 'invalid_id' };
+    }
+    const adminNote =
+      typeof body?.adminNote === 'string' ? body.adminNote : undefined;
+    const called = typeof body?.called === 'boolean' ? body.called : undefined;
+
+    if (adminNote === undefined && called === undefined) {
+      return { success: false, error: 'empty_patch' };
+    }
+
+    const updated = await this.exclusiveOfferService.updateById(id, {
+      adminNote,
+      called,
+    });
+    if (!updated) {
+      throw new NotFoundException();
+    }
+    return { success: true, data: updated };
   }
 }

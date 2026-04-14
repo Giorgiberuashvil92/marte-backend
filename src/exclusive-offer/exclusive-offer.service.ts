@@ -51,4 +51,36 @@ export class ExclusiveOfferService {
 
     return { data, total, limit, offset };
   }
+
+  async updateById(
+    id: string,
+    patch: { adminNote?: string; called?: boolean },
+  ) {
+    const existing = await this.model.findById(id).lean().exec();
+    if (!existing) {
+      return null;
+    }
+
+    const $set: Record<string, unknown> = {};
+    if (patch.adminNote !== undefined) {
+      $set.adminNote = String(patch.adminNote);
+    }
+    if (patch.called !== undefined) {
+      $set.called = Boolean(patch.called);
+    }
+    if (Object.keys($set).length === 0) {
+      return existing;
+    }
+
+    const pid = String(existing.personalId ?? '')
+      .trim()
+      .replace(/\s/g, '');
+    if (pid) {
+      await this.model.updateMany({ personalId: pid }, { $set }).exec();
+    } else {
+      await this.model.findByIdAndUpdate(id, { $set }).exec();
+    }
+
+    return this.model.findById(id).lean().exec();
+  }
 }

@@ -29,6 +29,14 @@ export class ExclusiveOfferRequest {
   /** მაგ. fuel_exclusive_portal */
   @Prop({ default: 'fuel_exclusive_portal' })
   source: string;
+
+  /** ადმინის შენიშვნა (დარეკვა, სტატუსი და ა.შ.) */
+  @Prop({ default: '' })
+  adminNote: string;
+
+  /** უკვე დავრეკეთ მომხმარებელზე */
+  @Prop({ default: false })
+  called: boolean;
 }
 
 export const ExclusiveOfferRequestSchema = SchemaFactory.createForClass(
