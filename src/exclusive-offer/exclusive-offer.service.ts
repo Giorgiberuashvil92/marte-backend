@@ -15,15 +15,28 @@ function startOfTbilisiDay(ymd: string): Date {
   return new Date(`${ymd}T00:00:00+04:00`);
 }
 
-function endOfTbilisiDay(ymd: string): Date {
-  return new Date(`${ymd}T23:59:59.999+04:00`);
-}
-
 function addTbilisiCalendarDays(ymd: string, deltaDays: number): string {
   const start = startOfTbilisiDay(ymd);
   const shifted = new Date(start.getTime() + deltaDays * 24 * 60 * 60 * 1000);
   return shifted.toLocaleDateString('en-CA', { timeZone: 'Asia/Tbilisi' });
 }
+
+/** Mongo pipeline: პირადი № ერთნაირად (სფეისების გარეშე) უნიკალურობისთვის */
+const addFieldsPidNorm: PipelineStage = {
+  $addFields: {
+    pidNorm: {
+      $replaceAll: {
+        input: {
+          $trim: {
+            input: { $toString: { $ifNull: ['$personalId', ''] } },
+          },
+        },
+        find: ' ',
+        replacement: '',
+      },
+    },
+  },
+};
 
 @Injectable()
 export class ExclusiveOfferService {
@@ -65,19 +78,16 @@ export class ExclusiveOfferService {
   }
 
   /**
-   * უნიკალური განმცხადებლები (personalId) — დღეს / გუშინ / ბოლო 7 კალენდარული დღე (თბილისი).
+   * უნიკალური განმცხადებლები (ნორმალიზებული personalId) — დღეს / გუშინ (თბილისი) + სულ ყველა დროით.
    */
   private async uniqueApplicantStats(): Promise<{
     uniqueUsersToday: number;
     uniqueUsersYesterday: number;
-    uniqueUsersLast7Days: number;
+    uniqueUsersAllTime: number;
   }> {
     const now = new Date();
     const todayYmd = tbilisiTodayYmd(now);
     const yesterdayYmd = addTbilisiCalendarDays(todayYmd, -1);
-    const weekStartYmd = addTbilisiCalendarDays(todayYmd, -6);
-    const weekFrom = startOfTbilisiDay(weekStartYmd);
-    const weekTo = endOfTbilisiDay(todayYmd);
 
     const dayKeyExpr = {
       $dateToString: {
@@ -91,43 +101,34 @@ export class ExclusiveOfferService {
       {
         $match: {
           createdAt: { $exists: true, $ne: null },
-          personalId: { $exists: true, $nin: [null, ''] },
         },
       },
+      addFieldsPidNorm,
       { $addFields: { dayKey: dayKeyExpr } },
-      { $match: { dayKey } },
-      { $group: { _id: '$personalId' } },
+      { $match: { dayKey, pidNorm: { $ne: '' } } },
+      { $group: { _id: '$pidNorm' } },
       { $count: 'n' },
     ];
 
-    const weekStages: PipelineStage[] = [
-      {
-        $match: {
-          createdAt: {
-            $exists: true,
-            $ne: null,
-            $gte: weekFrom,
-            $lte: weekTo,
-          },
-          personalId: { $exists: true, $nin: [null, ''] },
-        },
-      },
-      { $group: { _id: '$personalId' } },
+    const allTimeUniqueStages: PipelineStage[] = [
+      addFieldsPidNorm,
+      { $match: { pidNorm: { $ne: '' } } },
+      { $group: { _id: '$pidNorm' } },
       { $count: 'n' },
     ];
 
-    const [todayAgg, yesterdayAgg, weekAgg] = await Promise.all([
+    const [todayAgg, yesterdayAgg, allTimeAgg] = await Promise.all([
       this.model.aggregate<{ n: number }>(distinctPidStages(todayYmd)).exec(),
       this.model
         .aggregate<{ n: number }>(distinctPidStages(yesterdayYmd))
         .exec(),
-      this.model.aggregate<{ n: number }>(weekStages).exec(),
+      this.model.aggregate<{ n: number }>(allTimeUniqueStages).exec(),
     ]);
 
     return {
       uniqueUsersToday: todayAgg[0]?.n ?? 0,
       uniqueUsersYesterday: yesterdayAgg[0]?.n ?? 0,
-      uniqueUsersLast7Days: weekAgg[0]?.n ?? 0,
+      uniqueUsersAllTime: allTimeAgg[0]?.n ?? 0,
     };
   }
 
