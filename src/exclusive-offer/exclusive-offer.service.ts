@@ -38,6 +38,22 @@ const addFieldsPidNorm: PipelineStage = {
   },
 };
 
+const dayKeyTbilisiExpr = {
+  $dateToString: {
+    format: '%Y-%m-%d',
+    date: '$createdAt',
+    timezone: 'Asia/Tbilisi',
+  },
+};
+
+export type ExclusiveOfferUniqueUserRow = {
+  firstName: string;
+  lastName: string;
+  personalId: string;
+  phone: string;
+  email: string;
+};
+
 @Injectable()
 export class ExclusiveOfferService {
   constructor(
@@ -89,14 +105,6 @@ export class ExclusiveOfferService {
     const todayYmd = tbilisiTodayYmd(now);
     const yesterdayYmd = addTbilisiCalendarDays(todayYmd, -1);
 
-    const dayKeyExpr = {
-      $dateToString: {
-        format: '%Y-%m-%d',
-        date: '$createdAt',
-        timezone: 'Asia/Tbilisi',
-      },
-    };
-
     const distinctPidStages = (dayKey: string): PipelineStage[] => [
       {
         $match: {
@@ -104,7 +112,7 @@ export class ExclusiveOfferService {
         },
       },
       addFieldsPidNorm,
-      { $addFields: { dayKey: dayKeyExpr } },
+      { $addFields: { dayKey: dayKeyTbilisiExpr } },
       { $match: { dayKey, pidNorm: { $ne: '' } } },
       { $group: { _id: '$pidNorm' } },
       { $count: 'n' },
@@ -153,6 +161,70 @@ export class ExclusiveOfferService {
     );
 
     return { data: dataSerialized, total, limit, offset, stats };
+  }
+
+  /**
+   * უნიკალური განმცხადებლები ექსპორტისთვის — თითო პირადი №-ზე ბოლო გაგზავნის მონაცემები (სახელი, ტელეფონი, ელფოსტა).
+   */
+  async uniqueUsersExportList(
+    scope: 'all' | 'today' | 'yesterday',
+  ): Promise<ExclusiveOfferUniqueUserRow[]> {
+    const now = new Date();
+    const todayYmd = tbilisiTodayYmd(now);
+    const yesterdayYmd = addTbilisiCalendarDays(todayYmd, -1);
+    const targetDayKey = scope === 'yesterday' ? yesterdayYmd : todayYmd;
+
+    const stages: PipelineStage[] = [
+      addFieldsPidNorm,
+      { $match: { pidNorm: { $ne: '' } } },
+    ];
+
+    if (scope === 'today' || scope === 'yesterday') {
+      stages.push(
+        { $match: { createdAt: { $exists: true, $ne: null } } },
+        { $addFields: { dayKey: dayKeyTbilisiExpr } },
+        { $match: { dayKey: targetDayKey } },
+      );
+    }
+
+    stages.push(
+      { $sort: { createdAt: -1 } },
+      {
+        $group: {
+          _id: '$pidNorm',
+          doc: { $first: '$$ROOT' },
+        },
+      },
+      {
+        $project: {
+          _id: 0,
+          firstName: { $ifNull: ['$doc.firstName', ''] },
+          lastName: { $ifNull: ['$doc.lastName', ''] },
+          personalId: { $ifNull: ['$doc.personalId', '$_id'] },
+          phone: { $ifNull: ['$doc.phone', ''] },
+          email: { $ifNull: ['$doc.email', ''] },
+        },
+      },
+      { $sort: { personalId: 1 } },
+    );
+
+    const raw = await this.model
+      .aggregate<Record<string, string>>(stages)
+      .exec();
+
+    return raw.map((r) => ({
+      firstName: String(r.firstName ?? '').trim(),
+      lastName: String(r.lastName ?? '').trim(),
+      personalId: String(r.personalId ?? '')
+        .trim()
+        .replace(/\s/g, ''),
+      phone: String(r.phone ?? '')
+        .trim()
+        .replace(/\s/g, ''),
+      email: String(r.email ?? '')
+        .trim()
+        .toLowerCase(),
+    }));
   }
 
   async updateById(

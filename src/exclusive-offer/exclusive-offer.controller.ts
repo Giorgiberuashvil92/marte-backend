@@ -66,6 +66,15 @@ export class ExclusiveOfferController {
     return { success: true, data: result };
   }
 
+  /** უნიკალური განმცხადებლების სია ექსპორტისთვის: ?scope=all|today|yesterday */
+  @Get('unique-list')
+  async uniqueList(@Query('scope') scope?: string) {
+    const s: 'all' | 'today' | 'yesterday' =
+      scope === 'today' || scope === 'yesterday' ? scope : 'all';
+    const data = await this.exclusiveOfferService.uniqueUsersExportList(s);
+    return { success: true, scope: s, data };
+  }
+
   @Get()
   async list(@Query('limit') limit?: string, @Query('offset') offset?: string) {
     const parsedLimit = limit ? Number(limit) : undefined;
