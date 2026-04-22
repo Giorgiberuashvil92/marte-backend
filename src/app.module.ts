@@ -46,6 +46,7 @@ import { EcommerceProductsModule } from './ecommerce-products/ecommerce-products
 import { FinesModule } from './fines/fines.module';
 import { NewsFeedModule } from './news-feed/news-feed.module';
 import { SupportChatModule } from './support-chat/support-chat.module';
+import { PanelAdminModule } from './panel-admin/panel-admin.module';
 import databaseConfig from './config/database.config';
 
 // Schemas
@@ -123,11 +124,7 @@ function trimMongoEnv(s: string | undefined): string {
 }
 
 /**
- * Atlas შაბლონი: mongodb+srv://<db_username>:<db_password>@host/?appName=…
- * `<db_username>` / `<db_password>` არის placeholder — კოდში/`.env`-ში ჩაწერე რეალური მნიშვნელობები, ზღვარი ბრჭყალები არა.
- * ან სრული `MONGODB_URI`, ან `MONGODB_USERNAME` + `MONGODB_PASSWORD` (mongosh-ის `--username` მსგავსად).
- *
- * Node სკრიპტებისთვის იგივე წესები: `scripts/mongodb-uri.js` → `resolveMongo()`.
+
  */
 function mongooseMongoConfig(): { uri: string } {
   const full = trimMongoEnv(process.env.MONGODB_URI);
@@ -162,7 +159,6 @@ function mongooseMongoConfig(): { uri: string } {
     w: 'majority',
     authSource: 'admin',
   });
-  /** Atlas: user/pass URI-ში + authSource=admin — ცალკე mongoose user/pass ხშირად იძლევა bad auth-ს */
   const uri = `mongodb+srv://${encodeURIComponent(user)}:${encodeURIComponent(pass)}@${host}/${encodeURIComponent(dbName)}?${qs.toString()}`;
   return { uri };
 }
@@ -248,6 +244,7 @@ function mongooseMongoConfig(): { uri: string } {
     FinesModule,
     NewsFeedModule,
     SupportChatModule,
+    PanelAdminModule,
   ],
   controllers: [AppController],
   providers: [AppService],

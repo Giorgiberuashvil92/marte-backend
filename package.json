@@ -35,7 +35,8 @@
     "import:supabase-mechanics": "node scripts/import-supabase-mechanic-services.js",
     "build:myauto-brands": "node scripts/build-myauto-brands-json.js",
     "import:myauto-brands": "node scripts/import-myauto-brands.js",
-    "import:nhtsa-car-models": "node scripts/import-nhtsa-car-models.js"
+    "import:nhtsa-car-models": "node scripts/import-nhtsa-car-models.js",
+    "seed:panel-admins": "node scripts/seed-panel-admins.js"
   },
   "dependencies": {
     "@nestjs/common": "^11.0.1",
