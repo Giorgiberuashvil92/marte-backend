@@ -26,6 +26,7 @@ export interface Mechanic {
   address?: string;
   createdAt?: Date;
   expiryDate?: Date;
+  isFeatured?: boolean;
 }
 
 @Injectable()
@@ -87,6 +88,7 @@ export class MechanicsService {
       longitude: (d as any).longitude,
       createdAt: (d as any).createdAt,
       expiryDate: (d as any).expiryDate,
+      isFeatured: !!(d as any).isFeatured,
     }));
   }
 
@@ -113,6 +115,7 @@ export class MechanicsService {
       longitude: (d as any).longitude,
       createdAt: (d as any).createdAt,
       expiryDate: (d as any).expiryDate,
+      isFeatured: !!(d as any).isFeatured,
     };
   }
 
@@ -171,6 +174,7 @@ export class MechanicsService {
       address: doc.address,
       latitude: doc.latitude,
       longitude: doc.longitude,
+      isFeatured: !!doc.isFeatured,
     };
   }
 
@@ -222,6 +226,7 @@ export class MechanicsService {
       address: (doc as any).address,
       latitude: (doc as any).latitude,
       longitude: (doc as any).longitude,
+      isFeatured: !!(doc as any).isFeatured,
     };
   }
 
@@ -270,6 +275,7 @@ export class MechanicsService {
       address: updatedMechanic.address,
       latitude: updatedMechanic.latitude,
       longitude: updatedMechanic.longitude,
+      isFeatured: !!updatedMechanic.isFeatured,
     };
   }
 
@@ -317,6 +323,7 @@ export class MechanicsService {
       address: updatedMechanic.address,
       latitude: updatedMechanic.latitude,
       longitude: updatedMechanic.longitude,
+      isFeatured: !!updatedMechanic.isFeatured,
     };
   }
 }
