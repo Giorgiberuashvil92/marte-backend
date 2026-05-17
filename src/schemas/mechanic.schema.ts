@@ -61,7 +61,7 @@ export class Mechanic {
   bogCardToken?: string; // BOG order_id recurring payments-ისთვის
 
   /** იმპორტის დუბლიკატების თავიდან ასაცილებლად (მაგ. supabase:service:620) */
-  @Prop({ sparse: true })
+  @Prop()
   importSourceKey?: string;
 
   @Prop({ type: Date })

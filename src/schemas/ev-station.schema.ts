@@ -26,7 +26,7 @@ export class EvStation {
   @Prop({ sparse: true, unique: true, trim: true })
   stationId?: string;
 
-  @Prop({ required: true, trim: true, index: true })
+  @Prop({ required: true, trim: true })
   partnerId: string;
 
   @Prop({ required: true, trim: true })
