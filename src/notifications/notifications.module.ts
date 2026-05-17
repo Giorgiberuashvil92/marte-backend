@@ -10,6 +10,10 @@ import { Store, StoreSchema } from '../schemas/store.schema';
 import { Dismantler, DismantlerSchema } from '../schemas/dismantler.schema';
 import { DeviceToken, DeviceTokenSchema } from './device-token.schema';
 import { User, UserSchema } from '../schemas/user.schema';
+import {
+  Subscription,
+  SubscriptionSchema,
+} from '../schemas/subscription.schema';
 
 @Module({
   imports: [
@@ -19,6 +23,7 @@ import { User, UserSchema } from '../schemas/user.schema';
       { name: Dismantler.name, schema: DismantlerSchema },
       { name: DeviceToken.name, schema: DeviceTokenSchema },
       { name: User.name, schema: UserSchema },
+      { name: Subscription.name, schema: SubscriptionSchema },
     ]),
   ],
   controllers: [NotificationsController],

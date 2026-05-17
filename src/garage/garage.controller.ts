@@ -171,6 +171,13 @@ export class GarageController {
     return await this.garageService.listFuelEntriesByCar(userId, carId);
   }
 
+  @Get('activity/recent')
+  getRecentPublicActivity(@Query('limit') limit?: string) {
+    const parsed = parseInt(limit || '12', 10);
+    const lim = Number.isFinite(parsed) ? parsed : 12;
+    return this.garageService.getRecentPublicActivity(lim);
+  }
+
   // Reminder notifications (manual trigger for testing)
   @Post('reminders/notifications/run')
   async runReminderNotifications(@Query('test') test?: string) {

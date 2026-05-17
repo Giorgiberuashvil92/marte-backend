@@ -284,4 +284,20 @@ export class MechanicsController {
       );
     }
   }
+
+  @Patch(':id/remove-vip')
+  async removeFromVip(@Param('id') id: string) {
+    try {
+      const mechanic = await this.mechanicsService.updateToVip(id, false);
+      return {
+        success: true,
+        message: 'ხელოსნის განცხადებას VIP სტატუსი მოეხსნა',
+        data: mechanic,
+      };
+    } catch (error) {
+      throw new BadRequestException(
+        error instanceof Error ? error.message : 'VIP სტატუსის მოხსნა ვერ მოხერხდა',
+      );
+    }
+  }
 }

@@ -3,6 +3,7 @@ import {
   IsNumber,
   IsNotEmpty,
   IsDateString,
+  IsOptional,
   Min,
 } from 'class-validator';
 
@@ -29,4 +30,8 @@ export class CreateFuelEntryDto {
   @IsNumber()
   @Min(0)
   mileage: number;
+
+  @IsOptional()
+  @IsString()
+  stationName?: string;
 }

@@ -1,8 +1,12 @@
 /**
  * ხელით პრემიუმი ტელეფონის მიხედვით (იგივე ველები რაც SubscriptionsService.grantPremiumByPhone).
+ * საჭიროა `.env` Mongo credentials — იხილე `scripts/mongodb-uri.js`.
  *
- *   node scripts/grant-premium-by-phone.js 555379295
- *   node scripts/grant-premium-by-phone.js 555379295 --dry-run
+ *   cd marte-backend
+ *   node scripts/grant-premium-by-phone.js 598251546
+ *   node scripts/grant-premium-by-phone.js +995598251546
+ *   node scripts/grant-premium-by-phone.js 598251546 --dry-run
+ *   node scripts/grant-premium-by-phone.js --help
  */
 
 const { MongoClient } = require('mongodb');
@@ -27,13 +31,45 @@ function nextBillingMonthly(from = new Date()) {
   return d;
 }
 
+function resolveUserId(user) {
+  if (!user) return null;
+  if (user.id != null && String(user.id).length > 0) return String(user.id);
+  if (user._id != null) return String(user._id);
+  return null;
+}
+
+function printHelp() {
+  console.log(`
+grant-premium-by-phone — MongoDB-ში users-ის მოძებნა ტელეფონით და
+subscriptions-ზე active premium (manual) ჩაწერა/განახლება.
+
+გამოყენება:
+  node scripts/grant-premium-by-phone.js <phone> [--dry-run]
+
+  phone     — 598251546, 555123456, +995598251546 (ნომრის ფორმატები აირება)
+  --dry-run — მხოლოდ user + რა მოხდება, ჩაწერა არა
+
+გარემო:  marte-backend/.env  →  MONGODB_URI  ან  MONGODB_USERNAME + MONGODB_PASSWORD
+`);
+}
+
 async function main() {
   loadMarteEnv();
-  const args = process.argv.slice(2).filter((a) => a !== '--dry-run');
   const dryRun = process.argv.includes('--dry-run');
+  const help =
+    process.argv.includes('--help') || process.argv.includes('-h');
+  if (help) {
+    printHelp();
+    process.exit(0);
+  }
+
+  const args = process.argv.slice(2).filter(
+    (a) => a !== '--dry-run' && a !== '--help' && a !== '-h',
+  );
   const phoneArg = args[0];
   if (!phoneArg) {
     console.error('გამოყენება: node scripts/grant-premium-by-phone.js <phone> [--dry-run]');
+    console.error('         node scripts/grant-premium-by-phone.js --help');
     process.exit(1);
   }
 
@@ -60,8 +96,13 @@ async function main() {
     process.exit(1);
   }
 
-  const userId = user.id;
-  console.log('✅ user:', userId, 'phone DB:', user.phone);
+  const userId = resolveUserId(user);
+  if (!userId) {
+    console.error('❌ user დოკუმენტს არ აქვს id ან _id', user);
+    await client.close();
+    process.exit(1);
+  }
+  console.log('✅ userId:', userId, '| phone (DB):', user.phone);
 
   const now = new Date();
   const nextBilling = nextBillingMonthly(now);
@@ -69,8 +110,28 @@ async function main() {
   const existing = await subs.findOne({ userId, status: 'active' });
 
   if (dryRun) {
-    console.log('[dry-run] would', existing ? 'update' : 'insert', existing?._id || '');
-    console.log(JSON.stringify({ userId, nextBillingDate: nextBilling.toISOString() }, null, 2));
+    const payload = {
+      userId,
+      planId: 'premium',
+      planName: 'პრემიუმ პაკეტი',
+      planPrice: 0,
+      currency: 'GEL',
+      period: 'monthly',
+      status: 'active',
+      startDate: now,
+      nextBillingDate: nextBilling,
+      paymentMethod: 'manual',
+      totalPaid: 0,
+      billingCycles: 0,
+      carfaxRequestsUsed: 0,
+      maxFinesCars: 1,
+    };
+    console.log(
+      '[dry-run]',
+      existing ? 'განახლდება' : 'ჩაიწერება',
+      existing?._id ? `subscription _id: ${String(existing._id)}` : '(ახალი დოკი)',
+    );
+    console.log(JSON.stringify({ ...payload, _note: 'dates არაა Mongo Date ობიექტი — მხოლოდ preview' }, null, 2));
     await client.close();
     return;
   }

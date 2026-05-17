@@ -29,6 +29,21 @@ export class User {
   @Prop()
   profileImage?: string;
 
+  @Prop({ unique: true, sparse: true, trim: true, lowercase: true })
+  username?: string;
+
+  @Prop({ default: '', trim: true })
+  bio?: string;
+
+  @Prop({ default: 0 })
+  followersCount: number;
+
+  @Prop({ default: 0 })
+  followingCount: number;
+
+  @Prop({ default: 0 })
+  postsCount: number;
+
   @Prop({ required: true, default: false })
   isVerified: boolean;
 

@@ -187,6 +187,8 @@ export class NotificationsController {
       active?: boolean;
       /** true = გაგზავნა ყველა რეგისტრირებულ device token-ზე */
       broadcastToAll?: boolean;
+      /** true = აქტიური Premium გამოწერის მქონე user-ებს არ მივაწვდინოთ (broadcast / userIds / role+active) */
+      excludePremium?: boolean;
     },
   ) {
     try {
@@ -198,8 +200,10 @@ export class NotificationsController {
 
       // ყველა მოწყობილობაზე გაგზავნა (broadcast to all)
       if (body.broadcastToAll === true) {
-        const result =
-          await this.notificationsService.broadcastToAllUsers(payload);
+        const result = await this.notificationsService.broadcastToAllUsers(
+          payload,
+          { excludeActivePremium: body.excludePremium === true },
+        );
         return {
           success: result.success,
           sent: result.sent,
@@ -216,26 +220,42 @@ export class NotificationsController {
         Array.isArray(body.userIds) &&
         body.userIds.length > 0
       ) {
-        const userIds = body.userIds.filter(
+        const userIdsRaw = body.userIds.filter(
           (id): id is string => typeof id === 'string' && id.length > 0,
         );
-        if (userIds.length > 0) {
-          const result = await this.notificationsService.sendPushToUsers(
-            userIds,
-            payload,
-            'system',
-          );
+        const userIds =
+          body.excludePremium === true
+            ? await this.notificationsService.filterOutActivePremiumUserIds(
+                userIdsRaw,
+              )
+            : userIdsRaw;
+        if (userIds.length === 0) {
           return {
-            success: true,
-            sent: result.sent,
-            failed: result.failed,
-            total: result.sent + result.failed,
+            success: false,
+            sent: 0,
+            failed: 0,
+            total: 0,
             message:
-              result.failed > 0
-                ? `${result.sent} ტელეფონზე მივიდა, ${result.failed} ვერ მივიდა`
-                : `${result.sent} ტელეფონზე მივიდა`,
+              userIdsRaw.length > 0
+                ? 'ყველა მითითებული user-ს აქვს აქტიური Premium — გასაგზავნი არავინ დარჩა (excludePremium).'
+                : 'userIds ცარიელია',
           };
         }
+        const result = await this.notificationsService.sendPushToUsers(
+          userIds,
+          payload,
+          'system',
+        );
+        return {
+          success: true,
+          sent: result.sent,
+          failed: result.failed,
+          total: result.sent + result.failed,
+          message:
+            result.failed > 0
+              ? `${result.sent} ტელეფონზე მივიდა, ${result.failed} ვერ მივიდა`
+              : `${result.sent} ტელეფონზე მივიდა`,
+        };
       }
 
       // თუ role ან active მოწოდებულია, მოვძებნოთ users-ები
@@ -244,6 +264,7 @@ export class NotificationsController {
           await this.notificationsService.getUserIdsByFilter({
             role: body.role,
             active: body.active,
+            excludeActivePremium: body.excludePremium === true,
           });
 
         if (userIds.length === 0) {
@@ -252,7 +273,10 @@ export class NotificationsController {
             sent: 0,
             failed: 0,
             total: 0,
-            message: 'No users found matching the criteria',
+            message:
+              body.excludePremium === true
+                ? 'კრიტერიუმით user-ები ვერ მოიძებნა, ან ყველას აქვს Premium (excludePremium).'
+                : 'No users found matching the criteria',
           };
         }
 
@@ -276,12 +300,81 @@ export class NotificationsController {
       throw new BadRequestException({
         success: false,
         message:
-          'გთხოვთ მიუთითოთ userIds, role, active ან broadcastToAll: true.',
+          'გთხოვთ მიუთითოთ userIds, role, active ან broadcastToAll: true. excludePremium მხოლოდ ამ ტიპის გაგზავნასთან ერთად მუშაობს.',
       });
     } catch (error) {
       throw new BadRequestException({
         success: false,
         message: 'Broadcast notification-ის გაგზავნა ვერ მოხერხდა',
+        error: error instanceof Error ? error.message : 'Unknown error',
+      });
+    }
+  }
+
+  /** თითო user-ს ცალკე title/body (მაგ. გამარჯობა {{firstName}}, შეთავაზება {{make}}-ზე) */
+  @Post('broadcast-personalized')
+  async broadcastPersonalized(
+    @Body()
+    body: {
+      items: Array<{ userId: string; title: string; body: string }>;
+      data?: Record<string, any>;
+      excludePremium?: boolean;
+    },
+  ) {
+    try {
+      const items = Array.isArray(body?.items) ? body.items : [];
+      if (items.length === 0) {
+        throw new BadRequestException({
+          success: false,
+          message: 'items ცარიელია',
+        });
+      }
+      const max = 1500;
+      if (items.length > max) {
+        throw new BadRequestException({
+          success: false,
+          message: `ერთ ჯერზე მაქსიმუმ ${max} მიმღები — დააყავი პარტიებად.`,
+        });
+      }
+      for (const it of items) {
+        if (
+          !it?.userId ||
+          typeof it.userId !== 'string' ||
+          typeof it.title !== 'string' ||
+          typeof it.body !== 'string'
+        ) {
+          throw new BadRequestException({
+            success: false,
+            message: 'თითო ელემენტს სჭირდება userId (string), title (string), body (string)',
+          });
+        }
+      }
+
+      const sharedData =
+        body.data && typeof body.data === 'object' ? body.data : {};
+      const result = await this.notificationsService.sendPersonalizedPushToUsers(
+        items.map((it) => ({
+          userId: String(it.userId).trim(),
+          title: it.title,
+          body: it.body,
+        })),
+        sharedData,
+        { excludeActivePremium: body.excludePremium === true },
+      );
+
+      return {
+        success: true,
+        sent: result.sent,
+        failed: result.failed,
+        skipped: result.skipped,
+        total: items.length,
+        message: `FCM: ${result.sent} ok, ${result.failed} fail, გამოტოვებული (Premium ან device არა): ${result.skipped}`,
+      };
+    } catch (error) {
+      if (error instanceof BadRequestException) throw error;
+      throw new BadRequestException({
+        success: false,
+        message: 'პერსონალიზებული broadcast ვერ მოხერხდა',
         error: error instanceof Error ? error.message : 'Unknown error',
       });
     }

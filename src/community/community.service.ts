@@ -1,6 +1,10 @@
 /* eslint-disable @typescript-eslint/no-unsafe-assignment */
 /* eslint-disable @typescript-eslint/no-unsafe-member-access */
-import { Injectable, NotFoundException } from '@nestjs/common';
+import {
+  ForbiddenException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
 import {
@@ -14,6 +18,11 @@ import {
   CommentLikeDocument,
 } from '../schemas/comment-like.schema';
 import { User, UserDocument } from '../schemas/user.schema';
+import { UserFollow, UserFollowDocument } from '../schemas/user-follow.schema';
+import {
+  CommunityGroup,
+  CommunityGroupDocument,
+} from '../schemas/community-group.schema';
 
 @Injectable()
 export class CommunityService {
@@ -28,6 +37,10 @@ export class CommunityService {
     private readonly commentLikeModel: Model<CommentLikeDocument>,
     @InjectModel(User.name)
     private readonly userModel: Model<UserDocument>,
+    @InjectModel(UserFollow.name)
+    private readonly followModel: Model<UserFollowDocument>,
+    @InjectModel(CommunityGroup.name)
+    private readonly groupModel: Model<CommunityGroupDocument>,
   ) {}
 
   private async findUserByAnyId(userId?: string) {
@@ -123,6 +136,7 @@ export class CommunityService {
         userName,
         userInitial,
         postLocation: dto?.postLocation,
+        groupId: dto?.groupId || undefined,
       } as any;
 
       const post = new this.postModel(payload);
@@ -136,7 +150,14 @@ export class CommunityService {
   }
 
   async listPosts() {
-    const filter: any = { isActive: true };
+    const filter: any = {
+      isActive: true,
+      $or: [
+        { groupId: { $exists: false } },
+        { groupId: null },
+        { groupId: '' },
+      ],
+    };
     const docs = await this.postModel
       .find(filter)
       .sort({ createdAt: -1 })
@@ -369,6 +390,182 @@ export class CommunityService {
         likedAt: like.createdAt || like.created_at,
       };
     });
+  }
+
+  async getFollowFeed(userId: string, limit = 20, cursor?: string) {
+    const follows = await this.followModel
+      .find({ followerId: userId })
+      .select('followingId')
+      .lean();
+    const followingIds = follows.map((f: any) => f.followingId);
+    if (followingIds.length === 0) {
+      return { data: [], nextCursor: null, hasMore: false };
+    }
+
+    const filter: any = {
+      isActive: true,
+      userId: { $in: followingIds },
+      $or: [
+        { groupId: { $exists: false } },
+        { groupId: null },
+        { groupId: '' },
+      ],
+    };
+    if (cursor) {
+      const cursorDate = new Date(cursor);
+      if (!Number.isNaN(cursorDate.getTime())) {
+        filter.createdAt = { $lt: cursorDate };
+      }
+    }
+
+    const docs = await this.postModel
+      .find(filter)
+      .sort({ createdAt: -1 })
+      .limit(Math.max(1, Math.min(limit, 50)) + 1)
+      .exec();
+    const hasMore = docs.length > limit;
+    const sliced = hasMore ? docs.slice(0, limit) : docs;
+    const mapped = sliced.flatMap((d: any) => {
+      const mappedPost = this.mapPost(d);
+      return mappedPost ? [mappedPost] : [];
+    });
+    const nextCursor =
+      hasMore && mapped.length > 0
+        ? String(mapped[mapped.length - 1].createdAt)
+        : null;
+    return { data: mapped, nextCursor, hasMore };
+  }
+
+  async createGroup(payload: {
+    ownerId: string;
+    name: string;
+    description?: string;
+    coverImage?: string;
+  }) {
+    const name = payload.name?.trim();
+    if (!name || name.length < 3) throw new Error('invalid_group_name');
+    const id = `grp_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+    const cover =
+      typeof payload.coverImage === 'string' ? payload.coverImage.trim() : '';
+    const doc = await new this.groupModel({
+      id,
+      ownerId: payload.ownerId,
+      name,
+      description: payload.description?.trim() || '',
+      coverImage: cover || '',
+      memberIds: [payload.ownerId],
+      membersCount: 1,
+      isActive: true,
+    }).save();
+    return doc.toJSON();
+  }
+
+  async listGroups(limit = 20, offset = 0) {
+    return this.groupModel
+      .find({ isActive: true })
+      .sort({ createdAt: -1 })
+      .skip(offset)
+      .limit(limit)
+      .lean();
+  }
+
+  async updateGroup(
+    groupId: string,
+    actorId: string,
+    payload: { name?: string; description?: string; coverImage?: string },
+  ) {
+    const group = await this.groupModel
+      .findOne({ id: groupId, isActive: true })
+      .exec();
+    if (!group) throw new NotFoundException('group_not_found');
+    if (group.ownerId !== actorId) {
+      throw new ForbiddenException('only_owner_can_edit_group');
+    }
+
+    const updates: Record<string, unknown> = {};
+    if (typeof payload.name === 'string' && payload.name.trim().length >= 3) {
+      updates.name = payload.name.trim();
+    }
+    if (typeof payload.description === 'string') {
+      updates.description = payload.description.trim();
+    }
+    if (payload.coverImage !== undefined) {
+      updates.coverImage =
+        typeof payload.coverImage === 'string'
+          ? payload.coverImage.trim()
+          : '';
+    }
+
+    const updated = await this.groupModel
+      .findOneAndUpdate({ id: groupId }, updates, { new: true })
+      .lean();
+    if (!updated) throw new NotFoundException('group_not_found');
+    return updated;
+  }
+
+  async deleteGroup(groupId: string, actorId: string) {
+    const group = await this.groupModel
+      .findOne({ id: groupId, isActive: true })
+      .exec();
+    if (!group) throw new NotFoundException('group_not_found');
+    if (group.ownerId !== actorId) {
+      throw new ForbiddenException('only_owner_can_delete_group');
+    }
+
+    await this.groupModel
+      .updateOne({ id: groupId }, { $set: { isActive: false } })
+      .exec();
+    return { success: true };
+  }
+
+  async listGroupPosts(groupId: string, limit = 20) {
+    const group = await this.groupModel
+      .findOne({ id: groupId, isActive: true })
+      .lean();
+    if (!group) throw new NotFoundException('group_not_found');
+
+    const docs = await this.postModel
+      .find({ groupId, isActive: true })
+      .sort({ createdAt: -1 })
+      .limit(Math.max(1, Math.min(limit, 50)))
+      .exec();
+    return docs.flatMap((d: any) => {
+      const mapped = this.mapPost(d);
+      return mapped ? [mapped] : [];
+    });
+  }
+
+  async getGroupById(groupId: string) {
+    const group = await this.groupModel
+      .findOne({ id: groupId, isActive: true })
+      .lean();
+    if (!group) throw new NotFoundException('group_not_found');
+    return group;
+  }
+
+  async joinGroup(groupId: string, userId: string) {
+    const updated = await this.groupModel
+      .findOneAndUpdate(
+        { id: groupId, memberIds: { $ne: userId }, isActive: true },
+        { $addToSet: { memberIds: userId }, $inc: { membersCount: 1 } },
+        { new: true },
+      )
+      .lean();
+    if (updated) return updated;
+    const existing = await this.groupModel.findOne({ id: groupId }).lean();
+    if (!existing) throw new NotFoundException('group_not_found');
+    return existing;
+  }
+
+  async leaveGroup(groupId: string, userId: string) {
+    const group: any = await this.groupModel.findOne({ id: groupId }).lean();
+    if (!group) throw new NotFoundException('group_not_found');
+    if (group.ownerId === userId) throw new Error('owner_cannot_leave_group');
+    await this.groupModel.updateOne(
+      { id: groupId, memberIds: userId },
+      { $pull: { memberIds: userId }, $inc: { membersCount: -1 } },
+    );
+    return { success: true };
   }
 
   async getAdminPosts() {

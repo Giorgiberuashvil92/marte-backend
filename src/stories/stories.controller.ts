@@ -20,12 +20,14 @@ export class StoriesController {
     @Query('category') category?: string,
     @Query('highlight') highlight?: string,
     @Query('userId') userId?: string,
+    @Query('groupId') groupId?: string,
   ) {
     const data = await this.stories.list({
       category,
       highlight:
         highlight === 'true' ? true : highlight === 'false' ? false : undefined,
       userId,
+      groupId,
     });
     return { success: true, data };
   }
@@ -42,10 +44,14 @@ export class StoriesController {
     body: {
       authorId?: string;
       authorName?: string;
+      authorUsername?: string;
       authorAvatar?: string;
+      title?: string;
       category?: string;
       highlight?: boolean;
       items?: unknown[];
+      groupId?: string;
+      internalImage?: string;
     },
   ) {
     if (!body?.authorId || !body?.authorName)
@@ -72,8 +78,10 @@ export class StoriesController {
   }
 
   @Delete(':id')
-  async remove(@Param('id') id: string) {
-    await this.stories.remove(id);
+  async remove(@Param('id') id: string, @Query('actorId') actorId?: string) {
+    const aid = actorId?.trim();
+    if (!aid) throw new BadRequestException('actor_id_required');
+    await this.stories.remove(id, aid);
     return { success: true };
   }
 

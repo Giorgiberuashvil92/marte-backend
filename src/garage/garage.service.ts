@@ -584,6 +584,138 @@ export class GarageService {
     };
   }
 
+  async getRecentPublicActivity(limit = 12) {
+    const lim = Math.max(1, Math.min(limit, 30));
+    const fetchN = lim * 3;
+
+    const now = new Date();
+    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+
+    const [fuelDocs, serviceDocs, fuelMonthCount, serviceMonthCount] =
+      await Promise.all([
+        this.fuelEntryModel
+          .find()
+          .sort({ createdAt: -1 })
+          .limit(fetchN)
+          .lean()
+          .exec(),
+        this.serviceHistoryModel
+          .find({ isActive: { $ne: false } })
+          .sort({ createdAt: -1 })
+          .limit(fetchN)
+          .lean()
+          .exec(),
+        this.fuelEntryModel.countDocuments({
+          createdAt: { $gte: monthStart },
+        }),
+        this.serviceHistoryModel.countDocuments({
+          isActive: { $ne: false },
+          createdAt: { $gte: monthStart },
+        }),
+      ]);
+
+    const userIds = new Set<string>();
+    const carIds = new Set<string>();
+    for (const f of fuelDocs) {
+      if (f.userId) userIds.add(String(f.userId));
+      if (f.carId) carIds.add(String(f.carId));
+    }
+    for (const s of serviceDocs) {
+      if (s.userId) userIds.add(String(s.userId));
+      if (s.carId) carIds.add(String(s.carId));
+    }
+
+    const [users, cars] = await Promise.all([
+      userIds.size
+        ? this.userModel
+            .find({ id: { $in: [...userIds] } })
+            .select('id firstName lastName')
+            .lean()
+            .exec()
+        : Promise.resolve([]),
+      carIds.size
+        ? this.carModel
+            .find({ _id: { $in: [...carIds] } })
+            .select('make model')
+            .lean()
+            .exec()
+        : Promise.resolve([]),
+    ]);
+
+    const userMap = new Map(users.map((u: any) => [String(u.id), u]));
+    const carMap = new Map(cars.map((c: any) => [String(c._id ?? c.id), c]));
+
+    const displayName = (userId: string) => {
+      const u = userMap.get(userId);
+      const first = String(u?.firstName || '').trim();
+      if (first) return first;
+      return 'მძღოლე';
+    };
+
+    const carLabel = (carId: string) => {
+      const c = carMap.get(carId);
+      if (!c) return '';
+      return [c.make, c.model].filter(Boolean).join(' ').trim();
+    };
+
+    type RawItem = {
+      id: string;
+      kind: 'fuel' | 'service';
+      createdAt: Date;
+      payload: Record<string, unknown>;
+    };
+
+    const raw: RawItem[] = [
+      ...fuelDocs.map((f: any) => ({
+        id: String(f.id || f._id),
+        kind: 'fuel' as const,
+        createdAt: new Date(f.createdAt || f.date),
+        payload: {
+          userId: String(f.userId),
+          displayName: displayName(String(f.userId)),
+          carLabel: carLabel(String(f.carId)),
+          liters: Number(f.liters) || 0,
+          totalPrice: Number(f.totalPrice) || 0,
+          placeName: f.stationName
+            ? String(f.stationName).trim() || undefined
+            : undefined,
+        },
+      })),
+      ...serviceDocs.map((s: any) => ({
+        id: String(s.id || s._id),
+        kind: 'service' as const,
+        createdAt: new Date(s.createdAt || s.date),
+        payload: {
+          userId: String(s.userId),
+          displayName: displayName(String(s.userId)),
+          carLabel: carLabel(String(s.carId)),
+          cost: Number(s.cost) || 0,
+          placeName: s.provider
+            ? String(s.provider).trim() || undefined
+            : undefined,
+        },
+      })),
+    ];
+
+    raw.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+
+    const items = raw.slice(0, lim).map((row) => ({
+      id: `${row.kind}-${row.id}`,
+      kind: row.kind,
+      createdAt: row.createdAt.toISOString(),
+      ...row.payload,
+    }));
+
+    return {
+      items,
+      summary: {
+        entriesThisMonth: fuelMonthCount + serviceMonthCount,
+        fuelThisMonth: fuelMonthCount,
+        serviceThisMonth: serviceMonthCount,
+      },
+    };
+  }
+
   /**
    * Cron job: გაიგზავნება push notifications reminder-ებისთვის
    * გაშვება: ყოველ 5 წუთში (Asia/Tbilisi timezone)

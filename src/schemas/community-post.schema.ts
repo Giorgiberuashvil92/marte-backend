@@ -18,6 +18,9 @@ export class CommunityPost {
   @Prop({ required: true })
   content: string;
 
+  @Prop({ index: true })
+  groupId?: string;
+
   @Prop({ type: [String] })
   images?: string[];
 

@@ -11,14 +11,29 @@ export class Story {
   @Prop({ required: true })
   authorName: string;
 
+  /** @username ბორბლის გარეშე — ჩვენებისთვის */
+  @Prop()
+  authorUsername?: string;
+
   @Prop()
   authorAvatar?: string;
+
+  /** ჯგუფის სთორის სათაური (მაგ. აქცია, განცხადება) */
+  @Prop()
+  title?: string;
 
   @Prop({ default: false })
   highlight?: boolean;
 
-  @Prop({ enum: ['my-car', 'friends', 'services'], default: 'services' })
+  @Prop({ enum: ['my-car', 'friends', 'services', 'group'], default: 'services' })
   category?: string;
+
+  /** ჯგუფის სთორი — category === 'group' */
+  @Prop({ index: true })
+  groupId?: string;
+
+  @Prop()
+  internalImage?: string;
 
   @Prop({ type: Array, default: [] })
   items: Array<{

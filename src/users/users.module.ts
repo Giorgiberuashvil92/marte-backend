@@ -8,6 +8,11 @@ import {
   LoginHistory,
   LoginHistorySchema,
 } from '../schemas/login-history.schema';
+import { UserFollow, UserFollowSchema } from '../schemas/user-follow.schema';
+import {
+  CommunityPost,
+  CommunityPostSchema,
+} from '../schemas/community-post.schema';
 
 @Module({
   imports: [
@@ -15,6 +20,8 @@ import {
       { name: User.name, schema: UserSchema },
       { name: Request.name, schema: RequestSchema },
       { name: LoginHistory.name, schema: LoginHistorySchema },
+      { name: UserFollow.name, schema: UserFollowSchema },
+      { name: CommunityPost.name, schema: CommunityPostSchema },
     ]),
   ],
   controllers: [UsersController],

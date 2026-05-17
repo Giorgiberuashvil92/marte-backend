@@ -2,6 +2,10 @@ import { Injectable } from '@nestjs/common';
 import twilio, { Twilio } from 'twilio';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
+import {
+  Subscription,
+  SubscriptionDocument,
+} from '../schemas/subscription.schema';
 import { Store, StoreDocument } from '../schemas/store.schema';
 import { Dismantler, DismantlerDocument } from '../schemas/dismantler.schema';
 import { DeviceToken, DeviceTokenDocument } from './device-token.schema';
@@ -40,7 +44,38 @@ export class NotificationsService {
     private deviceTokenModel: Model<DeviceTokenDocument>,
     @InjectModel(User.name)
     private userModel: Model<UserDocument>,
+    @InjectModel(Subscription.name)
+    private subscriptionModel: Model<SubscriptionDocument>,
   ) {}
+
+  /** აქტიური app გამოწერა, სადაც planId პრემიუმია (DB + legacy premium-*). */
+  private activePremiumSubscriptionFilter(): Record<string, unknown> {
+    return {
+      status: 'active',
+      $or: [{ planId: 'premium' }, { planId: /^premium[-_]/i }],
+    };
+  }
+
+  /** userId-ები, რომელსაც აქვს აქტიური Premium გამოწერა */
+  async getActivePremiumUserIds(): Promise<string[]> {
+    const rows = await this.subscriptionModel
+      .find(this.activePremiumSubscriptionFilter())
+      .select('userId')
+      .lean()
+      .exec();
+    const ids = rows
+      .map((r: { userId?: string }) => String(r.userId || '').trim())
+      .filter(Boolean);
+    return [...new Set(ids)];
+  }
+
+  /** იგივე userId-ების სია premium აქტიურების გარეშე */
+  async filterOutActivePremiumUserIds(userIds: string[]): Promise<string[]> {
+    if (userIds.length === 0) return [];
+    const premium = new Set(await this.getActivePremiumUserIds());
+    if (premium.size === 0) return userIds;
+    return userIds.filter((id) => !premium.has(id));
+  }
 
   private getTwilioClient(): Twilio | null {
     const accountSid = process.env.TWILIO_ACCOUNT_SID;
@@ -656,28 +691,140 @@ export class NotificationsService {
     return { sent: fcm.successCount, failed: fcm.failureCount };
   }
 
-  /** Get user IDs by role and/or active flag */
+  /**
+   * თითო მომხმარებელს ცალკე title/body (მარკეტინგი / გარაჟის სეგმენტები).
+   * FCM იგზავნება პატარა პარალელური პარტიებით, რომ ერთი HTTP მოთხოვნა არ გაჭენდეს.
+   */
+  async sendPersonalizedPushToUsers(
+    items: Array<{ userId: string; title: string; body: string }>,
+    sharedData: Record<string, any>,
+    options?: { excludeActivePremium?: boolean },
+  ): Promise<{ sent: number; failed: number; skipped: number }> {
+    if (!items?.length) return { sent: 0, failed: 0, skipped: 0 };
+
+    const rawIds = [
+      ...new Set(
+        items.map((i) => String(i.userId || '').trim()).filter(Boolean),
+      ),
+    ];
+    let allowedIds = new Set(rawIds);
+    if (options?.excludeActivePremium === true) {
+      const filtered = await this.filterOutActivePremiumUserIds([...rawIds]);
+      allowedIds = new Set(filtered);
+    }
+
+    const filteredItems = items.filter((i) =>
+      allowedIds.has(String(i.userId || '').trim()),
+    );
+    let skipped = items.length - filteredItems.length;
+
+    let sent = 0;
+    let failed = 0;
+    const CONCURRENCY = 10;
+
+    const sendOne = async (item: {
+      userId: string;
+      title: string;
+      body: string;
+    }): Promise<{ sent: number; failed: number; skipped: number }> => {
+      const uid = String(item.userId || '').trim();
+      if (!uid) {
+        return { sent: 0, failed: 0, skipped: 1 };
+      }
+      const title = (item.title || 'შეტყობინება').slice(0, 200);
+      const body = (item.body || '').slice(0, 2000);
+      const payload: PushNotificationPayload = {
+        title,
+        body,
+        data: {
+          ...(sharedData && typeof sharedData === 'object' ? sharedData : {}),
+          timestamp: new Date().toISOString(),
+        },
+        sound: 'default',
+        badge: 1,
+      };
+
+      const doc = await this.notificationModel.create({
+        target: { userId: uid },
+        payload,
+        type: 'system',
+        status: 'pending' as const,
+        createdAt: Date.now(),
+      });
+
+      const tokens = await this.getTokensForUserIds([uid]);
+      if (tokens.length === 0) {
+        await this.notificationModel.updateOne(
+          { _id: doc._id },
+          { status: 'delivered', deliveredAt: Date.now() },
+        );
+        return { sent: 0, failed: 0, skipped: 1 };
+      }
+
+      const fcm = await this.sendFcm(tokens, payload);
+      await this.notificationModel.updateOne(
+        { _id: doc._id },
+        { status: 'delivered', deliveredAt: Date.now() },
+      );
+      return {
+        sent: fcm.successCount,
+        failed: fcm.failureCount,
+        skipped: 0,
+      };
+    };
+
+    for (let i = 0; i < filteredItems.length; i += CONCURRENCY) {
+      const slice = filteredItems.slice(i, i + CONCURRENCY);
+      const parts = await Promise.all(slice.map((item) => sendOne(item)));
+      for (const p of parts) {
+        sent += p.sent;
+        failed += p.failed;
+        skipped += p.skipped;
+      }
+    }
+
+    return { sent, failed, skipped };
+  }
+
+  /** Get user IDs by role and/or active flag; optionally exclude users with active Premium subscription */
   async getUserIdsByFilter(filter: {
     role?: string;
     active?: boolean;
+    excludeActivePremium?: boolean;
   }): Promise<string[]> {
     const query: Record<string, unknown> = {};
     if (filter.role) query.role = filter.role;
     if (typeof filter.active === 'boolean') query.isActive = filter.active;
     const users = await this.userModel.find(query).select('id').lean();
-    return users
+    let ids = users
       .map((u: { id?: string }) => String(u.id || ''))
       .filter(Boolean);
+    if (filter.excludeActivePremium) {
+      ids = await this.filterOutActivePremiumUserIds(ids);
+    }
+    return ids;
   }
 
-  /** Broadcast to all registered device tokens */
-  async broadcastToAllUsers(payload: PushNotificationPayload): Promise<{
+  /** Broadcast to all registered device tokens; optional: skip tokens for users with active Premium */
+  async broadcastToAllUsers(
+    payload: PushNotificationPayload,
+    options?: { excludeActivePremium?: boolean },
+  ): Promise<{
     success: boolean;
     sent: number;
     failed: number;
   }> {
+    const exclude = options?.excludeActivePremium === true;
+    const tokenQuery: Record<string, unknown> = {};
+    if (exclude) {
+      const premiumIds = await this.getActivePremiumUserIds();
+      if (premiumIds.length > 0) {
+        tokenQuery.userId = { $nin: premiumIds };
+      }
+    }
+
     const docs = await this.deviceTokenModel
-      .find({})
+      .find(tokenQuery)
       .select({ token: 1 })
       .lean();
     const tokens = docs.map((d) => d.token).filter((t): t is string => !!t);

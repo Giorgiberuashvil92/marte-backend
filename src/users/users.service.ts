@@ -1,4 +1,9 @@
-import { Injectable, BadRequestException } from '@nestjs/common';
+import {
+  Injectable,
+  BadRequestException,
+  ConflictException,
+  NotFoundException,
+} from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import { User } from '../schemas/user.schema';
@@ -7,6 +12,11 @@ import {
   LoginHistory,
   LoginHistoryDocument,
 } from '../schemas/login-history.schema';
+import { UserFollow, UserFollowDocument } from '../schemas/user-follow.schema';
+import {
+  CommunityPost,
+  CommunityPostDocument,
+} from '../schemas/community-post.schema';
 
 type ListParams = {
   q?: string;
@@ -23,7 +33,27 @@ export class UsersService {
     @InjectModel(Request.name) private readonly requestModel: Model<Request>,
     @InjectModel(LoginHistory.name)
     private readonly loginHistoryModel: Model<LoginHistoryDocument>,
+    @InjectModel(UserFollow.name)
+    private readonly followModel: Model<UserFollowDocument>,
+    @InjectModel(CommunityPost.name)
+    private readonly communityPostModel: Model<CommunityPostDocument>,
   ) {}
+
+  private normalizeUsername(input?: string): string | undefined {
+    if (!input) return undefined;
+    const normalized = input.trim().toLowerCase();
+    if (!normalized) return undefined;
+    if (!/^[a-z0-9._]{3,30}$/.test(normalized)) {
+      throw new BadRequestException('invalid_username_format');
+    }
+    return normalized;
+  }
+
+  private async findUserByIdOrThrow(userId: string): Promise<any> {
+    const user = await this.userModel.findOne({ id: userId }).lean();
+    if (!user) throw new NotFoundException('user_not_found');
+    return user;
+  }
 
   async list(params: ListParams) {
     const filter: any = {};
@@ -110,6 +140,161 @@ export class UsersService {
     const u: any = await this.userModel.findOne({ id }).lean();
     if (!u) throw new BadRequestException('user_not_found');
     return u;
+  }
+
+  async getProfileById(id: string, viewerId?: string) {
+    const profile = await this.findUserByIdOrThrow(id);
+    const isFollowing = viewerId
+      ? !!(await this.followModel.findOne({ followerId: viewerId, followingId: id }))
+      : false;
+    const postsCount = await this.communityPostModel.countDocuments({
+      userId: id,
+      isActive: true,
+    });
+
+    return {
+      id: profile.id,
+      username: profile.username || null,
+      firstName: profile.firstName || null,
+      lastName: profile.lastName || null,
+      bio: profile.bio || '',
+      avatar: profile.profileImage || null,
+      followersCount: profile.followersCount || 0,
+      followingCount: profile.followingCount || 0,
+      postsCount,
+      isFollowing,
+    };
+  }
+
+  async getProfileByUsername(username: string, viewerId?: string) {
+    const normalized = this.normalizeUsername(username);
+    if (!normalized) throw new BadRequestException('username_required');
+    const user = await this.userModel.findOne({ username: normalized }).lean();
+    if (!user) throw new NotFoundException('profile_not_found');
+    return this.getProfileById(user.id, viewerId);
+  }
+
+  async updateProfile(
+    userId: string,
+    updates: { username?: string; bio?: string; avatar?: string },
+  ) {
+    const updateData: Record<string, any> = { updatedAt: Date.now() };
+    if (updates.username !== undefined) {
+      updateData.username = this.normalizeUsername(updates.username) || null;
+    }
+    if (updates.bio !== undefined) {
+      const bio = updates.bio.trim();
+      if (bio.length > 280) throw new BadRequestException('bio_too_long');
+      updateData.bio = bio;
+    }
+    if (updates.avatar !== undefined) {
+      updateData.profileImage = updates.avatar?.trim() || null;
+    }
+
+    try {
+      const updated = await this.userModel
+        .findOneAndUpdate({ id: userId }, updateData, { new: true })
+        .lean();
+      if (!updated) throw new NotFoundException('user_not_found');
+      return this.getProfileById(userId, userId);
+    } catch (error: any) {
+      if (error?.code === 11000) throw new ConflictException('username_taken');
+      throw error;
+    }
+  }
+
+  async followUser(followerId: string, followingId: string) {
+    if (followerId === followingId) {
+      throw new BadRequestException('cannot_follow_self');
+    }
+    await this.findUserByIdOrThrow(followerId);
+    await this.findUserByIdOrThrow(followingId);
+
+    const exists = await this.followModel.findOne({ followerId, followingId });
+    if (exists) throw new ConflictException('already_following');
+
+    await new this.followModel({ followerId, followingId }).save();
+    await Promise.all([
+      this.userModel.updateOne({ id: followerId }, { $inc: { followingCount: 1 } }),
+      this.userModel.updateOne({ id: followingId }, { $inc: { followersCount: 1 } }),
+    ]);
+    return { success: true };
+  }
+
+  async unfollowUser(followerId: string, followingId: string) {
+    const removed = await this.followModel.findOneAndDelete({
+      followerId,
+      followingId,
+    });
+    if (!removed) return { success: true, alreadyUnfollowed: true };
+
+    await Promise.all([
+      this.userModel.updateOne(
+        { id: followerId },
+        { $inc: { followingCount: -1 } },
+      ),
+      this.userModel.updateOne(
+        { id: followingId },
+        { $inc: { followersCount: -1 } },
+      ),
+    ]);
+    return { success: true };
+  }
+
+  async getFollowers(userId: string, limit: number, offset: number) {
+    const items = await this.followModel
+      .find({ followingId: userId })
+      .sort({ createdAt: -1 })
+      .skip(offset)
+      .limit(limit)
+      .lean();
+    const followerIds = items.map((i: any) => i.followerId);
+    const users = await this.userModel
+      .find({ id: { $in: followerIds } })
+      .select('id firstName lastName username profileImage')
+      .lean();
+    const userMap = new Map(users.map((u: any) => [u.id, u]));
+    return items
+      .map((item: any) => {
+        const u: any = userMap.get(item.followerId);
+        if (!u) return null;
+        return {
+          id: u.id,
+          username: u.username || null,
+          firstName: u.firstName || null,
+          lastName: u.lastName || null,
+          avatar: u.profileImage || null,
+        };
+      })
+      .filter(Boolean);
+  }
+
+  async getFollowing(userId: string, limit: number, offset: number) {
+    const items = await this.followModel
+      .find({ followerId: userId })
+      .sort({ createdAt: -1 })
+      .skip(offset)
+      .limit(limit)
+      .lean();
+    const followingIds = items.map((i: any) => i.followingId);
+    const users = await this.userModel
+      .find({ id: { $in: followingIds } })
+      .select('id firstName lastName username profileImage')
+      .lean();
+    const userMap = new Map(users.map((u: any) => [u.id, u]));
+    return items
+      .map((item: any) => {
+        const u: any = userMap.get(item.followingId);
+        if (!u) return null;
+        return {
+          id: u.id,
+          username: u.username || null,
+          firstName: u.firstName || null,
+          lastName: u.lastName || null,
+          avatar: u.profileImage || null,
+        };
+      })
+      .filter(Boolean);
   }
 
   async updateRole(id: string, role: string) {

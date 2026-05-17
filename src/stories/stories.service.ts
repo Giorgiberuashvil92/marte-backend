@@ -1,14 +1,30 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import {
+  Injectable,
+  NotFoundException,
+  ForbiddenException,
+  BadRequestException,
+} from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import { Story, StoryDocument } from '../schemas/story.schema';
+import {
+  CommunityGroup,
+  CommunityGroupDocument,
+} from '../schemas/community-group.schema';
 
-type ListParams = { category?: string; highlight?: boolean; userId?: string };
+type ListParams = {
+  category?: string;
+  highlight?: boolean;
+  userId?: string;
+  groupId?: string;
+};
 
 @Injectable()
 export class StoriesService {
   constructor(
     @InjectModel(Story.name) private readonly storyModel: Model<StoryDocument>,
+    @InjectModel(CommunityGroup.name)
+    private readonly groupModel: Model<CommunityGroupDocument>,
   ) {}
 
   async list(params: ListParams) {
@@ -16,6 +32,7 @@ export class StoriesService {
     if (params.category) filter.category = params.category;
     if (typeof params.highlight === 'boolean')
       filter.highlight = params.highlight;
+    if (params.groupId) filter.groupId = params.groupId;
     const docs = await this.storyModel
       .find(filter)
       .sort({ createdAt: -1 })
@@ -50,15 +67,41 @@ export class StoriesService {
     return { ...anyDoc, id: String(idStr) } as Record<string, unknown>;
   }
 
-  async create(body: Partial<Story>) {
+  async create(
+    body: Partial<Story> & {
+      groupId?: string;
+      internalImage?: string;
+      items?: Story['items'];
+      authorUsername?: string;
+      title?: string;
+    },
+  ) {
     const now = Date.now();
-    const payload: Partial<Story> = {
+    if (body.groupId) {
+      const group = await this.groupModel
+        .findOne({ id: body.groupId, isActive: true })
+        .lean();
+      if (!group) throw new NotFoundException('group_not_found');
+      if (group.ownerId !== body.authorId) {
+        throw new ForbiddenException('only_group_owner_can_post_story');
+      }
+    }
+    const payload: Partial<Story> & {
+      groupId?: string;
+      internalImage?: string;
+      authorUsername?: string;
+      title?: string;
+    } = {
       authorId: body.authorId!,
       authorName: body.authorName!,
+      authorUsername: body.authorUsername,
       authorAvatar: body.authorAvatar,
-      category: body.category || 'services',
+      title: body.title,
+      category: body.groupId ? 'group' : body.category || 'services',
       highlight: !!body.highlight,
       items: Array.isArray(body.items) ? body.items : [],
+      groupId: body.groupId,
+      internalImage: body.internalImage,
       createdAt: now,
       updatedAt: now,
     };
@@ -90,8 +133,29 @@ export class StoriesService {
     return { ...anyDoc, id: String(idStr) } as Record<string, unknown>;
   }
 
-  async remove(id: string) {
-    const res = await this.storyModel.findByIdAndDelete(id).exec();
+  async remove(storyId: string, actorId: string) {
+    if (!actorId?.trim()) {
+      throw new BadRequestException('actor_required');
+    }
+    const doc = await this.storyModel.findById(storyId).lean();
+    if (!doc) throw new NotFoundException('story_not_found');
+    const any = doc as Record<string, unknown>;
+    const groupId = any.groupId as string | undefined | null;
+    const authorId = String(any.authorId || '');
+
+    if (groupId != null && String(groupId).trim() !== '') {
+      const group = await this.groupModel
+        .findOne({ id: String(groupId), isActive: true })
+        .lean();
+      if (!group) throw new NotFoundException('group_not_found');
+      if (group.ownerId !== actorId) {
+        throw new ForbiddenException('only_group_owner_can_delete_story');
+      }
+    } else if (authorId !== actorId) {
+      throw new ForbiddenException('only_author_can_delete_story');
+    }
+
+    const res = await this.storyModel.findByIdAndDelete(storyId).exec();
     if (!res) throw new NotFoundException('story_not_found');
   }
 

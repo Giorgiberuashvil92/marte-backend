@@ -47,6 +47,7 @@ import { FinesModule } from './fines/fines.module';
 import { NewsFeedModule } from './news-feed/news-feed.module';
 import { SupportChatModule } from './support-chat/support-chat.module';
 import { PanelAdminModule } from './panel-admin/panel-admin.module';
+import { EvChargingModule } from './ev-charging/ev-charging.module';
 import databaseConfig from './config/database.config';
 
 // Schemas
@@ -245,6 +246,7 @@ function mongooseMongoConfig(): { uri: string } {
     NewsFeedModule,
     SupportChatModule,
     PanelAdminModule,
+    EvChargingModule,
   ],
   controllers: [AppController],
   providers: [AppService],

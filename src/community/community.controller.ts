@@ -6,6 +6,8 @@ import {
   Patch,
   Param,
   Delete,
+  Query,
+  BadRequestException,
 } from '@nestjs/common';
 import { CommunityService } from './community.service';
 
@@ -19,8 +21,23 @@ export class CommunityController {
   }
 
   @Get('posts')
-  listPosts() {
+  listPosts(@Query('userId') userId?: string) {
+    if (userId) {
+      const limit = 20;
+      return this.communityService.getFollowFeed(userId, limit);
+    }
     return this.communityService.listPosts();
+  }
+
+  @Get('feed')
+  getFeed(
+    @Query('userId') userId?: string,
+    @Query('limit') limit?: string,
+    @Query('cursor') cursor?: string,
+  ) {
+    if (!userId) throw new BadRequestException('user_id_required');
+    const lim = Math.max(1, Math.min(parseInt(limit || '20'), 50));
+    return this.communityService.getFollowFeed(userId, lim, cursor);
   }
 
   @Get('posts/:id')
@@ -85,5 +102,93 @@ export class CommunityController {
   @Get('admin/posts')
   getAdminPosts() {
     return this.communityService.getAdminPosts();
+  }
+
+  @Post('groups')
+  createGroup(
+    @Body()
+    body: {
+      ownerId?: string;
+      name?: string;
+      description?: string;
+      coverImage?: string;
+    },
+  ) {
+    if (!body?.ownerId || !body?.name) {
+      throw new BadRequestException('owner_id_and_name_required');
+    }
+    return this.communityService.createGroup({
+      ownerId: body.ownerId,
+      name: body.name,
+      description: body.description,
+      coverImage: body.coverImage,
+    });
+  }
+
+  @Get('groups')
+  listGroups(@Query('limit') limit?: string, @Query('offset') offset?: string) {
+    const lim = Math.max(1, Math.min(parseInt(limit || '20'), 50));
+    const off = Math.max(0, parseInt(offset || '0'));
+    return this.communityService.listGroups(lim, off);
+  }
+
+  @Get('groups/:groupId')
+  getGroup(@Param('groupId') groupId: string) {
+    return this.communityService.getGroupById(groupId);
+  }
+
+  @Patch('groups/:groupId')
+  updateGroup(
+    @Param('groupId') groupId: string,
+    @Body()
+    body: {
+      actorId?: string;
+      name?: string;
+      description?: string;
+      coverImage?: string;
+    },
+  ) {
+    if (!body?.actorId) throw new BadRequestException('actor_id_required');
+    return this.communityService.updateGroup(groupId, body.actorId, {
+      name: body.name,
+      description: body.description,
+      coverImage: body.coverImage,
+    });
+  }
+
+  @Delete('groups/:groupId')
+  deleteGroup(
+    @Param('groupId') groupId: string,
+    @Query('actorId') actorId?: string,
+  ) {
+    if (!actorId) throw new BadRequestException('actor_id_required');
+    return this.communityService.deleteGroup(groupId, actorId);
+  }
+
+  @Get('groups/:groupId/posts')
+  listGroupPosts(
+    @Param('groupId') groupId: string,
+    @Query('limit') limit?: string,
+  ) {
+    const lim = Math.max(1, Math.min(parseInt(limit || '20'), 50));
+    return this.communityService.listGroupPosts(groupId, lim);
+  }
+
+  @Post('groups/:groupId/join')
+  joinGroup(
+    @Param('groupId') groupId: string,
+    @Body() body: { userId?: string },
+  ) {
+    if (!body?.userId) throw new BadRequestException('user_id_required');
+    return this.communityService.joinGroup(groupId, body.userId);
+  }
+
+  @Post('groups/:groupId/leave')
+  leaveGroup(
+    @Param('groupId') groupId: string,
+    @Body() body: { userId?: string },
+  ) {
+    if (!body?.userId) throw new BadRequestException('user_id_required');
+    return this.communityService.leaveGroup(groupId, body.userId);
   }
 }

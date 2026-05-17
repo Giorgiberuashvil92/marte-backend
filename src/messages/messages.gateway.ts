@@ -12,6 +12,11 @@ import {
 import { Server, Socket } from 'socket.io';
 import { MessagesService } from './messages.service';
 import { RequestsService } from '../requests/requests.service';
+import {
+  isCommunityDmRequestId,
+  parseCommunityDmRequestId,
+  sortedCommunityDmPair,
+} from './community-dm.util';
 
 interface ChatMessage {
   id: string;
@@ -119,40 +124,57 @@ export class MessagesGateway {
       `[CHAT] send_message senderId=${senderId} otherUserId=${otherUserId} text=${data.message.substring(0, 30)}...`,
     );
 
-    // ორი მონაწილე: requestOwnerId = ვინც შეთავაზებას იღებს, offererId = ვინც თავაზობს. sender ყოველთვის დერივირდება (არ ვეყრდნობით client.sender-ს).
     let requestOwnerId: string;
     let offererId: string;
 
-    const conv = await this.messagesService.getConversationByParticipant(
-      data.requestId,
-      senderId,
-    );
-    if (conv) {
-      requestOwnerId = conv.userId;
-      offererId = conv.partnerId;
+    const cdm = isCommunityDmRequestId(data.requestId)
+      ? parseCommunityDmRequestId(data.requestId)
+      : null;
+    if (cdm) {
+      const [a, b] = sortedCommunityDmPair(cdm.a, cdm.b);
+      if (senderId !== a && senderId !== b) {
+        this.logger.warn(
+          `[CHAT] community DM rejected: sender not in pair senderId=${senderId} room=${room}`,
+        );
+        return;
+      }
+      requestOwnerId = a;
+      offererId = b;
       this.logger.log(
-        `[CHAT] from conversation: requestOwnerId=${requestOwnerId} offererId=${offererId}`,
+        `[CHAT] community DM requestOwnerId=${requestOwnerId} offererId=${offererId}`,
       );
     } else {
-      try {
-        const request = await this.requestsService.findOne(data.requestId);
-        if (request?.userId) {
-          requestOwnerId = String(request.userId);
-          offererId = requestOwnerId === senderId ? otherUserId : senderId;
-          this.logger.log(
-            `[CHAT] from request (no conv): requestOwnerId=${requestOwnerId} offererId=${offererId}`,
-          );
-        } else {
+      const conv = await this.messagesService.getConversationByParticipant(
+        data.requestId,
+        senderId,
+      );
+      if (conv) {
+        requestOwnerId = conv.userId;
+        offererId = conv.partnerId;
+        this.logger.log(
+          `[CHAT] from conversation: requestOwnerId=${requestOwnerId} offererId=${offererId}`,
+        );
+      } else {
+        try {
+          const request = await this.requestsService.findOne(data.requestId);
+          if (request?.userId) {
+            requestOwnerId = String(request.userId);
+            offererId = requestOwnerId === senderId ? otherUserId : senderId;
+            this.logger.log(
+              `[CHAT] from request (no conv): requestOwnerId=${requestOwnerId} offererId=${offererId}`,
+            );
+          } else {
+            requestOwnerId = otherUserId || senderId;
+            offererId = senderId === requestOwnerId ? otherUserId : senderId;
+            this.logger.log(
+              `[CHAT] no conv/request – from join: requestOwnerId=${requestOwnerId} offererId=${offererId}`,
+            );
+          }
+        } catch (err) {
+          this.logger.warn(`[CHAT] request lookup failed`, err);
           requestOwnerId = otherUserId || senderId;
           offererId = senderId === requestOwnerId ? otherUserId : senderId;
-          this.logger.log(
-            `[CHAT] no conv/request – from join: requestOwnerId=${requestOwnerId} offererId=${offererId}`,
-          );
         }
-      } catch (err) {
-        this.logger.warn(`[CHAT] request lookup failed`, err);
-        requestOwnerId = otherUserId || senderId;
-        offererId = senderId === requestOwnerId ? otherUserId : senderId;
       }
     }
 

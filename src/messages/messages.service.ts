@@ -8,6 +8,7 @@ import {
   ConversationDocument,
 } from '../schemas/conversation.schema';
 import { RequestsService } from '../requests/requests.service';
+import { isCommunityDmRequestId } from './community-dm.util';
 
 export type MessageCreateDto = {
   requestId: string;
@@ -145,12 +146,26 @@ export class MessagesService {
     partnerId?: string,
   ): Promise<Array<Record<string, unknown> & { sender: 'user' | 'partner' }>> {
     const filter: { requestId: string; partnerId?: string } = { requestId };
-    if (partnerId) filter.partnerId = partnerId;
+    if (!isCommunityDmRequestId(requestId) && partnerId) {
+      filter.partnerId = partnerId;
+    }
     const list = await this.messageModel
       .find(filter)
       .sort({ timestamp: 1 })
       .lean()
       .exec();
+
+    if (isCommunityDmRequestId(requestId)) {
+      return list.map(
+        (msg: { userId?: unknown; sender?: string; [k: string]: unknown }) => ({
+          ...msg,
+          sender: (msg.sender === 'partner' ? 'partner' : 'user') as
+            | 'user'
+            | 'partner',
+        }),
+      );
+    }
+
     let requestOwnerId: string | null = null;
     try {
       const request = await this.requestsService.findOne(requestId);
@@ -205,12 +220,17 @@ export class MessagesService {
   }
 
   async getRecentChats(userId: string, partnerId?: string) {
-    const filter: Partial<Pick<Conversation, 'userId' | 'partnerId'>> = {};
-    if (userId) filter.userId = userId;
-    if (partnerId) filter.partnerId = partnerId;
-
+    if (partnerId) {
+      return this.conversationModel
+        .find({ userId, partnerId })
+        .sort({ lastMessageAt: -1 })
+        .lean();
+    }
+    if (!userId) return [];
     return this.conversationModel
-      .find(filter)
+      .find({
+        $or: [{ userId }, { partnerId: userId }],
+      })
       .sort({ lastMessageAt: -1 })
       .lean();
   }

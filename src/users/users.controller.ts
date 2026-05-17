@@ -1,6 +1,7 @@
 import {
   Controller,
   Get,
+  Post,
   Query,
   Param,
   Put,
@@ -116,6 +117,73 @@ export class UsersController {
       data: users,
       count: users.length,
     };
+  }
+
+  @Get(':id/profile')
+  async profile(@Param('id') id: string, @Query('viewerId') viewerId?: string) {
+    if (!id) throw new BadRequestException('id_required');
+    const data = await this.users.getProfileById(id, viewerId);
+    return { success: true, data };
+  }
+
+  @Get('profiles/by-username/:username')
+  async profileByUsername(
+    @Param('username') username: string,
+    @Query('viewerId') viewerId?: string,
+  ) {
+    const data = await this.users.getProfileByUsername(username, viewerId);
+    return { success: true, data };
+  }
+
+  @Patch(':id/profile')
+  async updateProfile(
+    @Param('id') id: string,
+    @Body() body: { username?: string; bio?: string; avatar?: string },
+  ) {
+    if (!id) throw new BadRequestException('id_required');
+    const data = await this.users.updateProfile(id, body || {});
+    return { success: true, data };
+  }
+
+  @Post(':id/follow')
+  async follow(@Param('id') id: string, @Body() body: { followerId?: string }) {
+    if (!body?.followerId) throw new BadRequestException('follower_id_required');
+    const data = await this.users.followUser(body.followerId, id);
+    return { success: true, data };
+  }
+
+  @Delete(':id/follow')
+  async unfollow(
+    @Param('id') id: string,
+    @Query('followerId') followerId?: string,
+  ) {
+    if (!followerId) throw new BadRequestException('follower_id_required');
+    const data = await this.users.unfollowUser(followerId, id);
+    return { success: true, data };
+  }
+
+  @Get(':id/followers')
+  async followers(
+    @Param('id') id: string,
+    @Query('limit') limit?: string,
+    @Query('offset') offset?: string,
+  ) {
+    const lim = Math.max(1, Math.min(parseInt(limit || '20'), 100));
+    const off = Math.max(0, parseInt(offset || '0'));
+    const data = await this.users.getFollowers(id, lim, off);
+    return { success: true, data, count: data.length };
+  }
+
+  @Get(':id/following')
+  async following(
+    @Param('id') id: string,
+    @Query('limit') limit?: string,
+    @Query('offset') offset?: string,
+  ) {
+    const lim = Math.max(1, Math.min(parseInt(limit || '20'), 100));
+    const off = Math.max(0, parseInt(offset || '0'));
+    const data = await this.users.getFollowing(id, lim, off);
+    return { success: true, data, count: data.length };
   }
 
   // Generic :id route must come last

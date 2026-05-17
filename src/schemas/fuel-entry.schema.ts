@@ -25,6 +25,9 @@ export class FuelEntry {
 
   @Prop({ required: true })
   mileage: number;
+
+  @Prop()
+  stationName?: string;
 }
 
 export const FuelEntrySchema = SchemaFactory.createForClass(FuelEntry);
