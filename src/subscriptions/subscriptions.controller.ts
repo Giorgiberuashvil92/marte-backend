@@ -137,29 +137,39 @@ export class SubscriptionsController {
   /**
    * Premium პაკეტის ხელით მინიჭება phone number-ით
    * POST /subscriptions/grant-premium
-   * Body: { phone: string, period?: 'monthly' | 'yearly' | 'lifetime' }
+   * Body: { phone?: string, userId?: string, period?: 'monthly' | 'yearly' | 'lifetime' }
    */
   @Post('grant-premium')
   async grantPremiumByPhone(
-    @Body() body: { phone: string; period?: 'monthly' | 'yearly' | 'lifetime' },
+    @Body()
+    body: {
+      phone?: string;
+      userId?: string;
+      period?: 'monthly' | 'yearly' | 'lifetime';
+    },
   ) {
     try {
-      if (!body.phone || body.phone.trim().length === 0) {
+      const phone = body.phone?.trim();
+      const userId = body.userId?.trim();
+
+      if (!phone && !userId) {
         return {
           success: false,
-          message: 'Phone number აუცილებელია',
+          message: 'phone ან userId აუცილებელია',
         };
       }
 
-      this.logger.log(`🎁 Premium პაკეტის მინიჭება phone: ${body.phone}`);
+      this.logger.log(
+        `🎁 Premium პაკეტის მინიჭება: ${phone ? `phone=${phone}` : `userId=${userId}`}`,
+      );
 
-      const subscription = await this.subscriptionsService.grantPremiumByPhone(
-        body.phone.trim(),
+      const subscription = await this.subscriptionsService.grantPremium(
+        { phone, userId },
         body.period || 'monthly',
       );
 
       this.logger.log(
-        `✅ Premium პაკეტი წარმატებით მიენიჭა phone: ${body.phone}`,
+        `✅ Premium პაკეტი წარმატებით მიენიჭა: ${subscription.userId}`,
       );
 
       return {
@@ -188,6 +198,62 @@ export class SubscriptionsController {
       return {
         success: false,
         message: 'Premium პაკეტის მინიჭებისას მოხდა შეცდომა',
+        error: error instanceof Error ? error.message : 'უცნობი შეცდომა',
+      };
+    }
+  }
+
+  /**
+   * Premium / active subscription-ის გაუქმება (admin)
+   * POST /subscriptions/revoke-premium
+   * Body: { phone?: string, userId?: string }
+   */
+  @Post('revoke-premium')
+  async revokePremium(@Body() body: { phone?: string; userId?: string }) {
+    try {
+      const phone = body.phone?.trim();
+      const userId = body.userId?.trim();
+
+      if (!phone && !userId) {
+        return {
+          success: false,
+          message: 'phone ან userId აუცილებელია',
+        };
+      }
+
+      this.logger.log(
+        `🛑 Subscription გაუქმება: ${phone ? `phone=${phone}` : `userId=${userId}`}`,
+      );
+
+      const subscription = await this.subscriptionsService.revokePremium({
+        phone,
+        userId,
+      });
+
+      return {
+        success: true,
+        message: 'საბსქრიფშენი წარმატებით გაუქმდა',
+        data: {
+          subscriptionId: String(subscription._id),
+          userId: subscription.userId,
+          status: subscription.status,
+          endDate: subscription.endDate,
+        },
+      };
+    } catch (error) {
+      this.logger.error('❌ Subscription გაუქმების შეცდომა:', error);
+
+      if (error instanceof HttpException) {
+        return {
+          success: false,
+          message: error.message,
+          statusCode: error.getStatus(),
+        };
+      }
+
+      return {
+        success: false,
+        message: 'საბსქრიფშენის გაუქმებისას მოხდა შეცდომა',
         error: error instanceof Error ? error.message : 'უცნობი შეცდომა',
       };
     }

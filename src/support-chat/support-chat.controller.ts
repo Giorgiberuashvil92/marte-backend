@@ -25,11 +25,14 @@ function normalizeEnvSecret(raw: string | undefined): string {
   return s;
 }
 
+const DEFAULT_SUPPORT_IN_APP_AGENT_IDS = ['usr_1775941585778'];
+
 function parseInAppAgentAllowlist(): string[] {
-  return (process.env.SUPPORT_IN_APP_AGENT_USER_IDS || '')
+  const fromEnv = (process.env.SUPPORT_IN_APP_AGENT_USER_IDS || '')
     .split(',')
     .map((x) => x.trim())
     .filter(Boolean);
+  return [...new Set([...fromEnv, ...DEFAULT_SUPPORT_IN_APP_AGENT_IDS])];
 }
 
 @Controller('support-chat')

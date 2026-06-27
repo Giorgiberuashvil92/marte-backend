@@ -816,6 +816,50 @@ export class SubscriptionsService {
     }
   }
 
+  private getPhoneVariants(raw: string): string[] {
+    const digits = String(raw || '').replace(/\D/g, '');
+    const variants = new Set<string>();
+    const trimmed = String(raw || '').trim();
+    if (trimmed) variants.add(trimmed);
+    if (digits.length >= 9) {
+      const last9 = digits.slice(-9);
+      variants.add(last9);
+      variants.add(`+995${last9}`);
+      variants.add(`995${last9}`);
+    }
+    return [...variants].filter(Boolean);
+  }
+
+  private async findUserByPhone(phone: string): Promise<UserDocument | null> {
+    const variants = this.getPhoneVariants(phone);
+    if (variants.length === 0) return null;
+    return this.userModel.findOne({ phone: { $in: variants } }).exec();
+  }
+
+  /**
+   * Premium პაკეტის ხელით მინიჭება phone ან userId-ით
+   */
+  async grantPremium(
+    params: { phone?: string; userId?: string },
+    period: 'monthly' | 'yearly' | 'lifetime' = 'monthly',
+  ): Promise<SubscriptionDocument> {
+    const phone = params.phone?.trim();
+    const userId = params.userId?.trim();
+
+    if (!phone && !userId) {
+      throw new HttpException(
+        'phone ან userId აუცილებელია',
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+
+    if (userId) {
+      return this.grantPremiumForUserId(userId, period);
+    }
+
+    return this.grantPremiumByPhone(phone!, period);
+  }
+
   /**
    * Premium პაკეტის ხელით მინიჭება phone number-ით
    */
@@ -826,12 +870,40 @@ export class SubscriptionsService {
     try {
       this.logger.log(`🎁 Premium პაკეტის მინიჭება phone: ${phone}`);
 
-      // ვიპოვოთ user phone number-ით
-      const user = await this.userModel.findOne({ phone }).exec();
+      const user = await this.findUserByPhone(phone);
 
       if (!user) {
         throw new HttpException(
           `მომხმარებელი ვერ მოიძებნა phone: ${phone}`,
+          HttpStatus.NOT_FOUND,
+        );
+      }
+
+      return this.grantPremiumForUserId(user.id, period);
+    } catch (error) {
+      this.logger.error('❌ Premium პაკეტის მინიჭების შეცდომა:', error);
+
+      if (error instanceof HttpException) {
+        throw error;
+      }
+
+      throw new HttpException(
+        `Premium პაკეტის მინიჭებისას მოხდა შეცდომა: ${error instanceof Error ? error.message : 'უცნობი შეცდომა'}`,
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
+  }
+
+  private async grantPremiumForUserId(
+    userId: string,
+    period: 'monthly' | 'yearly' | 'lifetime' = 'monthly',
+  ): Promise<SubscriptionDocument> {
+    try {
+      const user = await this.userModel.findOne({ id: userId }).exec();
+
+      if (!user) {
+        throw new HttpException(
+          `მომხმარებელი ვერ მოიძებნა userId: ${userId}`,
           HttpStatus.NOT_FOUND,
         );
       }
@@ -959,6 +1031,77 @@ export class SubscriptionsService {
 
       throw new HttpException(
         `Premium პაკეტის მინიჭებისას მოხდა შეცდომა: ${error instanceof Error ? error.message : 'უცნობი შეცდომა'}`,
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
+  }
+  async revokePremium(params: {
+    phone?: string;
+    userId?: string;
+  }): Promise<SubscriptionDocument> {
+    const phone = params.phone?.trim();
+    const userId = params.userId?.trim();
+
+    if (!phone && !userId) {
+      throw new HttpException(
+        'phone ან userId აუცილებელია',
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+
+    try {
+      this.logger.log(
+        `🛑 Subscription გაუქმება: ${phone ? `phone=${phone}` : `userId=${userId}`}`,
+      );
+
+      let resolvedUserId = userId;
+      if (!resolvedUserId && phone) {
+        const user = await this.findUserByPhone(phone);
+        if (!user) {
+          throw new HttpException(
+            `მომხმარებელი ვერ მოიძებნა phone: ${phone}`,
+            HttpStatus.NOT_FOUND,
+          );
+        }
+        resolvedUserId = user.id;
+      }
+
+      const activeSubscription = await this.subscriptionModel
+        .findOne({ userId: resolvedUserId, status: 'active' })
+        .exec();
+
+      if (!activeSubscription) {
+        throw new HttpException(
+          'აქტიური საბსქრიფშენი ვერ მოიძებნა',
+          HttpStatus.NOT_FOUND,
+        );
+      }
+
+      const now = new Date();
+      activeSubscription.status = 'cancelled';
+      activeSubscription.endDate = now;
+      activeSubscription.nextBillingDate = undefined;
+      activeSubscription.bogCardToken = undefined;
+      activeSubscription.orderId = undefined;
+      activeSubscription.transactionId = undefined;
+      activeSubscription.updatedAt = now;
+
+      const updated = await activeSubscription.save();
+
+      this.logger.log(
+        `✅ Subscription გაუქმებულია: ${String(updated._id)} (userId: ${resolvedUserId})`,
+      );
+
+      return updated;
+    } catch (error) {
+      this.logger.error('❌ Subscription გაუქმების შეცდომა:', error);
+
+      if (error instanceof HttpException) {
+        throw error;
+      }
+
+      throw new HttpException(
+        `საბსქრიფშენის გაუქმებისას მოხდა შეცდომა: ${error instanceof Error ? error.message : 'უცნობი შეცდომა'}`,
         HttpStatus.INTERNAL_SERVER_ERROR,
       );
     }

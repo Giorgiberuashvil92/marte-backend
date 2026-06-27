@@ -44,6 +44,17 @@ function clipForLog(text: string, max = 600): string {
   return `${text.slice(0, max)}…`;
 }
 
+/** Push მიმღები აგენტ(ებ)ი — env + ძირითადი ადმინი */
+const DEFAULT_SUPPORT_AGENT_PUSH_USER_IDS = ['usr_1775941585778'];
+
+function getSupportAgentPushUserIds(): string[] {
+  const fromEnv = (process.env.SUPPORT_IN_APP_AGENT_USER_IDS || '')
+    .split(',')
+    .map((x) => x.trim())
+    .filter(Boolean);
+  return [...new Set([...fromEnv, ...DEFAULT_SUPPORT_AGENT_PUSH_USER_IDS])];
+}
+
 function displayNameForThreadUser(
   userId: string,
   u: {
@@ -290,6 +301,42 @@ export class SupportChatService {
         `[SUPPORT-CHAT] 📤 USER გაგზავნა | userId=${userId} | msgId=${dto.id} | ტექსტი: ${JSON.stringify(clipForLog(trimmed))}`,
       );
     }
+
+    const agentIds = getSupportAgentPushUserIds();
+    if (agentIds.length > 0) {
+      try {
+        let senderLabel = userId;
+        if (!userId.startsWith('guest:')) {
+          const u = await this.userModel
+            .findOne({ id: userId })
+            .select('id phone firstName lastName email')
+            .lean()
+            .exec();
+          senderLabel = displayNameForThreadUser(userId, u);
+        } else {
+          senderLabel = displayNameForThreadUser(userId, null);
+        }
+        const preview =
+          trimmed.length > 100 ? `${trimmed.slice(0, 97)}…` : trimmed;
+        await this.notificationsService.sendPushToUsers(
+          agentIds,
+          {
+            title: '💬 ახალი შეტყობინება',
+            body: `ადმინ პანელი · ${senderLabel}: ${preview}`,
+            data: {
+              type: 'support_agent',
+              chatUserId: userId,
+            },
+            sound: 'default',
+            badge: 1,
+          },
+          'message',
+        );
+      } catch (e) {
+        this.logger.warn(`support agent push failed fromUserId=${userId}`, e);
+      }
+    }
+
     return dto;
   }
 
