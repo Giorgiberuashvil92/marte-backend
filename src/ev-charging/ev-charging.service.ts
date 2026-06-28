@@ -19,6 +19,12 @@ import {
   EvChargingSettingsDocument,
 } from '../schemas/ev-charging-settings.schema';
 import {
+  EvPromoRequest,
+  EvPromoRequestDocument,
+  EvPromoRequestStatus,
+} from '../schemas/ev-promo-request.schema';
+import { User, UserDocument } from '../schemas/user.schema';
+import {
   DEFAULT_EV_PACKAGE_CTA,
   mapPackageCtaEmbed,
   parsePackageCtaBody,
@@ -60,6 +66,30 @@ export type EvChargingSettingsDto = {
   packageCta: EvPackageCtaDto;
 };
 
+export type EvPromoRequestDto = {
+  id: string;
+  userId: string;
+  status: EvPromoRequestStatus;
+  promoCode?: string;
+  websiteUrl?: string;
+  userPhone?: string;
+  userName?: string;
+  requestedAt?: string;
+  assignedAt?: string;
+  assignedBy?: string;
+  notes?: string;
+  createdAt?: string;
+  updatedAt?: string;
+};
+
+export type EvPromoUserStateDto = {
+  status: 'none' | EvPromoRequestStatus;
+  code?: string;
+  websiteUrl?: string;
+  requestedAt?: string;
+  assignedAt?: string;
+};
+
 @Injectable()
 export class EvChargingService implements OnModuleInit {
   private readonly logger = new Logger(EvChargingService.name);
@@ -71,6 +101,10 @@ export class EvChargingService implements OnModuleInit {
     private readonly stationModel: Model<EvStationDocument>,
     @InjectModel(EvChargingSettings.name)
     private readonly settingsModel: Model<EvChargingSettingsDocument>,
+    @InjectModel(EvPromoRequest.name)
+    private readonly promoRequestModel: Model<EvPromoRequestDocument>,
+    @InjectModel(User.name)
+    private readonly userModel: Model<UserDocument>,
   ) {}
 
   async onModuleInit() {
@@ -546,5 +580,138 @@ export class EvChargingService implements OnModuleInit {
       partners: EV_CHARGING_DEMO_SEED.partners.length,
       stations: EV_CHARGING_DEMO_SEED.stations.length,
     };
+  }
+
+  private mapPromoRequest(doc: EvPromoRequestDocument): EvPromoRequestDto {
+    const ts = doc as EvPromoRequestDocument & {
+      createdAt?: Date;
+      updatedAt?: Date;
+    };
+    return {
+      id: doc._id.toString(),
+      userId: doc.userId,
+      status: doc.status,
+      promoCode: doc.promoCode,
+      websiteUrl: doc.websiteUrl,
+      userPhone: doc.userPhone,
+      userName: doc.userName,
+      requestedAt: ts.createdAt?.toISOString(),
+      assignedAt: doc.assignedAt?.toISOString(),
+      assignedBy: doc.assignedBy,
+      notes: doc.notes,
+      createdAt: ts.createdAt?.toISOString(),
+      updatedAt: ts.updatedAt?.toISOString(),
+    };
+  }
+
+  private async resolveUserSnapshot(userId: string) {
+    const user = await this.userModel.findOne({ id: userId.trim() }).exec();
+    if (!user) {
+      return { userPhone: undefined, userName: undefined };
+    }
+    const name = [user.firstName, user.lastName].filter(Boolean).join(' ').trim();
+    return {
+      userPhone: user.phone,
+      userName: name || undefined,
+    };
+  }
+
+  async getPromoStateForUser(userId: string): Promise<EvPromoUserStateDto> {
+    const uid = userId?.trim();
+    if (!uid) {
+      throw new BadRequestException('userId სავალდებულოა');
+    }
+    const doc = await this.promoRequestModel.findOne({ userId: uid }).exec();
+    if (!doc) {
+      return { status: 'none' };
+    }
+    if (doc.status === 'assigned' && doc.promoCode) {
+      const ts = doc as EvPromoRequestDocument & { createdAt?: Date };
+      return {
+        status: 'assigned',
+        code: doc.promoCode,
+        websiteUrl: doc.websiteUrl || 'https://evpower.ge',
+        requestedAt: ts.createdAt?.toISOString(),
+        assignedAt: doc.assignedAt?.toISOString(),
+      };
+    }
+    const ts = doc as EvPromoRequestDocument & { createdAt?: Date };
+    return {
+      status: 'pending',
+      requestedAt: ts.createdAt?.toISOString(),
+    };
+  }
+
+  async requestPromoCode(userId: string): Promise<EvPromoUserStateDto> {
+    const uid = userId?.trim();
+    if (!uid) {
+      throw new BadRequestException('userId სავალდებულოა');
+    }
+
+    const existing = await this.promoRequestModel.findOne({ userId: uid }).exec();
+    if (existing) {
+      return this.getPromoStateForUser(uid);
+    }
+
+    const snapshot = await this.resolveUserSnapshot(uid);
+    await this.promoRequestModel.create({
+      userId: uid,
+      status: 'pending',
+      websiteUrl: 'https://evpower.ge',
+      ...snapshot,
+    });
+
+    this.logger.log(`EV promo request created for user ${uid}`);
+    return this.getPromoStateForUser(uid);
+  }
+
+  async listPromoRequests(status?: string): Promise<EvPromoRequestDto[]> {
+    const filter: { status?: EvPromoRequestStatus } = {};
+    if (status === 'pending' || status === 'assigned') {
+      filter.status = status;
+    }
+    const docs = await this.promoRequestModel
+      .find(filter)
+      .sort({ createdAt: -1 })
+      .exec();
+    return docs.map((d) => this.mapPromoRequest(d));
+  }
+
+  async assignPromoCode(
+    requestId: string,
+    body: {
+      promoCode: string;
+      websiteUrl?: string;
+      assignedBy?: string;
+      notes?: string;
+    },
+  ): Promise<EvPromoRequestDto> {
+    if (!Types.ObjectId.isValid(requestId)) {
+      throw new BadRequestException('Invalid request id');
+    }
+    const code = body.promoCode?.trim();
+    if (!code) {
+      throw new BadRequestException('promoCode სავალდებულოა');
+    }
+
+    const doc = await this.promoRequestModel.findById(requestId).exec();
+    if (!doc) {
+      throw new NotFoundException('მოთხოვნა ვერ მოიძებნა');
+    }
+
+    doc.status = 'assigned';
+    doc.promoCode = code;
+    doc.websiteUrl = body.websiteUrl?.trim() || doc.websiteUrl || 'https://evpower.ge';
+    doc.assignedAt = new Date();
+    if (body.assignedBy?.trim()) doc.assignedBy = body.assignedBy.trim();
+    if (body.notes !== undefined) {
+      doc.notes = body.notes.trim() || undefined;
+    }
+    await doc.save();
+
+    this.logger.log(
+      `EV promo assigned: user=${doc.userId}, code=${code}, request=${requestId}`,
+    );
+    return this.mapPromoRequest(doc);
   }
 }

@@ -8,6 +8,11 @@ import {
   EvChargingSettings,
   EvChargingSettingsSchema,
 } from '../schemas/ev-charging-settings.schema';
+import {
+  EvPromoRequest,
+  EvPromoRequestSchema,
+} from '../schemas/ev-promo-request.schema';
+import { User, UserSchema } from '../schemas/user.schema';
 
 @Module({
   imports: [
@@ -15,6 +20,8 @@ import {
       { name: EvPartner.name, schema: EvPartnerSchema },
       { name: EvStation.name, schema: EvStationSchema },
       { name: EvChargingSettings.name, schema: EvChargingSettingsSchema },
+      { name: EvPromoRequest.name, schema: EvPromoRequestSchema },
+      { name: User.name, schema: UserSchema },
     ]),
   ],
   controllers: [EvChargingController],

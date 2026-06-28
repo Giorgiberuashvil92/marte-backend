@@ -103,4 +103,50 @@ export class EvChargingController {
     const result = await this.evChargingService.seedDemo(force === 'true');
     return { success: true, ...result };
   }
+
+  /** მობილური — მომხმარებლის პრომო სტატუსი */
+  @Get('promo-code/user/:userId')
+  async getPromoForUser(@Param('userId') userId: string) {
+    const data = await this.evChargingService.getPromoStateForUser(userId);
+    return { success: true, data };
+  }
+
+  /** მობილური — პრომო კოდის მოთხოვნა (ადმინში გადის) */
+  @Post('promo-code/request')
+  async requestPromoCode(@Body() body: { userId?: string }) {
+    const userId = body.userId?.trim();
+    if (!userId) {
+      throw new BadRequestException('userId სავალდებულოა');
+    }
+    const data = await this.evChargingService.requestPromoCode(userId);
+    return { success: true, data };
+  }
+
+  /** ადმინი — ყველა მოთხოვნა */
+  @Get('promo-code/requests')
+  async listPromoRequests(@Query('status') status?: string) {
+    const data = await this.evChargingService.listPromoRequests(status);
+    return { success: true, data, count: data.length };
+  }
+
+  /** ადმინი — პრომო კოდის მინიჭება */
+  @Patch('promo-code/requests/:id')
+  async assignPromoCode(
+    @Param('id') id: string,
+    @Body()
+    body: {
+      promoCode?: string;
+      websiteUrl?: string;
+      assignedBy?: string;
+      notes?: string;
+    },
+  ) {
+    const data = await this.evChargingService.assignPromoCode(id, {
+      promoCode: body.promoCode ?? '',
+      websiteUrl: body.websiteUrl,
+      assignedBy: body.assignedBy,
+      notes: body.notes,
+    });
+    return { success: true, message: 'პრომო კოდი მიენიჭა', data };
+  }
 }
