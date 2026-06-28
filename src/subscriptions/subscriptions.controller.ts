@@ -258,4 +258,57 @@ export class SubscriptionsController {
       };
     }
   }
+
+  /**
+   * საბსქრიფშენის სრული წაშლა (admin)
+   * POST /subscriptions/delete
+   * Body: { subscriptionId?: string, userId?: string }
+   */
+  @Post('delete')
+  async deleteSubscription(
+    @Body() body: { subscriptionId?: string; userId?: string },
+  ) {
+    try {
+      const subscriptionId = body.subscriptionId?.trim();
+      const userId = body.userId?.trim();
+
+      if (!subscriptionId && !userId) {
+        return {
+          success: false,
+          message: 'subscriptionId ან userId აუცილებელია',
+        };
+      }
+
+      this.logger.log(
+        `🗑️ Subscription წაშლა: ${subscriptionId ? `id=${subscriptionId}` : `userId=${userId}`}`,
+      );
+
+      const result = await this.subscriptionsService.deleteSubscriptionRecord({
+        subscriptionId,
+        userId,
+      });
+
+      return {
+        success: true,
+        message: 'საბსქრიფშენი წარმატებით წაიშალა',
+        data: result,
+      };
+    } catch (error) {
+      this.logger.error('❌ Subscription წაშლის შეცდომა:', error);
+
+      if (error instanceof HttpException) {
+        return {
+          success: false,
+          message: error.message,
+          statusCode: error.getStatus(),
+        };
+      }
+
+      return {
+        success: false,
+        message: 'საბსქრიფშენის წაშლისას მოხდა შეცდომა',
+        error: error instanceof Error ? error.message : 'უცნობი შეცდომა',
+      };
+    }
+  }
 }

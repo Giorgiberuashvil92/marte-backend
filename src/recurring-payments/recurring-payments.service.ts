@@ -37,7 +37,7 @@ export class RecurringPaymentsService {
     private subscriptionsService: SubscriptionsService,
   ) {}
 
-  @Cron('0 0,12 * * *', {
+  @Cron('0 2,8 * * *', {
     name: 'process-recurring-payments',
     timeZone: 'Asia/Tbilisi',
   })

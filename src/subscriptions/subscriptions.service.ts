@@ -147,36 +147,6 @@ export class SubscriptionsService {
         existingSubscription.updatedAt = new Date();
         const updatedSubscription = await existingSubscription.save();
 
-        // გავაგზავნოთ push notification user-ისთვის subscription-ის განახლების შესახებ
-        try {
-          await this.notificationsService.sendPushToUsers(
-            [userId],
-            {
-              title: '🔄 საბსქრიფშენი განახლებულია!',
-              body: `თქვენი ${existingSubscription.planName} საბსქრიფშენი წარმატებით განახლდა.`,
-              data: {
-                type: 'subscription_updated',
-                subscriptionId: String(updatedSubscription._id),
-                planId: existingSubscription.planId,
-                planName: existingSubscription.planName,
-                screen: 'Subscription',
-              },
-              sound: 'default',
-              badge: 1,
-            },
-            'system',
-          );
-          this.logger.log(
-            `✅ Push notification sent to user: ${userId} for subscription update`,
-          );
-        } catch (notificationError) {
-          this.logger.error(
-            `⚠️ Failed to send push notification for subscription update:`,
-            notificationError,
-          );
-          // არ ვაგდებთ error-ს, რადგან subscription უკვე განახლდა
-        }
-
         return updatedSubscription;
       }
 
@@ -1105,5 +1075,48 @@ export class SubscriptionsService {
         HttpStatus.INTERNAL_SERVER_ERROR,
       );
     }
+  }
+
+  /** ადმინი: საბსქრიფშენის სრული წაშლა ბაზიდან */
+  async deleteSubscriptionRecord(params: {
+    subscriptionId?: string;
+    userId?: string;
+  }): Promise<{ subscriptionId: string; userId: string }> {
+    const subscriptionId = params.subscriptionId?.trim();
+    const userId = params.userId?.trim();
+
+    if (!subscriptionId && !userId) {
+      throw new HttpException(
+        'subscriptionId ან userId აუცილებელია',
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+
+    let doc;
+    if (subscriptionId) {
+      doc = await this.subscriptionModel.findById(subscriptionId).exec();
+    } else {
+      doc = await this.subscriptionModel
+        .findOne({ userId })
+        .sort({ updatedAt: -1 })
+        .exec();
+    }
+
+    if (!doc) {
+      throw new HttpException(
+        'საბსქრიფშენი ვერ მოიძებნა',
+        HttpStatus.NOT_FOUND,
+      );
+    }
+
+    const deletedId = String(doc._id);
+    const deletedUserId = doc.userId;
+    await this.subscriptionModel.deleteOne({ _id: doc._id }).exec();
+
+    this.logger.log(
+      `🗑️ Subscription წაიშალა: ${deletedId} (userId: ${deletedUserId})`,
+    );
+
+    return { subscriptionId: deletedId, userId: deletedUserId };
   }
 }
