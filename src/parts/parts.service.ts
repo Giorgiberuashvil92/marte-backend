@@ -39,7 +39,13 @@ export class PartsService {
     priceRange?: { min: number; max: number };
     page?: number;
     limit?: number;
-  }): Promise<Part[]> {
+  }): Promise<{
+    items: Part[];
+    total: number;
+    page: number;
+    limit: number;
+    hasMore: boolean;
+  }> {
     const query: Record<string, any> = {};
 
     if (filters?.category) {
@@ -51,15 +57,15 @@ export class PartsService {
     }
 
     if (filters?.brand) {
-      query.brand = filters.brand;
+      query.brand = new RegExp(filters.brand, 'i');
     }
 
     if (filters?.model) {
-      query.model = filters.model;
+      query.model = new RegExp(filters.model, 'i');
     }
 
     if (filters?.location) {
-      query.location = filters.location;
+      query.location = new RegExp(filters.location, 'i');
     }
 
     if (filters?.status) {
@@ -77,12 +83,23 @@ export class PartsService {
     const limit = filters?.limit || 20;
     const skip = (page - 1) * limit;
 
-    return this.partModel
-      .find(query)
-      .sort({ createdAt: -1 })
-      .skip(skip)
-      .limit(limit)
-      .exec();
+    const [items, total] = await Promise.all([
+      this.partModel
+        .find(query)
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(limit)
+        .exec(),
+      this.partModel.countDocuments(query).exec(),
+    ]);
+
+    return {
+      items,
+      total,
+      page,
+      limit,
+      hasMore: skip + items.length < total,
+    };
   }
 
   async findOne(id: string): Promise<Part> {

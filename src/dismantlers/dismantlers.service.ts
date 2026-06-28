@@ -82,7 +82,13 @@ export class DismantlersService {
     vip?: boolean;
     page?: number;
     limit?: number;
-  }): Promise<Dismantler[]> {
+  }): Promise<{
+    items: Dismantler[];
+    total: number;
+    page: number;
+    limit: number;
+    hasMore: boolean;
+  }> {
     const query: Record<string, any> = {};
 
     if (filters?.brand) {
@@ -92,16 +98,19 @@ export class DismantlersService {
       query.model = new RegExp(filters.model, 'i');
     }
     if (filters?.yearFrom) {
-      query.yearFrom = { $gte: filters.yearFrom };
+      query.yearTo = { $gte: filters.yearFrom };
     }
     if (filters?.yearTo) {
-      query.yearTo = { $lte: filters.yearTo };
+      query.yearFrom = { $lte: filters.yearTo };
     }
     if (filters?.location) {
       query.location = new RegExp(filters.location, 'i');
     }
     if (filters?.status) {
       query.status = filters.status;
+    } else if (!filters?.ownerId) {
+      // საჯარო სიაში — expired არ ჩანს; pending/approved/active ჩანს
+      query.status = { $ne: 'expired' };
     }
     if (filters?.ownerId) {
       query.ownerId = filters.ownerId;
@@ -114,12 +123,23 @@ export class DismantlersService {
     const limit = filters?.limit || 20;
     const skip = (page - 1) * limit;
 
-    return this.dismantlerModel
-      .find(query)
-      .sort({ createdAt: -1 })
-      .skip(skip)
-      .limit(limit)
-      .exec();
+    const [items, total] = await Promise.all([
+      this.dismantlerModel
+        .find(query)
+        .sort({ isVip: -1, createdAt: -1 })
+        .skip(skip)
+        .limit(limit)
+        .exec(),
+      this.dismantlerModel.countDocuments(query).exec(),
+    ]);
+
+    return {
+      items,
+      total,
+      page,
+      limit,
+      hasMore: skip + items.length < total,
+    };
   }
 
   async getFeatured(): Promise<Dismantler[]> {

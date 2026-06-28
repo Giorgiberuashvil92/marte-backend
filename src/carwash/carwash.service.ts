@@ -129,47 +129,93 @@ export class CarwashService {
     this.logger.log(`updateBooking done id=${id} found=${!!updated}`);
     if (!updated) throw new NotFoundException('booking_not_found');
 
-    try {
-      if (updates['status'] === 'confirmed') {
-        const bookingJson: any = updated.toJSON();
-        const customerUserId: string | undefined = bookingJson?.userId;
-        const locationId: string | undefined = bookingJson?.locationId;
-        const locationName: string | undefined = bookingJson?.locationName;
-        const bookingTime: string | undefined = bookingJson?.bookingTime;
-
-        if (customerUserId) {
-          await this.notificationsService.sendPushToTargets(
-            [{ userId: String(customerUserId) }],
-            {
-              title: '✅ ჯავშანი დადასტურებულია',
-              body: `${locationName || 'სამრეცხაო'} • დრო: ${bookingTime || ''} — გმადლობთ, რომ ირჩევთ ჩვენს სერვისს!`,
-              data: {
-                type: 'carwash_booking_confirmed',
-                screen: 'Bookings',
-                carwashId: locationId || '',
-                bookingId: bookingJson?.id || id,
-              },
-              sound: 'default',
-              badge: 1,
-            },
-            'system',
-          );
-          this.logger.log(
-            `✅ Sent confirmation push to user ${customerUserId} for booking ${id}`,
-          );
-        } else {
-          this.logger.warn(
-            `⚠️ Booking ${id} has no userId; skipping confirmation push`,
-          );
-        }
+    const newStatus = updates['status'];
+    if (
+      newStatus === 'confirmed' ||
+      newStatus === 'in_progress' ||
+      newStatus === 'completed'
+    ) {
+      try {
+        await this.notifyCustomerBookingStatus(
+          updated.toJSON(),
+          newStatus as 'confirmed' | 'in_progress' | 'completed',
+          id,
+        );
+      } catch (e) {
+        this.logger.warn(
+          `⚠️ updateBooking status push failed for ${id} (${String(newStatus)})`,
+          e,
+        );
       }
-    } catch (e) {
-      this.logger.warn(
-        `⚠️ updateBooking confirmation push failed for ${id}`,
-        e,
-      );
     }
     return updated;
+  }
+
+  private async notifyCustomerBookingStatus(
+    booking: Record<string, any>,
+    status: 'confirmed' | 'in_progress' | 'completed',
+    bookingId: string,
+  ) {
+    const customerUserId: string | undefined = booking?.userId;
+    if (!customerUserId) {
+      this.logger.warn(
+        `⚠️ Booking ${bookingId} has no userId; skipping ${status} push`,
+      );
+      return;
+    }
+
+    const locationName = booking?.locationName || 'სამრეცხაო';
+    const serviceName = booking?.serviceName || 'სერვისი';
+    const bookingTime = booking?.bookingTime || '';
+    const locationId = booking?.locationId || '';
+    const carInfo = booking?.carInfo || {};
+    const carLabel = [carInfo.make, carInfo.model].filter(Boolean).join(' ').trim();
+
+    const pushByStatus: Record<
+      typeof status,
+      { title: string; body: string; type: string }
+    > = {
+      confirmed: {
+        title: '✅ ჯავშანი დადასტურებულია',
+        body: `${locationName} • დრო: ${bookingTime} — გმადლობთ, რომ ირჩევთ ჩვენს სერვისს!`,
+        type: 'carwash_booking_confirmed',
+      },
+      in_progress: {
+        title: '🚗 რეცხვა დაიწყო',
+        body: `${locationName} • ${serviceName}${
+          carLabel ? ` — ${carLabel}` : ''
+        } — თქვენი ავტომობილის რეცხვა დაიწყო`,
+        type: 'carwash_booking_started',
+      },
+      completed: {
+        title: '✨ რეცხვა დასრულდა',
+        body: `${locationName} • ${serviceName}${
+          carLabel ? ` — ${carLabel}` : ''
+        } — მანქანა მზადაა!`,
+        type: 'carwash_booking_completed',
+      },
+    };
+
+    const payload = pushByStatus[status];
+    await this.notificationsService.sendPushToTargets(
+      [{ userId: String(customerUserId) }],
+      {
+        title: payload.title,
+        body: payload.body,
+        data: {
+          type: payload.type,
+          screen: 'Bookings',
+          carwashId: locationId,
+          bookingId: booking?.id || bookingId,
+        },
+        sound: 'default',
+        badge: 1,
+      },
+      'system',
+    );
+    this.logger.log(
+      `✅ Sent ${status} push to user ${customerUserId} for booking ${bookingId}`,
+    );
   }
 
   async cancelBooking(id: string) {

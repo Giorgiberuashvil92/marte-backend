@@ -81,13 +81,17 @@ export class PartsController {
       };
     }
 
-    const parts = await this.partsService.findAll(filters);
+    const result = await this.partsService.findAll(filters);
 
     return {
       success: true,
       message: 'ნაწილები წარმატებით ჩამოიტვირთა',
-      data: parts,
-      count: parts.length,
+      data: result.items,
+      count: result.items.length,
+      total: result.total,
+      page: result.page,
+      limit: result.limit,
+      hasMore: result.hasMore,
     };
   }
 

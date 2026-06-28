@@ -90,13 +90,17 @@ export class DismantlersController {
       limit: limit ? parseInt(limit) : 20,
     };
 
-    const dismantlers = await this.dismantlersService.findAll(filters);
+    const result = await this.dismantlersService.findAll(filters);
 
     return {
       success: true,
       message: 'დაშლილების განცხადებები წარმატებით ჩამოიტვირთა',
-      data: dismantlers,
-      count: dismantlers.length,
+      data: result.items,
+      count: result.items.length,
+      total: result.total,
+      page: result.page,
+      limit: result.limit,
+      hasMore: result.hasMore,
     };
   }
 
