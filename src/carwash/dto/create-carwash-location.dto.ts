@@ -20,55 +20,58 @@ export class CreateCarwashLocationDto {
 
   @IsString()
   @IsNotEmpty()
-  phone: string;
-
-  @IsString()
-  @IsNotEmpty()
-  category: string;
-
-  @IsString()
-  @IsNotEmpty()
-  location: string;
-
-  @IsString()
-  @IsNotEmpty()
   address: string;
 
-  @IsNumber()
-  price: number;
-
-  @IsNumber()
-  rating: number;
-
-  @IsNumber()
-  reviews: number;
-
+  @IsOptional()
   @IsString()
-  @IsNotEmpty()
-  services: string; // ძველი ველი - backward compatibility
+  phone?: string;
 
   @IsOptional()
-  detailedServices?: CarwashService[]; // ახალი დეტალური სერვისები
+  @IsString()
+  category?: string;
+
+  @IsOptional()
+  @IsString()
+  location?: string;
+
+  @IsOptional()
+  @IsNumber()
+  price?: number;
+
+  @IsOptional()
+  @IsNumber()
+  rating?: number;
+
+  @IsOptional()
+  @IsNumber()
+  reviews?: number;
+
+  @IsOptional()
+  @IsString()
+  services?: string;
+
+  @IsOptional()
+  detailedServices?: CarwashService[];
 
   @IsOptional()
   @IsString()
   features?: string;
 
+  @IsOptional()
   @IsString()
-  @IsNotEmpty()
-  workingHours: string; // ძველი ველი - backward compatibility
+  workingHours?: string;
 
   @IsOptional()
-  timeSlotsConfig?: TimeSlotsConfig; // ახალი დროის სლოტების კონფიგურაცია
+  timeSlotsConfig?: TimeSlotsConfig;
 
   @IsOptional()
   @IsArray()
   @IsString({ each: true })
   images?: string[];
 
+  @IsOptional()
   @IsString()
-  @IsNotEmpty()
-  description: string;
+  description?: string;
 
   @IsOptional()
   @IsNumber()
@@ -78,24 +81,27 @@ export class CreateCarwashLocationDto {
   @IsNumber()
   longitude?: number;
 
+  @IsOptional()
   @IsBoolean()
-  isOpen: boolean; // ძველი ველი - backward compatibility
+  isOpen?: boolean;
 
   @IsOptional()
-  realTimeStatus?: RealTimeStatus; // რეალური დროის სტატუსი
+  realTimeStatus?: RealTimeStatus;
 
+  @IsOptional()
   @IsString()
-  @IsNotEmpty()
-  ownerId: string;
+  ownerId?: string;
 
   @IsOptional()
-  socialMedia?: SocialMedia; // სოციალური მედია
+  socialMedia?: SocialMedia;
 
+  @IsOptional()
   @IsNumber()
-  createdAt: number;
+  createdAt?: number;
 
+  @IsOptional()
   @IsNumber()
-  updatedAt: number;
+  updatedAt?: number;
 
   @IsOptional()
   @IsNumber()

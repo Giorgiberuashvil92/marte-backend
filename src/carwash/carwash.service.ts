@@ -314,25 +314,63 @@ export class CarwashService {
   async createLocation(dto: CreateCarwashLocationDto) {
     const now = Date.now();
     const id = `cw_${now}`;
+
+    const detailedServices =
+      dto.detailedServices && dto.detailedServices.length > 0
+        ? dto.detailedServices
+        : [
+            {
+              id: `ds_${now}`,
+              name: 'გარე რეცხვა',
+              price: typeof dto.price === 'number' ? dto.price : 25,
+              duration: 30,
+            },
+          ];
+
+    const servicesText =
+      dto.services?.trim() ||
+      detailedServices.map((s) => s.name).join(', ') ||
+      'გარე რეცხვა';
+
     const loc = new this.carwashModel({
-      ...dto,
+      name: dto.name.trim(),
+      phone: dto.phone?.trim() || '+995500000000',
+      category: dto.category?.trim() || 'Standard',
+      location: dto.location?.trim() || 'თბილისი',
+      address: dto.address.trim(),
+      price:
+        typeof dto.price === 'number'
+          ? dto.price
+          : detailedServices[0]?.price || 25,
+      rating: typeof dto.rating === 'number' ? dto.rating : 0,
+      reviews: typeof dto.reviews === 'number' ? dto.reviews : 0,
+      services: servicesText,
+      detailedServices,
+      features: dto.features || '',
+      workingHours: dto.workingHours?.trim() || '09:00 - 21:00',
+      description: dto.description?.trim() || dto.name.trim(),
+      images: dto.images || [],
+      latitude: dto.latitude ?? 41.7151,
+      longitude: dto.longitude ?? 44.8271,
+      isOpen: dto.isOpen ?? true,
+      ownerId: dto.ownerId?.trim() || 'admin',
+      socialMedia: dto.socialMedia,
       id,
       createdAt: now,
       updatedAt: now,
-      detailedServices: dto.detailedServices || [],
-      timeSlotsConfig:
-        dto.timeSlotsConfig ||
-        ({ workingDays: [], interval: 60, breakTimes: [] } as any),
+      timeSlotsConfig: dto.timeSlotsConfig || {
+        workingDays: [],
+        interval: 30,
+        breakTimes: [],
+      },
       availableSlots: [],
-      realTimeStatus:
-        dto.realTimeStatus ||
-        ({
-          isOpen: !!dto.isOpen,
-          currentWaitTime: 0,
-          currentQueue: 0,
-          estimatedWaitTime: 0,
-          lastStatusUpdate: now,
-        } as any),
+      realTimeStatus: dto.realTimeStatus || {
+        isOpen: dto.isOpen ?? true,
+        currentWaitTime: 0,
+        currentQueue: 0,
+        estimatedWaitTime: 0,
+        lastStatusUpdate: now,
+      },
     });
     return loc.save();
   }
