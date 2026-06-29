@@ -8,6 +8,7 @@ import {
   HttpStatus,
   Logger,
   Query,
+  HttpException,
 } from '@nestjs/common';
 import { PaymentsService } from './payments.service';
 import { CreatePaymentDto } from './dto/create-payment.dto';
@@ -412,6 +413,49 @@ export class PaymentsController {
         success: false,
         message: 'Failed to retrieve subscription status',
         error: error.message,
+      };
+    }
+  }
+
+  /**
+   * User-ის Premium გამოწერის გაუქმება (აპიდან)
+   * POST /api/payments/subscription/user/:userId/cancel
+   */
+  @Post('subscription/user/:userId/cancel')
+  @HttpCode(HttpStatus.OK)
+  async cancelUserSubscription(@Param('userId') userId: string) {
+    try {
+      this.logger.log(`🛑 User subscription cancel request: ${userId}`);
+
+      const subscription = await this.subscriptionsService.revokePremium({
+        userId: userId.trim(),
+      });
+
+      return {
+        success: true,
+        message: 'საბსქრიფშენი წარმატებით გაუქმდა',
+        data: {
+          subscriptionId: String(subscription._id),
+          userId: subscription.userId,
+          status: subscription.status,
+          endDate: subscription.endDate,
+        },
+      };
+    } catch (error) {
+      this.logger.error('❌ User subscription cancel failed:', error);
+
+      if (error instanceof HttpException) {
+        return {
+          success: false,
+          message: error.message,
+          statusCode: error.getStatus(),
+        };
+      }
+
+      return {
+        success: false,
+        message: 'საბსქრიფშენის გაუქმებისას მოხდა შეცდომა',
+        error: error instanceof Error ? error.message : 'Unknown error',
       };
     }
   }
