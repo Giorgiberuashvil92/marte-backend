@@ -112,6 +112,8 @@ export class CommunityController {
       name?: string;
       description?: string;
       coverImage?: string;
+      carMakes?: string[];
+      isUniversal?: boolean;
     },
   ) {
     if (!body?.ownerId || !body?.name) {
@@ -122,6 +124,8 @@ export class CommunityController {
       name: body.name,
       description: body.description,
       coverImage: body.coverImage,
+      carMakes: body.carMakes,
+      isUniversal: body.isUniversal,
     });
   }
 
@@ -146,6 +150,8 @@ export class CommunityController {
       name?: string;
       description?: string;
       coverImage?: string;
+      carMakes?: string[];
+      isUniversal?: boolean;
     },
   ) {
     if (!body?.actorId) throw new BadRequestException('actor_id_required');
@@ -153,6 +159,8 @@ export class CommunityController {
       name: body.name,
       description: body.description,
       coverImage: body.coverImage,
+      carMakes: body.carMakes,
+      isUniversal: body.isUniversal,
     });
   }
 

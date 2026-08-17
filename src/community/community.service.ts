@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-unsafe-argument */
 /* eslint-disable @typescript-eslint/no-unsafe-assignment */
 /* eslint-disable @typescript-eslint/no-unsafe-member-access */
 import {
@@ -64,19 +65,19 @@ export class CommunityService {
     return {
       id: obj.id || obj._id?.toString?.(),
       userId: obj.userId,
-      userName: obj.userName, // optional from FE
-      userInitial: obj.userInitial, // optional from FE
+      userName: obj.userName,
+      userInitial: obj.userInitial,
       postText: obj.content || '',
       postImage:
         Array.isArray(obj.images) && obj.images.length > 0
           ? obj.images[0]
           : undefined,
-      postLocation: obj.postLocation, // optional passthrough
+      postLocation: obj.postLocation,
       likesCount: typeof obj.likes === 'number' ? obj.likes : 0,
       commentsCount: typeof obj.comments === 'number' ? obj.comments : 0,
       createdAt: obj.createdAt,
       updatedAt: obj.updatedAt,
-      isLiked: false, // backend currently doesn't track per-user like
+      isLiked: false,
     };
   }
 
@@ -99,13 +100,10 @@ export class CommunityService {
 
   async createPost(dto: any) {
     try {
-      // Frontend sends: { userId, userName, userInitial, postText, postImage?, postLocation? }
-      // Schema expects: { userId, title, content, images?, category, likes, comments, tags?, isActive }
       const postText: string = dto?.postText ?? '';
       const title = postText?.trim()?.slice(0, 60) || 'პოსტი';
       const images = dto?.postImage ? [dto.postImage] : undefined;
 
-      // enrich user name/initial if missing
       let userName: string | undefined = dto?.userName;
       let userInitial: string | undefined = dto?.userInitial;
       if (!userName || !userInitial) {
@@ -130,9 +128,7 @@ export class CommunityService {
         content: postText || '',
         images,
         category: 'general',
-        // counters & flags are defaulted by schema
         isActive: true,
-        // keep optional frontend extras for future if needed
         userName,
         userInitial,
         postLocation: dto?.postLocation,
@@ -143,7 +139,6 @@ export class CommunityService {
       const saved = await post.save();
       return this.mapPost(saved);
     } catch (err: any) {
-      // Surface validation reasons to the client
       const message = err?.message || 'validation_error';
       throw new Error(message);
     }
@@ -162,9 +157,8 @@ export class CommunityService {
       .find(filter)
       .sort({ createdAt: -1 })
       .exec();
-    // batch enrich user names
     const userIds = Array.from(
-      new Set(docs.map((d) => (d as any).userId).filter(Boolean)),
+      new Set(docs.map((d: any) => (d as any).userId).filter(Boolean)),
     );
     const objectIds = userIds
       .filter((v) => Types.ObjectId.isValid(v))
@@ -294,7 +288,6 @@ export class CommunityService {
     });
   }
 
-  // Likes
   async togglePostLike(postId: string, userId: string) {
     if (!postId || !userId) throw new Error('invalid_payload');
     const existing = await this.postLikeModel
@@ -309,7 +302,6 @@ export class CommunityService {
       .countDocuments({ postId })
       .exec();
     const isLiked = !existing;
-    // optionally reflect on post counter
     await this.postModel
       .updateOne({ _id: postId }, { $set: { likes: likesCount } })
       .exec();
@@ -345,7 +337,6 @@ export class CommunityService {
   async deleteComment(commentId: string) {
     const res = await this.commentModel.findByIdAndDelete(commentId).exec();
     if (!res) throw new NotFoundException('comment_not_found');
-    // Optionally cleanup likes
     await this.commentLikeModel.deleteMany({ commentId }).exec();
     await this.postModel
       .updateOne({ _id: res.postId }, { $inc: { comments: -1 } })
@@ -358,7 +349,6 @@ export class CommunityService {
     const likes = await this.postLikeModel.find({ postId }).exec();
     const userIds = likes.map((l) => (l as any).userId).filter(Boolean);
 
-    // Enrich with user info
     const objectIds = userIds
       .filter((v) => Types.ObjectId.isValid(v))
       .map((v) => new Types.ObjectId(v));
@@ -441,18 +431,30 @@ export class CommunityService {
     name: string;
     description?: string;
     coverImage?: string;
+    carMakes?: string[];
+    isUniversal?: boolean;
   }) {
     const name = payload.name?.trim();
     if (!name || name.length < 3) throw new Error('invalid_group_name');
     const id = `grp_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
     const cover =
       typeof payload.coverImage === 'string' ? payload.coverImage.trim() : '';
+    const carMakes = Array.isArray(payload.carMakes)
+      ? payload.carMakes
+          .map((m) => String(m).trim().toLowerCase())
+          .filter(Boolean)
+      : [];
+    const isUniversal =
+      payload.isUniversal === true || /^(portal|marte)$/i.test(name.trim());
+
     const doc = await new this.groupModel({
       id,
       ownerId: payload.ownerId,
       name,
       description: payload.description?.trim() || '',
       coverImage: cover || '',
+      carMakes,
+      isUniversal,
       memberIds: [payload.ownerId],
       membersCount: 1,
       isActive: true,
@@ -472,7 +474,13 @@ export class CommunityService {
   async updateGroup(
     groupId: string,
     actorId: string,
-    payload: { name?: string; description?: string; coverImage?: string },
+    payload: {
+      name?: string;
+      description?: string;
+      coverImage?: string;
+      carMakes?: string[];
+      isUniversal?: boolean;
+    },
   ) {
     const group = await this.groupModel
       .findOne({ id: groupId, isActive: true })
@@ -491,9 +499,17 @@ export class CommunityService {
     }
     if (payload.coverImage !== undefined) {
       updates.coverImage =
-        typeof payload.coverImage === 'string'
-          ? payload.coverImage.trim()
-          : '';
+        typeof payload.coverImage === 'string' ? payload.coverImage.trim() : '';
+    }
+    if (payload.carMakes !== undefined) {
+      updates.carMakes = Array.isArray(payload.carMakes)
+        ? payload.carMakes
+            .map((m) => String(m).trim().toLowerCase())
+            .filter(Boolean)
+        : [];
+    }
+    if (payload.isUniversal !== undefined) {
+      updates.isUniversal = !!payload.isUniversal;
     }
 
     const updated = await this.groupModel

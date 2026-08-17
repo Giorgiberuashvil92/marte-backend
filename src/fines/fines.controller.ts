@@ -10,6 +10,7 @@ import {
   HttpStatus,
 } from '@nestjs/common';
 import { FinesService } from './fines.service';
+import type { SyncProtocolFinesDto } from './fines.service';
 import { CheckPenaltiesDto } from './dto/check-penalties.dto';
 import { GetMediaFilesDto } from './dto/get-media-files.dto';
 import { RegisterVehicleDto } from './dto/register-vehicle.dto';
@@ -75,6 +76,72 @@ export class FinesController {
       }
       throw new HttpException(
         'ვიდეო ჯარიმების მოპოვება ვერ მოხერხდა',
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
+  }
+
+  /**
+   * Protocols.ge-დან გაპარსული მერიის/ავტო ჯარიმების cache sync.
+   * POST /fines/protocol-fines/sync
+   */
+  @Post('protocol-fines/sync')
+  async syncProtocolFines(@Body() dto: SyncProtocolFinesDto) {
+    try {
+      return await this.finesService.syncProtocolFines(dto);
+    } catch (error) {
+      if (error instanceof HttpException) {
+        throw error;
+      }
+      console.error('❌ [FINES] protocol fines sync error:', error);
+      throw new HttpException(
+        'ჯარიმების შენახვა ვერ მოხერხდა',
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
+  }
+
+  /**
+   * კონკრეტული მანქანის შენახული Protocols.ge ჯარიმები.
+   * GET /fines/protocol-fines/:userId/:carId
+   */
+  @Get('protocol-fines/:userId/:carId')
+  async getProtocolFinesForCar(
+    @Param('userId') userId: string,
+    @Param('carId') carId: string,
+  ) {
+    try {
+      return await this.finesService.getProtocolFinesForCar(userId, carId);
+    } catch (error) {
+      if (error instanceof HttpException) {
+        throw error;
+      }
+      throw new HttpException(
+        'შენახული ჯარიმების მოპოვება ვერ მოხერხდა',
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
+  }
+
+  /**
+   * Protocols.ge cache refresh-ის ხელით გაშვება (admin/debug).
+   * POST /fines/protocol-fines/refresh-now
+   */
+  @Post('protocol-fines/refresh-now')
+  async refreshProtocolFinesNow() {
+    try {
+      const result = await this.finesService.refreshProtocolFinesCache();
+      return {
+        success: true,
+        message: 'Protocols.ge refresh ხელით მოინიშნა',
+        ...result,
+      };
+    } catch (error) {
+      if (error instanceof HttpException) {
+        throw error;
+      }
+      throw new HttpException(
+        'Protocols.ge cron-ის ხელით გაშვება ვერ მოხერხდა',
         HttpStatus.INTERNAL_SERVER_ERROR,
       );
     }
@@ -480,15 +547,19 @@ export class FinesController {
   /**
    * ჯარიმების reminder push-ის ხელით გაშვება (admin/debug)
    * POST /fines/reminders/send-now
-   * body: { userId?: string }
+   * body: { userId?: string; screen?: 'GarageFines' | 'MunicipalFines' }
    */
   @Post('reminders/send-now')
-  async sendFinesRemindersNow(@Body() body: { userId?: string } = {}) {
+  async sendFinesRemindersNow(
+    @Body()
+    body: { userId?: string; screen?: 'GarageFines' | 'MunicipalFines' } = {},
+  ) {
     try {
       const result =
         await this.finesService.sendGarageUnpaidFinesReminderPushes(
           true,
           body?.userId?.trim() || undefined,
+          body?.screen === 'MunicipalFines' ? 'MunicipalFines' : 'GarageFines',
         );
       return {
         success: true,

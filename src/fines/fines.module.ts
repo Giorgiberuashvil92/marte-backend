@@ -26,6 +26,14 @@ import {
   FinesPenaltyCache,
   FinesPenaltyCacheSchema,
 } from '../schemas/fines-penalty-cache.schema';
+import {
+  ProtocolFine,
+  ProtocolFineSchema,
+} from '../schemas/protocol-fine.schema';
+import {
+  ProtocolFineVehicle,
+  ProtocolFineVehicleSchema,
+} from '../schemas/protocol-fine-vehicle.schema';
 
 @Module({
   imports: [
@@ -37,6 +45,8 @@ import {
       { name: User.name, schema: UserSchema },
       { name: FinesDailyReminder.name, schema: FinesDailyReminderSchema },
       { name: FinesPenaltyCache.name, schema: FinesPenaltyCacheSchema },
+      { name: ProtocolFine.name, schema: ProtocolFineSchema },
+      { name: ProtocolFineVehicle.name, schema: ProtocolFineVehicleSchema },
     ]),
     SubscriptionsModule,
     NotificationsModule,

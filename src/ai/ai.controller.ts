@@ -5,15 +5,75 @@ import {
   Get,
   Query,
   BadRequestException,
+  Res,
 } from '@nestjs/common';
+import type { Response } from 'express';
 import { AIRecommendationsService } from './ai-recommendations.service';
 import type { PartsRequest } from './ai-recommendations.service';
+import { AIChatService, type AIChatRequest } from './ai-chat.service';
 
 @Controller('ai')
 export class AIController {
   constructor(
     private readonly aiRecommendationsService: AIRecommendationsService,
+    private readonly aiChatService: AIChatService,
   ) {}
+
+  @Post('chat')
+  async chat(@Body() request: AIChatRequest) {
+    if (!request?.message?.trim()) {
+      throw new BadRequestException({
+        success: false,
+        message: 'message აუცილებელია',
+      });
+    }
+
+    const data = await this.aiChatService.reply({
+      ...request,
+      message: request.message.trim(),
+    });
+
+    return {
+      success: true,
+      data,
+    };
+  }
+
+  @Post('chat/stream')
+  async chatStream(@Body() request: AIChatRequest, @Res() res: Response) {
+    if (!request?.message?.trim()) {
+      throw new BadRequestException({
+        success: false,
+        message: 'message აუცილებელია',
+      });
+    }
+
+    res.setHeader('Content-Type', 'application/x-ndjson; charset=utf-8');
+    res.setHeader('Cache-Control', 'no-cache, no-transform');
+    res.setHeader('Connection', 'keep-alive');
+    res.flushHeaders?.();
+
+    try {
+      for await (const event of this.aiChatService.streamReply({
+        ...request,
+        message: request.message.trim(),
+      })) {
+        res.write(`${JSON.stringify(event)}\n`);
+      }
+    } catch (error) {
+      res.write(
+        `${JSON.stringify({
+          type: 'error',
+          message:
+            error instanceof Error
+              ? error.message
+              : 'AI stream ვერ შესრულდა',
+        })}\n`,
+      );
+    } finally {
+      res.end();
+    }
+  }
 
   @Post('recommendations/parts')
   async getPartsRecommendations(@Body() request: PartsRequest) {

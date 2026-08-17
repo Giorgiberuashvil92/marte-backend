@@ -39,6 +39,19 @@ export class CarwashService {
   ) {}
 
   // Bookings
+  private formatCarLabel(
+    carInfo?: { make?: string; model?: string; licensePlate?: string } | null,
+  ): string {
+    if (!carInfo) return '';
+    const makeModel = [carInfo.make, carInfo.model]
+      .filter(Boolean)
+      .join(' ')
+      .trim();
+    const plate = carInfo.licensePlate?.trim();
+    if (makeModel && plate) return `${makeModel} (${plate})`;
+    return makeModel || plate || '';
+  }
+
   private async findBookingOrThrow(id: string) {
     if (!isValidObjectId(id)) {
       throw new NotFoundException('booking_not_found');
@@ -64,13 +77,16 @@ export class CarwashService {
           .lean();
         const ownerId = (location as any)?.ownerId;
         if (ownerId) {
+          const carLabel = this.formatCarLabel(dto.carInfo);
           await this.notificationsService.sendPushToTargets(
             [{ userId: String(ownerId) }],
             {
               title: 'MARTE - მართე',
               body: `${dto.locationName || location?.name || 'სამრეცხაო'} • ${
                 dto.serviceName || 'სერვისი'
-              } ${dto.bookingTime ? '• ' + dto.bookingTime : ''}`,
+              }${dto.bookingTime ? ' • ' + dto.bookingTime : ''}${
+                carLabel ? ' • ' + carLabel : ''
+              }`,
               data: {
                 type: 'carwash_booking',
                 screen: 'Bookings',
@@ -168,8 +184,7 @@ export class CarwashService {
     const serviceName = booking?.serviceName || 'სერვისი';
     const bookingTime = booking?.bookingTime || '';
     const locationId = booking?.locationId || '';
-    const carInfo = booking?.carInfo || {};
-    const carLabel = [carInfo.make, carInfo.model].filter(Boolean).join(' ').trim();
+    const carLabel = this.formatCarLabel(booking?.carInfo);
 
     const pushByStatus: Record<
       typeof status,
@@ -177,7 +192,9 @@ export class CarwashService {
     > = {
       confirmed: {
         title: '✅ ჯავშანი დადასტურებულია',
-        body: `${locationName} • დრო: ${bookingTime} — გმადლობთ, რომ ირჩევთ ჩვენს სერვისს!`,
+        body: `${locationName}${
+          carLabel ? ' • ' + carLabel : ''
+        } • დრო: ${bookingTime} — გმადლობთ, რომ ირჩევთ ჩვენს სერვისს!`,
         type: 'carwash_booking_confirmed',
       },
       in_progress: {
@@ -283,11 +300,14 @@ export class CarwashService {
       if (!slotTs) continue;
       if (slotTs >= windowStart && slotTs <= windowEnd) {
         try {
+          const carLabel = this.formatCarLabel(b.carInfo);
           await this.notificationsService.sendPushToTargets(
             [{ userId: String(b.userId) }],
             {
               title: '⏰ შეხსენება ჯავშანზე',
-              body: `${b.locationName || 'სამრეცხაო'} • დაწყება ${b.bookingTime || ''}`,
+              body: `${b.locationName || 'სამრეცხაო'}${
+                carLabel ? ' • ' + carLabel : ''
+              } • დაწყება ${b.bookingTime || ''}`,
               data: {
                 type: 'carwash_booking_reminder',
                 screen: 'Bookings',

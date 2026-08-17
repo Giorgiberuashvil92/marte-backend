@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { MongooseModule } from '@nestjs/mongoose';
 import { AIRecommendationsService } from './ai-recommendations.service';
 import { AINotificationsService } from './ai-notifications.service';
+import { AIChatService } from './ai-chat.service';
 import { AIController } from './ai.controller';
 import { Store, StoreSchema } from '../schemas/store.schema';
 import { Dismantler, DismantlerSchema } from '../schemas/dismantler.schema';
@@ -22,7 +23,7 @@ import { NotificationsModule } from '../notifications/notifications.module';
     NotificationsModule,
   ],
   controllers: [AIController],
-  providers: [AIRecommendationsService, AINotificationsService],
-  exports: [AIRecommendationsService, AINotificationsService],
+  providers: [AIRecommendationsService, AINotificationsService, AIChatService],
+  exports: [AIRecommendationsService, AINotificationsService, AIChatService],
 })
 export class AIModule {}

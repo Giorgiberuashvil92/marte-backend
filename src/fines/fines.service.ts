@@ -32,11 +32,18 @@ import {
   FinesPenaltyCache,
   FinesPenaltyCacheDocument,
 } from '../schemas/fines-penalty-cache.schema';
+import {
+  ProtocolFine,
+  ProtocolFineDocument,
+} from '../schemas/protocol-fine.schema';
+import {
+  ProtocolFineVehicle,
+  ProtocolFineVehicleDocument,
+} from '../schemas/protocol-fine-vehicle.schema';
 import { SubscriptionDocument } from '../schemas/subscription.schema';
 
 const SA_IDENTITY_URL = 'https://api-identity.sa.gov.ge/connect/token';
 const SA_PUBLIC_API_URL = 'https://api-public.sa.gov.ge/api/v1';
-
 export interface TokenResponse {
   access_token: string;
   expires_in: number;
@@ -80,6 +87,29 @@ export interface Penalty {
   violationDate: string;
 }
 
+export interface ParsedProtocolFineDto {
+  protocolNo: string;
+  agency?: string;
+  category?: 'patrol' | 'municipal';
+  plate?: string;
+  violationDateText?: string;
+  article?: string;
+  description?: string;
+  hasMedia?: boolean;
+  canPay?: boolean;
+  amount?: string;
+  raw?: Record<string, unknown>;
+}
+
+export interface SyncProtocolFinesDto {
+  userId: string;
+  carId: string;
+  vehicleNumber: string;
+  techPassportNumber?: string;
+  status?: 'success' | 'not_found' | 'failed';
+  fines?: ParsedProtocolFineDto[];
+}
+
 export interface VehicleRegistration {
   id: number;
   vehicleNumber: string;
@@ -116,6 +146,10 @@ export class FinesService implements OnModuleInit {
     private finesDailyReminderModel: Model<FinesDailyReminderDocument>,
     @InjectModel(FinesPenaltyCache.name)
     private finesPenaltyCacheModel: Model<FinesPenaltyCacheDocument>,
+    @InjectModel(ProtocolFine.name)
+    private protocolFineModel: Model<ProtocolFineDocument>,
+    @InjectModel(ProtocolFineVehicle.name)
+    private protocolFineVehicleModel: Model<ProtocolFineVehicleDocument>,
     private subscriptionsService: SubscriptionsService,
     private notificationsService: NotificationsService,
   ) {}
@@ -1629,12 +1663,336 @@ export class FinesService implements OnModuleInit {
     return penalties.filter((p) => p.isPayable).length;
   }
 
-  private async getCachedUnpaidCountForUser(userId: string): Promise<number> {
-    return this.finesPenaltyCacheModel.countDocuments({
-      userId,
+  async syncProtocolFines(dto: SyncProtocolFinesDto): Promise<{
+    vehicleId: string;
+    saved: number;
+    active: number;
+    resolved: number;
+    activeDb: number;
+  }> {
+    const userId = String(dto.userId || '').trim();
+    const carId = String(dto.carId || '').trim();
+    const vehicleNumber = this.normalizeVehicleNumber(dto.vehicleNumber || '');
+    const techPassportNumber = String(dto.techPassportNumber || '').trim();
+
+    if (!userId || !carId || !vehicleNumber) {
+      throw new HttpException(
+        'userId, carId და vehicleNumber სავალდებულოა',
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+
+    const now = new Date();
+    const fines = Array.isArray(dto.fines) ? dto.fines : [];
+    const status =
+      dto.status || (fines.length > 0 ? 'success' : 'not_found');
+    const receivedMunicipal = fines.filter(
+      (fine) => fine.category === 'municipal',
+    ).length;
+    const receivedPatrol = fines.filter((fine) => fine.category === 'patrol')
+      .length;
+
+    await this.backfillProtocolFineKeys(userId, carId);
+
+    const vehicle = await this.protocolFineVehicleModel
+      .findOneAndUpdate(
+        { userId, carId },
+        {
+          $setOnInsert: { isActive: true },
+          $set: {
+            vehicleNumber,
+            techPassportNumber,
+            lastSyncStatus: status,
+            lastError: status === 'failed' ? 'sync failed' : undefined,
+            lastCheckedAt: now,
+          },
+        },
+        { upsert: true, new: true },
+      )
+      .exec();
+
+    const seenProtocolKeys = new Set<string>();
+    const skippedDuplicateProtocolNos: string[] = [];
+    const ops: Parameters<typeof this.protocolFineModel.bulkWrite>[0] = [];
+    for (const fine of fines) {
+      const protocolNo = String(fine.protocolNo || '').trim();
+      if (!protocolNo) continue;
+      const protocolKey = this.normalizeProtocolFineKey(protocolNo);
+      if (!protocolKey) continue;
+      if (seenProtocolKeys.has(protocolKey)) {
+        skippedDuplicateProtocolNos.push(protocolNo);
+        continue;
+      }
+      seenProtocolKeys.add(protocolKey);
+      const category =
+        fine.category === 'patrol' || fine.category === 'municipal'
+          ? fine.category
+          : 'municipal';
+      ops.push({
+        updateOne: {
+          filter: {
+            userId,
+            carId,
+            $or: [{ protocolKey }, { protocolNo }],
+          },
+          update: {
+            $setOnInsert: { firstSeenAt: now },
+            $set: {
+              vehicleNumber,
+              techPassportNumber,
+              agency: fine.agency,
+              category,
+              protocolNo,
+              protocolKey,
+              violationDateText: fine.violationDateText,
+              article: fine.article,
+              description: fine.description,
+              hasMedia: Boolean(fine.hasMedia),
+              canPay: Boolean(fine.canPay),
+              amount: fine.amount,
+              raw: fine.raw || (fine as unknown as Record<string, unknown>),
+              isActive: true,
+              lastSeenAt: now,
+              resolvedAt: null,
+            },
+          },
+          upsert: true,
+        },
+      });
+    }
+
+    if (ops.length > 0) {
+      await this.protocolFineModel.bulkWrite(ops, { ordered: false });
+    }
+
+    const seen = [...seenProtocolKeys];
+    const resolvedUpdate =
+      seen.length > 0
+        ? await this.protocolFineModel.updateMany(
+            { userId, carId, isActive: true, protocolKey: { $nin: seen } },
+            { $set: { isActive: false, canPay: false, resolvedAt: now } },
+          )
+        : await this.protocolFineModel.updateMany(
+            { userId, carId, isActive: true },
+            { $set: { isActive: false, canPay: false, resolvedAt: now } },
+          );
+
+    await this.deactivateDuplicateProtocolFines(userId, carId, now);
+    const activeRows = await this.protocolFineModel
+      .find({ userId, carId, isActive: true })
+      .select('protocolNo protocolKey category amount canPay')
+      .lean()
+      .exec();
+
+    this.logger.log(
+      `[ProtocolsFinesSync] user=${userId} car=${carId} plate=${vehicleNumber} ` +
+        `received=${fines.length} municipal=${receivedMunicipal} patrol=${receivedPatrol} ` +
+        `deduped=${seen.length} skipped=${skippedDuplicateProtocolNos.length} ` +
+        `savedOps=${ops.length} resolved=${resolvedUpdate.modifiedCount} activeDb=${activeRows.length}`,
+    );
+    this.logger.debug(
+      `[ProtocolsFinesSync] protocols=${JSON.stringify(
+        activeRows.map((row) => ({
+          no: row.protocolNo,
+          key: row.protocolKey,
+          category: row.category,
+          amount: row.amount,
+        })),
+      )}`,
+    );
+
+    return {
+      vehicleId: String(vehicle._id),
+      saved: ops.length,
+      active: seen.length,
+      resolved: resolvedUpdate.modifiedCount,
+      activeDb: activeRows.length,
+    };
+  }
+
+  private async deactivateDuplicateProtocolFines(
+    userId: string,
+    carId: string,
+    now: Date,
+  ): Promise<void> {
+    const rows = await this.protocolFineModel
+      .find({ userId, carId, isActive: true })
+      .sort({ lastSeenAt: -1, updatedAt: -1 })
+      .exec();
+    const seen = new Set<string>();
+
+    for (const row of rows) {
+      const key =
+        row.protocolKey || this.normalizeProtocolFineKey(row.protocolNo);
+      if (!key) continue;
+      if (!seen.has(key)) {
+        seen.add(key);
+        if (!row.protocolKey) {
+          await this.protocolFineModel.updateOne(
+            { _id: row._id },
+            { $set: { protocolKey: key } },
+          );
+        }
+        continue;
+      }
+
+      await this.protocolFineModel.updateOne(
+        { _id: row._id },
+        { $set: { isActive: false, canPay: false, resolvedAt: now } },
+      );
+    }
+  }
+
+  private async backfillProtocolFineKeys(
+    userId: string,
+    carId: string,
+  ): Promise<void> {
+    const rows = await this.protocolFineModel
+      .find({
+        userId,
+        carId,
+        $or: [{ protocolKey: { $exists: false } }, { protocolKey: '' }],
+      })
+      .select('protocolNo protocolKey')
+      .exec();
+
+    for (const row of rows) {
+      const key = this.normalizeProtocolFineKey(row.protocolNo);
+      if (!key) continue;
+      await this.protocolFineModel.updateOne(
+        { _id: row._id },
+        { $set: { protocolKey: key } },
+      );
+    }
+  }
+
+  async getProtocolFinesForCar(
+    userId: string,
+    carId: string,
+  ): Promise<ProtocolFineDocument[]> {
+    return this.protocolFineModel
+      .find({ userId, carId, isActive: true })
+      .sort({ lastSeenAt: -1 })
+      .exec();
+  }
+
+  @Cron('0 */12 * * *', { timeZone: 'Asia/Tbilisi' })
+  async refreshProtocolFinesCache(): Promise<{
+    marked: number;
+    total: number;
+  }> {
+    const now = new Date();
+    const result = await this.protocolFineVehicleModel.updateMany(
+      { isActive: true },
+      {
+        $set: {
+          lastSyncStatus: 'refresh_due',
+          refreshDueAt: now,
+          lastError: undefined,
+        },
+      },
+    );
+    const total = await this.protocolFineVehicleModel.countDocuments({
       isActive: true,
-      isPayable: true,
     });
+
+    this.logger.log(
+      `Protocols.ge fines refresh marked as due: marked=${result.modifiedCount}, total=${total}`,
+    );
+
+    return { marked: result.modifiedCount, total };
+  }
+
+  private async getCachedUnpaidCountForUser(userId: string): Promise<number> {
+    const [saFines, protocolFines] = await Promise.all([
+      this.finesPenaltyCacheModel
+        .find({ userId, isActive: true, isPayable: true })
+        .select('protocolId penaltyNumber')
+        .lean()
+        .exec(),
+      this.protocolFineModel
+        .find({ userId, isActive: true, canPay: true })
+        .select('protocolNo')
+        .lean()
+        .exec(),
+    ]);
+
+    const unique = new Set<string>();
+    for (const fine of saFines) {
+      const key = this.normalizeProtocolFineKey(
+        fine.penaltyNumber || fine.protocolId,
+      );
+      if (key) unique.add(key);
+    }
+    for (const fine of protocolFines) {
+      const key = this.normalizeProtocolFineKey(fine.protocolNo);
+      if (key) unique.add(key);
+    }
+
+    return unique.size;
+  }
+
+  private async getCachedSaUnpaidCountForUser(userId: string): Promise<number> {
+    const saFines = await this.finesPenaltyCacheModel
+      .find({ userId, isActive: true, isPayable: true })
+      .select('protocolId penaltyNumber')
+      .lean()
+      .exec();
+
+    const unique = new Set<string>();
+    for (const fine of saFines) {
+      const key = this.normalizeProtocolFineKey(
+        fine.penaltyNumber || fine.protocolId,
+      );
+      if (key) unique.add(key);
+    }
+    return unique.size;
+  }
+
+  private async getCachedMunicipalUnpaidCountForUser(
+    userId: string,
+  ): Promise<number> {
+    const rows = await this.protocolFineModel
+      .find({
+        userId,
+        isActive: true,
+        canPay: true,
+        category: 'municipal',
+      })
+      .select('protocolNo')
+      .lean()
+      .exec();
+
+    const unique = new Set<string>();
+    for (const row of rows) {
+      const key = this.normalizeProtocolFineKey(row.protocolNo);
+      if (key) unique.add(key);
+    }
+    return unique.size;
+  }
+
+  private normalizeProtocolFineKey(value: unknown): string {
+    return String(value || '')
+      .trim()
+      .toUpperCase()
+      .replace(/[^A-Z0-9]/g, '');
+  }
+
+  private buildFinesReminderBody(
+    autoCount: number,
+    municipalCount: number,
+  ): string {
+    if (autoCount > 0 && municipalCount > 0) {
+      return `გაქვს ${autoCount} ავტო ჯარიმა და ${municipalCount} მერიის ჯარიმა. ნახე დეტალები MARTE-ში.`;
+    }
+    if (autoCount > 0) {
+      return autoCount === 1
+        ? 'გაქვს 1 ავტო ჯარიმა. მერიის ჯარიმები ცალკე მოწმდება MARTE-ში.'
+        : `გაქვს ${autoCount} ავტო ჯარიმა. მერიის ჯარიმები ცალკე მოწმდება MARTE-ში.`;
+    }
+    return municipalCount === 1
+      ? 'გაქვს 1 მერიის ჯარიმა. ნახე დეტალები MARTE-ში.'
+      : `გაქვს ${municipalCount} მერიის ჯარიმა. ნახე დეტალები MARTE-ში.`;
   }
 
   /**
@@ -1647,6 +2005,7 @@ export class FinesService implements OnModuleInit {
   async sendGarageUnpaidFinesReminderPushes(
     forceRun = false,
     targetUserId?: string,
+    screen: 'GarageFines' | 'MunicipalFines' = 'GarageFines',
   ): Promise<{ usersProcessed: number; pushes: number; slotKey: string }> {
     const now = Date.now();
     const slotKey = forceRun
@@ -1667,8 +2026,12 @@ export class FinesService implements OnModuleInit {
         .find({ isActive: true })
         .lean()
         .exec();
+      const protocolVehicles = await this.protocolFineVehicleModel
+        .find({ isActive: true })
+        .lean()
+        .exec();
 
-      if (vehicles.length === 0) {
+      if (vehicles.length === 0 && protocolVehicles.length === 0) {
         return { usersProcessed: 0, pushes: 0, slotKey };
       }
 
@@ -1678,6 +2041,17 @@ export class FinesService implements OnModuleInit {
         const list = byUser.get(uid) ?? [];
         list.push(v);
         byUser.set(uid, list);
+      }
+      const protocolByUser = new Map<
+        string,
+        (typeof protocolVehicles)[number][]
+      >();
+      for (const v of protocolVehicles) {
+        const uid = String(v.userId);
+        const list = protocolByUser.get(uid) ?? [];
+        list.push(v);
+        protocolByUser.set(uid, list);
+        if (!byUser.has(uid)) byUser.set(uid, []);
       }
 
       for (const [userId, userVehicles] of byUser) {
@@ -1692,64 +2066,70 @@ export class FinesService implements OnModuleInit {
         }
 
         const sub = await this.subscriptionsService.getUserSubscription(userId);
-        if (!this.userHasPremiumForFinesReminders(sub)) {
-          if (forceRun) continue;
+        const hasPremiumForAuto = this.userHasPremiumForFinesReminders(sub);
+        if (!hasPremiumForAuto && screen !== 'MunicipalFines') {
           await this.finesDailyReminderModel.updateOne(
             { userId, ymd: todayStr },
             { $addToSet: { slots: slotKey } },
             { upsert: true },
           );
-          continue;
         }
 
         let syncHadSuccess = false;
-        for (const v of userVehicles) {
-          const plateSa = this.normalizeVehicleNumber(v.vehicleNumber);
-          const tp = String(v.techPassportNumber || '').trim();
-          if (!plateSa || !tp) continue;
-          try {
-            await this.syncPenaltyCacheForVehicle(userId, plateSa, tp);
-            syncHadSuccess = true;
-          } catch (e) {
-            this.logger.warn(
-              `Fines reminder: cache sync failed for ${plateSa} (user ${userId}): ${e}`,
-            );
+        if (hasPremiumForAuto) {
+          for (const v of userVehicles) {
+            const plateSa = this.normalizeVehicleNumber(v.vehicleNumber);
+            const tp = String(v.techPassportNumber || '').trim();
+            if (!plateSa || !tp) continue;
+            try {
+              await this.syncPenaltyCacheForVehicle(userId, plateSa, tp);
+              syncHadSuccess = true;
+            } catch (e) {
+              this.logger.warn(
+                `Fines reminder: cache sync failed for ${plateSa} (user ${userId}): ${e}`,
+              );
+            }
+            await new Promise((r) => setTimeout(r, 120));
           }
-          await new Promise((r) => setTimeout(r, 120));
+        }
+        const userProtocolVehicles = protocolByUser.get(userId) ?? [];
+        for (const v of userProtocolVehicles) {
+          const plate = this.normalizeVehicleNumber(v.vehicleNumber);
+          const tp = String(v.techPassportNumber || '').trim();
+          const carId = String(v.carId || '');
+          if (!plate || !tp || !carId) continue;
+          syncHadSuccess = true;
         }
 
-        const totalPayable = await this.getCachedUnpaidCountForUser(userId);
+        const [autoCount, municipalCount] = await Promise.all([
+          hasPremiumForAuto
+            ? this.getCachedSaUnpaidCountForUser(userId)
+            : Promise.resolve(0),
+          this.getCachedMunicipalUnpaidCountForUser(userId),
+        ]);
+        const totalPayable = autoCount + municipalCount;
 
         usersProcessed++;
 
         if (totalPayable > 0) {
-          const subNow =
-            await this.subscriptionsService.getUserSubscription(userId);
-          if (!this.userHasPremiumForFinesReminders(subNow)) {
-            this.logger.debug(
-              `Garage fines reminder: ჯარიმების push არ გაიგზავნა (userId=${userId}) — აქტიური პრემიუმი არ არის`,
-            );
-          } else {
-            const body =
-              totalPayable === 1
-                ? 'გაქვს 1 გადასახდელი ჯარიმა — შეამოწმე გარაჟში.'
-                : `გაქვს ${totalPayable} გადასახდელი ჯარიმა — შეამოწმე გარაჟში.`;
+          const body = this.buildFinesReminderBody(autoCount, municipalCount);
 
-            await this.notificationsService.sendPushToTargets(
-              [{ userId }],
-              {
-                title: 'ჯარიმები',
-                body,
-                data: {
-                  type: 'garage_fines_reminder',
-                  screen: 'GarageFines',
-                  unpaidCount: String(totalPayable),
-                },
+          await this.notificationsService.sendPushToTargets(
+            [{ userId }],
+            {
+              title: 'ჯარიმების შეხსენება',
+              body,
+              data: {
+                type: 'garage_fines_reminder',
+                screen: 'GarageFines',
+                unpaidCount: String(totalPayable),
+                autoCount: String(autoCount),
+                municipalCount: String(municipalCount),
               },
-              'system',
-            );
-            pushes++;
-          }
+            },
+            'system',
+          );
+          pushes++;
         }
 
         if (!syncHadSuccess) {

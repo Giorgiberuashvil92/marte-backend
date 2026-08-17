@@ -18,6 +18,14 @@ export class CommunityGroup {
   @Prop({ default: '', trim: true })
   coverImage?: string;
 
+  /** მანქანის მარკები (შეთავაზებისთვის), მაგ. ["bmw","toyota"] */
+  @Prop({ type: [String], default: [] })
+  carMakes?: string[];
+
+  /** true = ყველა ბრენდისთვის (PORTAL, MARTE) */
+  @Prop({ default: false })
+  isUniversal?: boolean;
+
   @Prop({ required: true, index: true })
   ownerId: string;
 

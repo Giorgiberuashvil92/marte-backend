@@ -48,6 +48,8 @@ import { NewsFeedModule } from './news-feed/news-feed.module';
 import { SupportChatModule } from './support-chat/support-chat.module';
 import { PanelAdminModule } from './panel-admin/panel-admin.module';
 import { EvChargingModule } from './ev-charging/ev-charging.module';
+import { InsuranceModule } from './insurance/insurance.module';
+import { DeliveryLeadsModule } from './delivery-leads/delivery-leads.module';
 import databaseConfig from './config/database.config';
 
 // Schemas
@@ -108,6 +110,7 @@ import {
   FinesVehicle,
   FinesVehicleSchema,
 } from './schemas/fines-vehicle.schema';
+import { DeliveryLead, DeliveryLeadSchema } from './schemas/delivery-lead.schema';
 
 /** Railway/.env: ზედმეტი ბრჭყალები ან ბოლოს `;` → Invalid scheme; ვხსნით. */
 function trimMongoEnv(s: string | undefined): string {
@@ -203,6 +206,7 @@ function mongooseMongoConfig(): { uri: string } {
       { name: Radar.name, schema: RadarSchema },
       { name: EcommerceProduct.name, schema: EcommerceProductSchema },
       { name: FinesVehicle.name, schema: FinesVehicleSchema },
+      { name: DeliveryLead.name, schema: DeliveryLeadSchema },
     ]),
     GarageModule,
     AuthModule,
@@ -247,6 +251,8 @@ function mongooseMongoConfig(): { uri: string } {
     SupportChatModule,
     PanelAdminModule,
     EvChargingModule,
+    InsuranceModule,
+    DeliveryLeadsModule,
   ],
   controllers: [AppController],
   providers: [AppService],
