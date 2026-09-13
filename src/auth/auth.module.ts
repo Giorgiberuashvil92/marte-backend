@@ -1,3 +1,4 @@
+import { UserSessionModule } from './user-session';
 import { Module } from '@nestjs/common';
 import { MongooseModule } from '@nestjs/mongoose';
 import { AuthService } from './auth.service';
@@ -15,6 +16,7 @@ import { SmsModule } from '../sms/sms.module';
 
 @Module({
   imports: [
+    UserSessionModule,
     MongooseModule.forFeature([
       { name: User.name, schema: UserSchema },
       { name: Otp.name, schema: OtpSchema },

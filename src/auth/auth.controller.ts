@@ -1,4 +1,5 @@
-import { Body, Controller, Get, Param, Post, Put } from '@nestjs/common';
+import { UserSessionGuard, UserSessionService } from './user-session';
+import { Body, Controller, Get, Param, Post, Put, Req, UseGuards } from '@nestjs/common';
 import { AuthService } from './auth.service';
 import { StartAuthDto } from './dto/start-auth.dto';
 import { VerifyOtpDto } from './dto/verify-otp.dto';
@@ -9,7 +10,7 @@ import { UpdateOwnedStoresDto } from './dto/update-owned-stores.dto';
 
 @Controller('auth')
 export class AuthController {
-  constructor(private readonly authService: AuthService) {}
+  constructor(private readonly authService: AuthService, private readonly sessions: UserSessionService) {}
 
   @Post('start')
   start(@Body() dto: StartAuthDto) {
@@ -21,10 +22,14 @@ export class AuthController {
 
   @Post('verify')
   async verify(@Body() dto: VerifyOtpDto) {
-    console.log(
-      `🔐 [AUTH_CONTROLLER] Verify request received for OTP ID: ${dto.otpId}, Code: ${dto.code}, ReferralCode: ${dto.referralCode || 'none'}`,
-    );
     return this.authService.verify(dto.otpId, dto.code, dto.referralCode);
+  }
+
+  @Post('logout')
+  @UseGuards(UserSessionGuard)
+  async logout(@Req() req: any) {
+    await this.sessions.revoke(req.headers.authorization.slice(7));
+    return { success: true };
   }
 
   @Post('complete')

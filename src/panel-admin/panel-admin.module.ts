@@ -36,6 +36,6 @@ function resolvePanelJwtSecret(): string {
   ],
   controllers: [PanelAdminController],
   providers: [PanelAdminService, PanelJwtGuard],
-  exports: [PanelAdminService],
+  exports: [PanelAdminService, PanelJwtGuard, JwtModule],
 })
 export class PanelAdminModule {}

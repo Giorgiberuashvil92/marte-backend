@@ -1,3 +1,5 @@
+import { randomInt, randomUUID } from 'crypto';
+import { UserSessionService } from './user-session';
 import {
   Injectable,
   BadRequestException,
@@ -19,6 +21,7 @@ export class AuthService {
     @InjectModel(Store.name) private storeModel: Model<StoreDocument>,
     private loginHistoryService: LoginHistoryService,
     private senderAPIService: SenderAPIService,
+    private sessions: UserSessionService,
   ) {}
 
   normalizeGePhone(input: string): string {
@@ -30,11 +33,15 @@ export class AuthService {
   }
 
   private generateCode(): string {
-    return Math.floor(1000 + Math.random() * 9000).toString();
+    return randomInt(1000, 10000).toString();
   }
 
   async start(phoneRaw: string) {
     const phone = this.normalizeGePhone(phoneRaw);
+
+    if (await this.otpModel.exists({ phone, createdAt: { $gt: Date.now() - 60000 } })) {
+      throw new BadRequestException('კოდის ხელახლა მოთხოვნა 1 წუთში შეგიძლიათ');
+    }
 
     // check if user exists
     const existingUser = await this.userModel.findOne({ phone }).exec();
@@ -43,7 +50,7 @@ export class AuthService {
 
     const code = this.generateCode();
     const now = Date.now();
-    const otpId = `otp_${now}`;
+    const otpId = `otp_${randomUUID()}`;
 
     const otp = new this.otpModel({
       id: otpId,
@@ -73,25 +80,24 @@ export class AuthService {
       return { id: otpId, intent };
     } else {
       console.error(`❌ [SENDER.GE] SMS გაგზავნის შეცდომა: ${smsResult.error}`);
-      // Fallback: expose mockCode if SMS sending fails
-      console.log(`📱 [FALLBACK] SMS კოდი ${phone}-ზე: ${code}`);
-      return { id: otpId, intent, mockCode: code };
+      throw new BadRequestException('SMS ვერ გაიგზავნა. სცადეთ მოგვიანებით.');
     }
   }
 
   async verify(otpId: string, code: string, _referralCode?: string) {
     if (!otpId || !code) throw new BadRequestException('invalid_payload');
 
-    const otp = await this.otpModel
-      .findOne({ id: otpId, isUsed: false })
-      .exec();
-    if (!otp) throw new BadRequestException('otp_not_found');
-
-    if (Date.now() > otp.expiresAt) {
-      throw new BadRequestException('otp_expired');
-    }
-
-    if (otp.code !== code) throw new BadRequestException('otp_invalid');
+    // Reserve an attempt and consume a matching code atomically before issuing a session.
+    const attempt = await this.otpModel.findOneAndUpdate(
+      { id: otpId, isUsed: false, expiresAt: { $gt: Date.now() }, $or: [{ attempts: { $lt: 5 } }, { attempts: { $exists: false } }] },
+      { $inc: { attempts: 1 } }, { new: true },
+    ).exec();
+    if (!attempt || attempt.code !== code) throw new BadRequestException('otp_invalid_or_expired');
+    const otp = await this.otpModel.findOneAndUpdate(
+      { id: otpId, code, isUsed: false, expiresAt: { $gt: Date.now() } },
+      { $set: { isUsed: true, usedAt: Date.now() } }, { new: true },
+    ).exec();
+    if (!otp) throw new BadRequestException('otp_invalid_or_expired');
 
     // upsert user
     let user = await this.userModel.findOne({ phone: otp.phone }).exec();
@@ -132,7 +138,7 @@ export class AuthService {
     }
 
     // Return result - referral code will be applied by frontend after registration
-    return { user, intent: isNewUser ? 'register' : 'login' };
+    return { user, intent: isNewUser ? 'register' : 'login', sessionToken: await this.sessions.issue(user.id) };
   }
 
   async complete(

@@ -20,6 +20,9 @@ export class Otp {
   @Prop({ required: true, default: false })
   isUsed: boolean;
 
+  @Prop({ default: 0 })
+  attempts: number;
+
   @Prop()
   usedAt?: number;
 

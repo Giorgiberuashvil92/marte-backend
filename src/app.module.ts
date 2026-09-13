@@ -1,3 +1,4 @@
+import { CashbackModule } from './cashback/cashback.module';
 import { Module, MiddlewareConsumer, NestModule } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { MongooseModule } from '@nestjs/mongoose';
@@ -253,6 +254,7 @@ function mongooseMongoConfig(): { uri: string } {
     EvChargingModule,
     InsuranceModule,
     DeliveryLeadsModule,
+    CashbackModule,
   ],
   controllers: [AppController],
   providers: [AppService],
