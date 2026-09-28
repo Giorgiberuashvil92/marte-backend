@@ -193,7 +193,8 @@ export class AuthService {
       console.error('[EUROINS] registration sync failed:', error);
     }
 
-    return { user: updatedUser };
+    const responseUser = await this.userModel.findOne({ id: userId }).exec();
+    return { user: responseUser || updatedUser };
   }
 
   async updateRole(
