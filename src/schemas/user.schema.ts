@@ -90,6 +90,18 @@ export class User {
 
   @Prop({ unique: true, sparse: true })
   referralCode?: string; // Unique referral code for this user
+
+  @Prop({ default: false })
+  euroinsEligible?: boolean;
+
+  @Prop({ default: false })
+  euroinsSubscriptionReported?: boolean;
+
+  @Prop()
+  euroinsCheckedAt?: Date;
+
+  @Prop({ default: 0 })
+  euroinsPolicyCount?: number;
 }
 
 export const UserSchema = SchemaFactory.createForClass(User);

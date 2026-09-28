@@ -4,6 +4,7 @@ import {
   Injectable,
   BadRequestException,
   NotFoundException,
+  Optional,
 } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, UpdateQuery } from 'mongoose';
@@ -12,6 +13,7 @@ import { Otp, OtpDocument } from '../schemas/otp.schema';
 import { Store, StoreDocument } from '../schemas/store.schema';
 import { LoginHistoryService } from './login-history.service';
 import { SenderAPIService } from '../sms/sender-api.service';
+import { EuroinsService } from '../euroins/euroins.service';
 
 @Injectable()
 export class AuthService {
@@ -22,6 +24,7 @@ export class AuthService {
     private loginHistoryService: LoginHistoryService,
     private senderAPIService: SenderAPIService,
     private sessions: UserSessionService,
+    @Optional() private euroinsService?: EuroinsService,
   ) {}
 
   normalizeGePhone(input: string): string {
@@ -122,6 +125,12 @@ export class AuthService {
     user.lastLoginAt = Date.now();
     await user.save();
 
+    // Euroins-ის eligible მომხმარებელს Premium ავტორიზაციის შემდეგ მიენიჭოს.
+    // ინტეგრაციის შეცდომამ login არ უნდა დაბლოკოს.
+    void this.euroinsService?.syncUser(user.id, user.personalId).catch((error) => {
+      console.error('[EUROINS] auth sync failed:', error);
+    });
+
     // Save login history (async, don't wait for it)
     if (user) {
       this.loginHistoryService
@@ -175,6 +184,14 @@ export class AuthService {
     const updatedUser = await this.userModel
       .findOneAndUpdate({ id: userId }, updates, { new: true })
       .exec();
+
+    // რეგისტრაციის დასრულებისას უკვე გვაქვს პირადი ნომერი — აქ ხდება policy check.
+    try {
+      // რეგისტრაციაზე დაველოდოთ sync-ს, რომ შემდეგი screen უკვე Premium სტატუსით გაიხსნას.
+      await this.euroinsService?.syncUser(userId, updatedUser?.personalId);
+    } catch (error) {
+      console.error('[EUROINS] registration sync failed:', error);
+    }
 
     return { user: updatedUser };
   }

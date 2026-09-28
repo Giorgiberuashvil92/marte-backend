@@ -13,6 +13,7 @@ import {
 } from '../schemas/login-history.schema';
 import { Store, StoreSchema } from '../schemas/store.schema';
 import { SmsModule } from '../sms/sms.module';
+import { EuroinsModule } from '../euroins/euroins.module';
 
 @Module({
   imports: [
@@ -24,6 +25,7 @@ import { SmsModule } from '../sms/sms.module';
       { name: Store.name, schema: StoreSchema },
     ]),
     SmsModule,
+    EuroinsModule,
   ],
   controllers: [AuthController, LoginHistoryController],
   providers: [AuthService, LoginHistoryService],
