@@ -36,9 +36,11 @@
     "build:myauto-brands": "node scripts/build-myauto-brands-json.js",
     "import:myauto-brands": "node scripts/import-myauto-brands.js",
     "import:nhtsa-car-models": "node scripts/import-nhtsa-car-models.js",
+    "import:myparts-products": "node scripts/import-myparts-products.js",
     "seed:panel-admins": "node scripts/seed-panel-admins.js"
   },
   "dependencies": {
+    "@aws-sdk/client-s3": "^3.1131.0",
     "@nestjs/common": "^11.0.1",
     "@nestjs/config": "^4.0.2",
     "@nestjs/core": "^11.0.1",
