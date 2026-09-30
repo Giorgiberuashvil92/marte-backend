@@ -20,6 +20,7 @@ import {
 
 type ListParams = {
   q?: string;
+  searchBy?: string;
   limit: number;
   offset: number;
   role?: string;
@@ -59,13 +60,12 @@ export class UsersService {
     const filter: any = {};
     if (params.q && params.q.trim()) {
       const q = params.q.trim();
-      filter.$or = [
-        { phone: { $regex: q, $options: 'i' } },
-        { email: { $regex: q, $options: 'i' } },
-        { firstName: { $regex: q, $options: 'i' } },
-        { lastName: { $regex: q, $options: 'i' } },
-        { id: { $regex: q, $options: 'i' } },
-      ];
+      const regex = { $regex: q, $options: 'i' };
+      if (params.searchBy === 'phone') filter.phone = regex;
+      else if (params.searchBy === 'email') filter.email = regex;
+      else if (params.searchBy === 'personalId') filter.personalId = regex;
+      else if (params.searchBy === 'userId') filter.id = regex;
+      else filter.$or = [{ firstName: regex }, { lastName: regex }];
     }
     if (params.role) filter.role = params.role;
     if (typeof params.active === 'boolean') filter.isActive = params.active;
@@ -124,6 +124,7 @@ export class UsersService {
         firstName: u.firstName,
         lastName: u.lastName,
         idNumber: u.idNumber,
+        personalId: u.personalId ?? u.idNumber,
         role: u.role,
         isActive: u.isActive,
         profileImage: u.profileImage,

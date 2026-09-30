@@ -67,10 +67,13 @@ export class StoriesController {
     body: Partial<{
       authorId: string;
       authorName: string;
+      authorUsername?: string;
       authorAvatar?: string;
+      title?: string;
       category?: string;
       highlight?: boolean;
       items?: unknown[];
+      internalImage?: string;
     }>,
   ) {
     const data = await this.stories.update(id, body as any);
@@ -78,7 +81,16 @@ export class StoriesController {
   }
 
   @Delete(':id')
-  async remove(@Param('id') id: string, @Query('actorId') actorId?: string) {
+  async remove(
+    @Param('id') id: string,
+    @Query('actorId') actorId?: string,
+    @Query('admin') admin?: string,
+  ) {
+    // Admin panel: ?admin=1 — ownership check გარეშე
+    if (admin === '1' || admin === 'true') {
+      await this.stories.removeAsAdmin(id);
+      return { success: true };
+    }
     const aid = actorId?.trim();
     if (!aid) throw new BadRequestException('actor_id_required');
     await this.stories.remove(id, aid);

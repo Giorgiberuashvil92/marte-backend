@@ -10,14 +10,35 @@ import {
 import type { Response } from 'express';
 import { AIRecommendationsService } from './ai-recommendations.service';
 import type { PartsRequest } from './ai-recommendations.service';
-import { AIChatService, type AIChatRequest } from './ai-chat.service';
+import {
+  AIChatService,
+  type AIChatRequest,
+  type AIPartsQueryParseRequest,
+} from './ai-chat.service';
+import { MyPartsService } from './myparts.service';
+import { AIVinResearchService } from './ai-vin-research.service';
 
 @Controller('ai')
 export class AIController {
   constructor(
     private readonly aiRecommendationsService: AIRecommendationsService,
     private readonly aiChatService: AIChatService,
+    private readonly myPartsService: MyPartsService,
+    private readonly aiVinResearchService: AIVinResearchService,
   ) {}
+
+  @Post('vin-research')
+  async vinResearch(@Body() body: { vin?: string }) {
+    if (!body?.vin?.trim()) {
+      throw new BadRequestException({
+        success: false,
+        message: 'vin აუცილებელია',
+      });
+    }
+
+    const data = await this.aiVinResearchService.research(body.vin.trim());
+    return { success: true, data };
+  }
 
   @Post('chat')
   async chat(@Body() request: AIChatRequest) {
@@ -73,6 +94,23 @@ export class AIController {
     } finally {
       res.end();
     }
+  }
+
+  @Post('parts-query/parse')
+  async parsePartsQuery(@Body() request: AIPartsQueryParseRequest) {
+    if (!request?.text?.trim()) {
+      throw new BadRequestException({
+        success: false,
+        message: 'text აუცილებელია',
+      });
+    }
+
+    const data = await this.aiChatService.parsePartsQuery({
+      ...request,
+      text: request.text.trim(),
+    });
+
+    return { success: true, data };
   }
 
   @Post('recommendations/parts')
@@ -187,6 +225,27 @@ export class AIController {
       year,
       debug: debug === 'true',
     });
+    return { success: true, data };
+  }
+
+  @Get('external-parts/myparts')
+  async searchMyParts(
+    @Query('make') make?: string,
+    @Query('makeId') makeId?: string,
+    @Query('modelId') modelId?: string,
+    @Query('partName') partName?: string,
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+  ) {
+    const data = await this.myPartsService.searchParts({
+      make,
+      makeId: makeId ? parseInt(makeId, 10) : undefined,
+      modelId: modelId ? parseInt(modelId, 10) : undefined,
+      partName,
+      page: page ? parseInt(page, 10) : undefined,
+      limit: limit ? parseInt(limit, 10) : undefined,
+    });
+
     return { success: true, data };
   }
 }

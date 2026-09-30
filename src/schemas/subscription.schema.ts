@@ -42,6 +42,11 @@ export class Subscription {
   @Prop()
   paymentMethod?: string;
 
+  // Subscription-ის წყარო, მაგალითად: euroins, admin, bog.
+  // საჭიროა პარტნიორის მიერ მინიჭებული Premium-ის უსაფრთხოდ გასაუქმებლად.
+  @Prop()
+  source?: string;
+
   @Prop()
   transactionId?: string;
 

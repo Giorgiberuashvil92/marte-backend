@@ -28,7 +28,9 @@ export class AuthController {
   @Post('logout')
   @UseGuards(UserSessionGuard)
   async logout(@Req() req: any) {
-    await this.sessions.revoke(req.headers.authorization.slice(7));
+    const auth = String(req.headers.authorization || '');
+    const bearer = /^Bearer\s+(.+)$/i.exec(auth)?.[1]?.trim();
+    if (bearer) await this.sessions.revoke(bearer);
     return { success: true };
   }
 

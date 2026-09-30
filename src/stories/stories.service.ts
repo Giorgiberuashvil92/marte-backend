@@ -133,6 +133,11 @@ export class StoriesService {
     return { ...anyDoc, id: String(idStr) } as Record<string, unknown>;
   }
 
+  async removeAsAdmin(storyId: string) {
+    const res = await this.storyModel.findByIdAndDelete(storyId).exec();
+    if (!res) throw new NotFoundException('story_not_found');
+  }
+
   async remove(storyId: string, actorId: string) {
     if (!actorId?.trim()) {
       throw new BadRequestException('actor_required');

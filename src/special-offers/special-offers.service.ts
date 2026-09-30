@@ -14,7 +14,10 @@ export class SpecialOffersService {
   ) {}
 
   async create(payload: {
-    storeId: string;
+    storeId?: string;
+    sourceType?: 'store' | 'feature';
+    sourceLabel?: string;
+    sourcePath?: string;
     discount: string;
     oldPrice: string;
     newPrice: string;
@@ -22,6 +25,7 @@ export class SpecialOffersService {
     description?: string;
     image?: string;
     isActive?: boolean;
+    featuredOnHome?: boolean;
     startDate?: Date;
     endDate?: Date;
     priority?: number;
@@ -30,6 +34,7 @@ export class SpecialOffersService {
     const offer = new this.specialOfferModel({
       ...payload,
       isActive: payload.isActive ?? true,
+      featuredOnHome: payload.featuredOnHome ?? true,
       priority: payload.priority ?? 0,
     });
     return offer.save();

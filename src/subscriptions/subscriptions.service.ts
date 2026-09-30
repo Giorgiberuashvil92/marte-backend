@@ -812,6 +812,7 @@ export class SubscriptionsService {
   async grantPremium(
     params: { phone?: string; userId?: string },
     period: 'monthly' | 'yearly' | 'lifetime' = 'monthly',
+    source?: string,
   ): Promise<SubscriptionDocument> {
     const phone = params.phone?.trim();
     const userId = params.userId?.trim();
@@ -824,10 +825,10 @@ export class SubscriptionsService {
     }
 
     if (userId) {
-      return this.grantPremiumForUserId(userId, period);
+      return this.grantPremiumForUserId(userId, period, source);
     }
 
-    return this.grantPremiumByPhone(phone!, period);
+    return this.grantPremiumByPhone(phone!, period, source);
   }
 
   /**
@@ -836,6 +837,7 @@ export class SubscriptionsService {
   async grantPremiumByPhone(
     phone: string,
     period: 'monthly' | 'yearly' | 'lifetime' = 'monthly',
+    source?: string,
   ): Promise<SubscriptionDocument> {
     try {
       this.logger.log(`🎁 Premium პაკეტის მინიჭება phone: ${phone}`);
@@ -849,7 +851,7 @@ export class SubscriptionsService {
         );
       }
 
-      return this.grantPremiumForUserId(user.id, period);
+      return this.grantPremiumForUserId(user.id, period, source);
     } catch (error) {
       this.logger.error('❌ Premium პაკეტის მინიჭების შეცდომა:', error);
 
@@ -867,6 +869,7 @@ export class SubscriptionsService {
   private async grantPremiumForUserId(
     userId: string,
     period: 'monthly' | 'yearly' | 'lifetime' = 'monthly',
+    source?: string,
   ): Promise<SubscriptionDocument> {
     try {
       const user = await this.userModel.findOne({ id: userId }).exec();
@@ -886,6 +889,12 @@ export class SubscriptionsService {
         .exec();
 
       if (existingSubscription) {
+        // EuroIns-ის შემოწმებამ მომხმარებლის ფასიანი/სხვა წყაროს Premium
+        // არ უნდა გადააქციოს პარტნიორის უფასო პაკეტად.
+        if (source === 'euroins' && existingSubscription.source !== 'euroins') {
+          return existingSubscription;
+        }
+
         // თუ არსებობს, განვაახლოთ premium-ად
         this.logger.log(
           `🔄 არსებული subscription-ის განახლება premium-ად`,
@@ -902,6 +911,7 @@ export class SubscriptionsService {
             ? undefined
             : this.calculateNextBillingDate(period, new Date());
         existingSubscription.paymentMethod = 'manual';
+        if (source) existingSubscription.source = source;
         existingSubscription.updatedAt = new Date();
 
         const updated = await existingSubscription.save();
@@ -949,6 +959,7 @@ export class SubscriptionsService {
             ? undefined
             : this.calculateNextBillingDate(period, new Date()),
         paymentMethod: 'manual',
+        source,
         totalPaid: 0,
         billingCycles: 0,
         carfaxRequestsUsed: 0,
@@ -1008,9 +1019,11 @@ export class SubscriptionsService {
   async revokePremium(params: {
     phone?: string;
     userId?: string;
+    source?: string;
   }): Promise<SubscriptionDocument> {
     const phone = params.phone?.trim();
     const userId = params.userId?.trim();
+    const source = params.source?.trim();
 
     if (!phone && !userId) {
       throw new HttpException(
@@ -1036,8 +1049,22 @@ export class SubscriptionsService {
         resolvedUserId = user.id;
       }
 
+      const subscriptionFilter: Record<string, any> = {
+        userId: resolvedUserId,
+        status: 'active',
+      };
+      if (source) {
+        subscriptionFilter.$or = [
+          { source },
+          // Legacy EuroIns grants were created before `source` was added.
+          ...(source === 'euroins'
+            ? [{ source: { $exists: false }, paymentMethod: 'manual', planPrice: 0 }]
+            : []),
+        ];
+      }
+
       const activeSubscription = await this.subscriptionModel
-        .findOne({ userId: resolvedUserId, status: 'active' })
+        .findOne(subscriptionFilter)
         .exec();
 
       if (!activeSubscription) {

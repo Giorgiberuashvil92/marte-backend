@@ -35,7 +35,7 @@ import { FuelPricesModule } from './fuel-prices/fuel-prices.module';
 import { RecurringPaymentsModule } from './recurring-payments/recurring-payments.module';
 import { SubscriptionsModule } from './subscriptions/subscriptions.module';
 import { SmsModule } from './sms/sms.module';
-import { FeedbackModule } from './feedback/feedback.module';
+import { ReviewsModule } from './reviews/reviews.module';
 import { ExclusiveOfferModule } from './exclusive-offer/exclusive-offer.module';
 import { EngagementModule } from './engagement/engagement.module';
 import { SpecialOffersModule } from './special-offers/special-offers.module';
@@ -51,6 +51,9 @@ import { PanelAdminModule } from './panel-admin/panel-admin.module';
 import { EvChargingModule } from './ev-charging/ev-charging.module';
 import { InsuranceModule } from './insurance/insurance.module';
 import { DeliveryLeadsModule } from './delivery-leads/delivery-leads.module';
+import { PartLeadsModule } from './part-leads/part-leads.module';
+import { UploadsModule } from './uploads/uploads.module';
+import { DriverAlertsModule } from './driver-alerts/driver-alerts.module';
 import databaseConfig from './config/database.config';
 
 // Schemas
@@ -111,7 +114,11 @@ import {
   FinesVehicle,
   FinesVehicleSchema,
 } from './schemas/fines-vehicle.schema';
-import { DeliveryLead, DeliveryLeadSchema } from './schemas/delivery-lead.schema';
+import {
+  DeliveryLead,
+  DeliveryLeadSchema,
+} from './schemas/delivery-lead.schema';
+import { PartLead, PartLeadSchema } from './schemas/part-lead.schema';
 
 /** Railway/.env: ზედმეტი ბრჭყალები ან ბოლოს `;` → Invalid scheme; ვხსნით. */
 function trimMongoEnv(s: string | undefined): string {
@@ -208,6 +215,7 @@ function mongooseMongoConfig(): { uri: string } {
       { name: EcommerceProduct.name, schema: EcommerceProductSchema },
       { name: FinesVehicle.name, schema: FinesVehicleSchema },
       { name: DeliveryLead.name, schema: DeliveryLeadSchema },
+      { name: PartLead.name, schema: PartLeadSchema },
     ]),
     GarageModule,
     AuthModule,
@@ -238,7 +246,7 @@ function mongooseMongoConfig(): { uri: string } {
     RecurringPaymentsModule,
     SubscriptionsModule,
     SmsModule,
-    FeedbackModule,
+    ReviewsModule,
     ExclusiveOfferModule,
     EngagementModule,
     SpecialOffersModule,
@@ -254,6 +262,9 @@ function mongooseMongoConfig(): { uri: string } {
     EvChargingModule,
     InsuranceModule,
     DeliveryLeadsModule,
+    PartLeadsModule,
+    UploadsModule,
+    DriverAlertsModule,
     CashbackModule,
   ],
   controllers: [AppController],

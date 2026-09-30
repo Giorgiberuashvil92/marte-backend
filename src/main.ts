@@ -83,9 +83,9 @@ async function bootstrap() {
 
   const app = await NestFactory.create(AppModule);
 
-  // Increase body size limits (for CarFAX HTML -> PDF)
-  app.use(json({ limit: '2mb' }));
-  app.use(urlencoded({ limit: '2mb', extended: true }));
+  // Increase body size limits (uploads / CarFAX HTML -> PDF)
+  app.use(json({ limit: '20mb' }));
+  app.use(urlencoded({ limit: '20mb', extended: true }));
 
   // Enable Socket.IO
   app.useWebSocketAdapter(new IoAdapter(app));

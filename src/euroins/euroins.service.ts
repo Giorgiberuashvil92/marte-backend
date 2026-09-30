@@ -1,4 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { Cron } from '@nestjs/schedule';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import { User, UserDocument } from '../schemas/user.schema';
@@ -27,13 +28,23 @@ interface EuroinsPoliciesResponse {
   }>;
 }
 
+interface EuroinsSubscriptionComparison {
+  asOf?: string;
+  total?: number;
+  toDeactivate?: number;
+  subscribers?: Array<{
+    personalId: string;
+    partnerReference?: string;
+    eligible: boolean;
+    ineligibleSince?: string;
+  }>;
+}
+
 @Injectable()
 export class EuroinsService {
   private readonly logger = new Logger(EuroinsService.name);
   private readonly baseUrl = 'https://apiservice.euroins.ge/api/v1/partner';
   private token: { value: string; expiresAt: number } | null = null;
-  private readonly cacheMs = 24 * 60 * 60 * 1000;
-
   constructor(
     @InjectModel(User.name) private readonly userModel: Model<UserDocument>,
     private readonly subscriptionsService: SubscriptionsService,
@@ -116,6 +127,11 @@ export class EuroinsService {
     }
   }
 
+  /** EuroIns-ის batch reconciliation: ვის აღარ აქვს მოქმედი პოლისი. */
+  private async getSubscriptionComparison(): Promise<EuroinsSubscriptionComparison> {
+    return this.request<EuroinsSubscriptionComparison>('/subscriptions');
+  }
+
   private async reportSubscription(
     personalId: string,
     active: boolean,
@@ -147,24 +163,32 @@ export class EuroinsService {
     const user = await this.userModel.findOne({ id: userId }).exec();
     if (!user) return;
 
-    if (
-      user.euroinsCheckedAt &&
-      Date.now() - new Date(user.euroinsCheckedAt).getTime() < this.cacheMs
-    ) {
-      return;
-    }
-
     try {
       const policies = await this.getPolicies(normalizedPersonalId);
       const eligible = Boolean(policies?.vehicles?.length);
 
       if (eligible) {
-        await this.subscriptionsService.grantPremium({ userId }, 'monthly');
+        await this.subscriptionsService.grantPremium({ userId }, 'monthly', 'euroins');
         if (!user.euroinsSubscriptionReported) {
           await this.reportSubscription(normalizedPersonalId, true, userId);
         }
-      } else if (user.euroinsSubscriptionReported) {
-        await this.reportSubscription(normalizedPersonalId, false, userId);
+      } else {
+        // Policy may have been removed even when the previous report was not
+        // persisted (for example, if EuroIns was temporarily unavailable).
+        // Always try to revoke only the EuroIns-owned Premium subscription;
+        // revokePremium safely returns 404 when there is nothing to revoke.
+        if (user.euroinsSubscriptionReported) {
+          await this.reportSubscription(normalizedPersonalId, false, userId);
+        }
+        try {
+          await this.subscriptionsService.revokePremium({ userId, source: 'euroins' });
+        } catch (revokeError) {
+          const status = typeof (revokeError as { getStatus?: () => number }).getStatus === 'function'
+            ? (revokeError as { getStatus: () => number }).getStatus()
+            : (revokeError as { response?: { status?: number }; status?: number }).response?.status
+              ?? (revokeError as { status?: number }).status;
+          if (status !== 404) throw revokeError;
+        }
       }
 
       await this.userModel.updateOne(
@@ -185,6 +209,101 @@ export class EuroinsService {
       this.logger.warn(
         `Euroins sync skipped for ${userId}: ${error instanceof Error ? error.message : 'unknown error'}`,
       );
+    }
+  }
+
+  /**
+   * EuroIns-ის batch პასუხით აუქმებს მხოლოდ EuroIns-ის მიერ მინიჭებულ Premium-ს.
+   * გადახდილ ან სხვა წყაროს subscription-ს არ ეხება.
+   */
+  async reconcileSubscriptions(): Promise<{
+    asOf?: string;
+    total: number;
+    toDeactivate: number;
+    processed: number;
+    skipped: number;
+  }> {
+    if (!this.isConfigured()) {
+      return { total: 0, toDeactivate: 0, processed: 0, skipped: 0 };
+    }
+
+    const comparison = await this.getSubscriptionComparison();
+    const subscribers = comparison.subscribers || [];
+    const toDeactivate = Number(comparison.toDeactivate || 0);
+
+    if (toDeactivate <= 0) {
+      this.logger.log(`Euroins reconciliation: nothing to deactivate (total=${comparison.total || 0})`);
+      return {
+        asOf: comparison.asOf,
+        total: Number(comparison.total || 0),
+        toDeactivate: 0,
+        processed: 0,
+        skipped: 0,
+      };
+    }
+
+    let processed = 0;
+    let skipped = 0;
+
+    for (const subscriber of subscribers.filter((item) => item.eligible === false)) {
+      const reference = String(subscriber.partnerReference || '').trim();
+      const userId = reference.startsWith('marte-') ? reference.slice('marte-'.length) : '';
+      const personalId = this.normalizePersonalId(subscriber.personalId);
+      const user = await this.userModel
+        .findOne({
+          $or: [
+            ...(userId ? [{ id: userId }] : []),
+            ...(personalId ? [{ personalId }] : []),
+          ],
+        })
+        .exec();
+
+      if (!user) {
+        skipped += 1;
+        this.logger.warn(`Euroins reconciliation: user not found for ${reference || personalId}`);
+        continue;
+      }
+
+      try {
+        await this.subscriptionsService.revokePremium({ userId: user.id, source: 'euroins' });
+      } catch (error) {
+        const status = typeof (error as { getStatus?: () => number }).getStatus === 'function'
+          ? (error as { getStatus: () => number }).getStatus()
+          : (error as { response?: { status?: number }; status?: number }).response?.status
+            ?? (error as { status?: number }).status;
+        if (status !== 404) throw error;
+      }
+
+      await this.userModel.updateOne(
+        { _id: user._id },
+        {
+          $set: {
+            euroinsEligible: false,
+            euroinsSubscriptionReported: false,
+            euroinsCheckedAt: new Date(),
+            euroinsPolicyCount: 0,
+          },
+        },
+      ).exec();
+      processed += 1;
+      this.logger.log(`Euroins Premium revoked for ${user.id} (${personalId})`);
+    }
+
+    return {
+      asOf: comparison.asOf,
+      total: Number(comparison.total || 0),
+      toDeactivate,
+      processed,
+      skipped,
+    };
+  }
+
+  @Cron('15 */6 * * *', { timeZone: 'Asia/Tbilisi' })
+  async scheduledSubscriptionReconciliation(): Promise<void> {
+    try {
+      await this.reconcileSubscriptions();
+    } catch (error) {
+      this.logger.warn(`Euroins reconciliation failed: ${error instanceof Error ? error.message : 'unknown error'}`);
     }
   }
 }

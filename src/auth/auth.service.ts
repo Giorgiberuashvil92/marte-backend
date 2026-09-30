@@ -376,6 +376,12 @@ export class AuthService {
       return { exists: true, valid: false, reason: 'customer_role' };
     }
 
-    return { exists: true, valid: true, user };
+    // The mobile app restores the session from local storage and may not call
+    // /auth/verify again. Refresh EuroIns eligibility on this startup/profile
+    // check as well, so a removed policy cannot leave Premium active.
+    await this.euroinsService?.syncUser(user.id, user.personalId);
+    const refreshedUser = await this.userModel.findOne({ id: userId }).exec();
+
+    return { exists: true, valid: true, user: refreshedUser || user };
   }
 }

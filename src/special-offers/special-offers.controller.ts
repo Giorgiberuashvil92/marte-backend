@@ -19,9 +19,11 @@ export class SpecialOffersController {
   @Post()
   async create(@Body() body: any) {
     try {
-      if (!body.storeId || !body.discount || !body.oldPrice || !body.newPrice) {
+      if (!body.discount || !body.oldPrice || !body.newPrice ||
+        (body.sourceType === 'store' && !body.storeId) ||
+        (body.sourceType === 'feature' && !body.sourceLabel)) {
         throw new BadRequestException(
-          'storeId, discount, oldPrice, and newPrice are required',
+          'discount, oldPrice, newPrice and a valid offer source are required',
         );
       }
       const created = await this.specialOffersService.create(body);
@@ -135,4 +137,3 @@ export class SpecialOffersController {
     }
   }
 }
-

@@ -19,6 +19,7 @@ export class UsersController {
   @Get()
   async list(
     @Query('q') q?: string,
+    @Query('searchBy') searchBy?: string,
     @Query('limit') limit?: string,
     @Query('offset') offset?: string,
     @Query('role') role?: string,
@@ -29,6 +30,7 @@ export class UsersController {
     const act = active === undefined ? undefined : active === 'true';
     const data = await this.users.list({
       q,
+      searchBy,
       limit: lim,
       offset: off,
       role,

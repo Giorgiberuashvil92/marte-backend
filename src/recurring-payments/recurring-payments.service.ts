@@ -222,12 +222,6 @@ export class RecurringPaymentsService {
             error instanceof Error ? error.message : 'Unknown error',
           );
           failureCount++;
-
-          // თუ გადახდა ვერ მოხერხდა, subscription-ს ვაყენებთ pending-ში
-          await this.subscriptionModel.findByIdAndUpdate(subscriptionId, {
-            status: 'pending',
-            updatedAt: new Date(),
-          });
         }
       }
 

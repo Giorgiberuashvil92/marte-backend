@@ -12,11 +12,11 @@ export class AppService {
     forceUpdate: boolean;
   } {
     // currentVersion = ყველაზე ახალი ვერსია (უნდა ემთხვეოდეს app.json → version)
-    const currentVersion = '1.1.3';
+    const currentVersion = '1.1.4';
 
     // minVersion = ყველა ამ ვერსიაზე დაბალი დაააფდეითებს
     // მაგ: minVersion '1.0.24' → 1.0.23, 1.0.22... ხედავს Force Update მოდალს; 1.0.24+ არა
-    const minVersion = '1.1.3';
+    const minVersion = '1.1.4';
 
     const forceUpdate = true;
 

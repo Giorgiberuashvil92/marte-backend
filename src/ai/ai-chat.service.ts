@@ -36,27 +36,153 @@ export interface AIChatResponse {
   fallback: boolean;
 }
 
+export interface AIPartsQueryParseRequest {
+  text: string;
+  vehicle?: AIChatRequest['vehicle'];
+}
+
+export interface AIPartsQueryParseResponse {
+  make?: string;
+  makeAliases?: string[];
+  model?: string;
+  year?: string;
+  partName: string;
+  partAliases?: string[];
+  confidence: number;
+  needsVehicle: boolean;
+  needsPart: boolean;
+  modelUsed: string;
+  fallback: boolean;
+}
+
 export type AIChatStreamEvent =
-  | { type: 'meta'; modelUsed: string; complexity: AIChatComplexity; fallback: boolean }
+  | {
+      type: 'meta';
+      modelUsed: string;
+      complexity: AIChatComplexity;
+      fallback: boolean;
+    }
   | { type: 'delta'; text: string }
-  | { type: 'done'; answer: string; modelUsed: string; complexity: AIChatComplexity; fallback: boolean }
+  | {
+      type: 'done';
+      answer: string;
+      modelUsed: string;
+      complexity: AIChatComplexity;
+      fallback: boolean;
+    }
   | { type: 'error'; message: string };
 
 @Injectable()
 export class AIChatService {
-  async reply(request: AIChatRequest): Promise<AIChatResponse> {
-    const complexity = this.classify(request);
-    const model = this.pickModel(complexity);
+  async parsePartsQuery(
+    request: AIPartsQueryParseRequest,
+  ): Promise<AIPartsQueryParseResponse> {
+    const text = request.text.trim();
+    const fallback = this.fallbackPartsQueryParse(text, request.vehicle);
 
-    if (this.needsPhotoUpload(request, complexity)) {
+    if (!process.env.OPENAI_API_KEY) {
+      return fallback;
+    }
+
+    try {
+      const model =
+        process.env.OPENAI_MODEL_PARTS ||
+        process.env.OPENAI_MODEL_CHEAP ||
+        'gpt-5.6-luna';
+      const response = await fetch('https://api.openai.com/v1/responses', {
+        method: 'POST',
+        signal: AbortSignal.timeout(30000),
+        headers: {
+          Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          model,
+          input: [
+            {
+              role: 'system',
+              content:
+                'Extract an auto parts search query from Georgian/English user text. Return only JSON with keys: make, makeAliases, model, year, partName, partAliases, confidence, needsVehicle, needsPart. Normalize car makes to common Latin market names when clear, e.g. მერსედესი -> Mercedes, ბმვ -> BMW. makeAliases must be an array of common marketplace/search spellings for the same make in Georgian and Latin, based on the user text and your knowledge. partAliases must be an array of equivalent part search terms in Georgian, Latin transliteration, English, and common marketplace spellings, e.g. რადიატორი -> radiator/cooling radiator, aporni -> აპორნი/brake disc. Do not invent missing model/year. partName should be the actual part, not the whole sentence.',
+            },
+            {
+              role: 'user',
+              content: JSON.stringify({
+                text,
+                selectedVehicle: request.vehicle || null,
+              }),
+            },
+          ],
+          reasoning: { effort: 'low' },
+          text: { verbosity: 'low', format: { type: 'json_object' } },
+          max_output_tokens: 1800,
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error(`OpenAI ${response.status}`);
+      }
+
+      const json = await response.json();
+      if (json?.status !== 'completed')
+        throw new Error('Incomplete parts extraction');
+      const raw = this.extractOutputText(json);
+      const parsed = this.parseJsonObject(raw);
+      if (
+        typeof parsed.partName !== 'string' ||
+        typeof parsed.confidence !== 'number'
+      ) {
+        throw new Error('Invalid parts extraction');
+      }
+      const partName =
+        typeof parsed.partName === 'string' && parsed.partName.trim()
+          ? parsed.partName.trim()
+          : fallback.partName;
+      const make =
+        typeof parsed.make === 'string' && parsed.make.trim()
+          ? parsed.make.trim()
+          : fallback.make;
+
       return {
-        answer:
-          'ფოტოს შესაფასებლად ჯერ ატვირთე სურათი. საუკეთესოა ნათელი ფოტო 2-3 მეტრიდან და ერთი ახლო კადრი დაზიანებულ ნაწილზე. ფოტოს მიღების შემდეგ გეტყვი რა ჩანს, რა შეიძლება დაჯდეს და რა უნდა გადაამოწმო სერვისში.',
-        modelUsed: 'local-rule',
-        complexity,
+        make,
+        makeAliases: Array.isArray(parsed.makeAliases)
+          ? parsed.makeAliases
+              .filter((alias) => typeof alias === 'string' && alias.trim())
+              .map((alias) => alias.trim())
+              .slice(0, 8)
+          : fallback.makeAliases,
+        model:
+          typeof parsed.model === 'string' && parsed.model.trim()
+            ? parsed.model.trim()
+            : fallback.model,
+        year:
+          typeof parsed.year === 'string' && parsed.year.trim()
+            ? parsed.year.trim()
+            : fallback.year,
+        partName,
+        partAliases: Array.isArray(parsed.partAliases)
+          ? parsed.partAliases
+              .filter((alias) => typeof alias === 'string' && alias.trim())
+              .map((alias) => alias.trim())
+              .slice(0, 8)
+          : fallback.partAliases,
+        confidence:
+          typeof parsed.confidence === 'number'
+            ? Math.max(0, Math.min(1, parsed.confidence))
+            : fallback.confidence,
+        needsVehicle: !make,
+        needsPart: !partName,
+        modelUsed: model,
         fallback: false,
       };
+    } catch (error) {
+      console.error('[AI_PARTS_PARSE] OpenAI request failed:', error);
+      return fallback;
     }
+  }
+
+  async reply(request: AIChatRequest): Promise<AIChatResponse> {
+    const complexity = this.classify(request);
+    const model = this.pickModel();
 
     if (!process.env.OPENAI_API_KEY) {
       return {
@@ -86,18 +212,22 @@ export class AIChatService {
     }
   }
 
-  async *streamReply(request: AIChatRequest): AsyncGenerator<AIChatStreamEvent> {
+  async *streamReply(
+    request: AIChatRequest,
+  ): AsyncGenerator<AIChatStreamEvent> {
     const complexity = this.classify(request);
-    const model = this.pickModel(complexity);
+    const model = this.pickModel();
 
-    if (this.needsPhotoUpload(request, complexity) || !process.env.OPENAI_API_KEY) {
-      const answer = this.needsPhotoUpload(request, complexity)
-        ? 'ფოტოს შესაფასებლად ჯერ ატვირთე სურათი. საუკეთესოა ნათელი ფოტო 2-3 მეტრიდან და ერთი ახლო კადრი დაზიანებულ ნაწილზე. ფოტოს მიღების შემდეგ გეტყვი რა ჩანს, რა რისკია და რა უნდა გადაამოწმო სერვისში.'
-        : this.fallbackAnswer(request, complexity);
-      const modelUsed = this.needsPhotoUpload(request, complexity) ? 'local-rule' : 'fallback';
-      yield { type: 'meta', modelUsed, complexity, fallback: modelUsed === 'fallback' };
-      yield { type: 'delta', text: answer };
-      yield { type: 'done', answer, modelUsed, complexity, fallback: modelUsed === 'fallback' };
+    if (!process.env.OPENAI_API_KEY) {
+      const answer = this.fallbackAnswer(request, complexity);
+      yield { type: 'meta', modelUsed: 'fallback', complexity, fallback: true };
+      yield {
+        type: 'done',
+        answer,
+        modelUsed: 'fallback',
+        complexity,
+        fallback: true,
+      };
       return;
     }
 
@@ -105,28 +235,49 @@ export class AIChatService {
 
     try {
       let answer = '';
-      for await (const delta of this.callOpenAIStream(request, model, complexity)) {
-        const cleanedDelta = delta.replace(/როგორც AI ენის მოდელი[:,]?\s*/gi, '');
+      for await (const delta of this.callOpenAIStream(
+        request,
+        model,
+        complexity,
+      )) {
+        const cleanedDelta = delta.replace(
+          /როგორც AI ენის მოდელი[:,]?\s*/gi,
+          '',
+        );
         if (!cleanedDelta) continue;
         answer += cleanedDelta;
         yield { type: 'delta', text: cleanedDelta };
       }
 
       const clean = this.cleanAnswer(answer);
-      yield { type: 'done', answer: clean, modelUsed: model, complexity, fallback: false };
+      if (!clean) throw new Error('OpenAI returned an empty answer');
+      yield {
+        type: 'done',
+        answer: clean,
+        modelUsed: model,
+        complexity,
+        fallback: false,
+      };
     } catch (error) {
       console.error('[AI_CHAT_STREAM] OpenAI request failed:', error);
       const answer = this.fallbackAnswer(request, complexity);
       yield { type: 'delta', text: answer };
-      yield { type: 'done', answer, modelUsed: 'fallback', complexity, fallback: true };
+      yield {
+        type: 'done',
+        answer,
+        modelUsed: 'fallback',
+        complexity,
+        fallback: true,
+      };
     }
   }
 
   private classify(request: AIChatRequest): AIChatComplexity {
-    const text = `${request.service || ''} ${request.message || ''}`.toLowerCase();
+    const text =
+      `${request.service || ''} ${request.message || ''}`.toLowerCase();
 
     if (
-      /უსაფრთხო|ავარია|ცეცხლი|სუნი|კვამლი|გადახურდ|სასწრაფ|danger|unsafe|smoke|fire|მუხრუჭ|ტორმუზ|brake/.test(
+      /ავარია|ცეცხლი|კვამლი|გადახურ|გადახურდ|სასწრაფ|danger|unsafe|smoke|fire|overheat|ვერ ვაჩერებ|არ ჩერდება|brake.*(?:fail|not work)|(?:მუხრუჭ|ტორმუზ).*(?:არ მუშაობ|აღარ მუშაობ|გამეთიშ)/.test(
         text,
       )
     ) {
@@ -150,15 +301,13 @@ export class AIChatService {
     }
 
     if (
-      /ფასი|ღირს|დამიჯდება|შეფას|ბიუჯეტ|ლარი|gel|price|cost|estimate/.test(
-        text,
-      )
+      /ფასი|ღირს|დამიჯდება|შეფას|ბიუჯეტ|ლარი|gel|price|cost|estimate/.test(text)
     ) {
       return 'pricing';
     }
 
     if (
-      /ნაწილ|ფარ|ბამპერ|სარკე|კარი|დისკ|ძრავ|კოლოფ|part|parts|bumper|headlight/.test(
+      /ნაწილ|ფარ|ბამპერ|სარკე|კარი|დისკ|ხუნდ|part|parts|bumper|headlight|brake pad/.test(
         text,
       )
     ) {
@@ -166,7 +315,7 @@ export class AIChatService {
     }
 
     if (
-      /ხმა|წრიპინ|კაკუნ|ანთია|check engine|ქოქ|ტორმუზ|მუხრუჭ|diagnos|problem|noise|brake/.test(
+      /ხმა|წრიპინ|კაკუნ|ანთია|check engine|ქოქ|ტორმუზ|მუხრუჭ|ძრავ|კოლოფ|diagnos|problem|noise|brake/.test(
         text,
       )
     ) {
@@ -176,32 +325,87 @@ export class AIChatService {
     return 'simple';
   }
 
-  private needsPhotoUpload(
-    request: AIChatRequest,
-    complexity: AIChatComplexity,
-  ): boolean {
-    if (complexity !== 'image' || request.imageUrl) return false;
-    return /ფოტო|სურათ|შეხედ|ამოიცან|photo|image|detect/.test(
-      `${request.service || ''} ${request.message}`.toLowerCase(),
-    );
+  private pickModel(): string {
+    // Conversational Georgian is quality-sensitive even for short questions.
+    // Extraction retains a separate, cheaper model in parsePartsQuery.
+    return process.env.OPENAI_MODEL_CHAT || 'gpt-5.6-sol';
   }
 
-  private pickModel(complexity: AIChatComplexity): string {
-    const cheap = process.env.OPENAI_MODEL_CHEAP || 'gpt-5-nano';
-    const smart =
-      process.env.OPENAI_MODEL_SMART || process.env.OPENAI_MODEL || 'gpt-5-mini';
-
-    return complexity === 'simple' || complexity === 'image' ? cheap : smart;
-  }
-
-  private reasoningEffort(complexity: AIChatComplexity): 'minimal' | 'low' {
-    return complexity === 'simple' || complexity === 'image' ? 'minimal' : 'low';
+  private reasoningEffort(complexity: AIChatComplexity): 'low' | 'medium' {
+    return complexity === 'risky' || complexity === 'diagnostic'
+      ? 'medium'
+      : 'low';
   }
 
   private maxOutputTokens(complexity: AIChatComplexity): number {
-    if (complexity === 'simple') return 520;
-    if (complexity === 'image') return 760;
-    return 980;
+    // Responses counts reasoning against this limit as well as visible text.
+    return complexity === 'risky' || complexity === 'diagnostic' ? 5000 : 3200;
+  }
+
+  private fallbackPartsQueryParse(
+    text: string,
+    vehicle?: AIChatRequest['vehicle'],
+  ): AIPartsQueryParseResponse {
+    const wordsToRemove = [
+      'მჭირდება',
+      'მინდა',
+      'მომიძებნე',
+      'ნაწილი',
+      'parts',
+      'part',
+      'for',
+    ];
+    const lower = text.toLowerCase();
+    let make = vehicle?.make ? String(vehicle.make) : undefined;
+
+    if (/მერსედეს|mercedes|benz/.test(lower)) make = 'Mercedes';
+    else if (/ბმვ|ბეემვე|bmw/.test(lower)) make = 'BMW';
+    else if (/ტოიოტა|toyota/.test(lower)) make = 'Toyota';
+    else if (/ლექსუს|lexus/.test(lower)) make = 'Lexus';
+
+    let partName = text;
+    for (const token of wordsToRemove) {
+      partName = partName.replace(new RegExp(token, 'gi'), ' ');
+    }
+    if (make) {
+      partName = partName.replace(new RegExp(make, 'gi'), ' ');
+      if (make === 'Mercedes') {
+        partName = partName.replace(/მერსედეს(?:ის)?|mercedes|benz/gi, ' ');
+      }
+    }
+    partName = partName.replace(/\s+/g, ' ').trim();
+
+    return {
+      make,
+      makeAliases: make ? [make] : [],
+      model: vehicle?.model ? String(vehicle.model) : undefined,
+      year: vehicle?.year ? String(vehicle.year) : undefined,
+      partName,
+      partAliases: partName ? [partName] : [],
+      confidence: partName ? 0.45 : 0.2,
+      needsVehicle: !make,
+      needsPart: !partName,
+      modelUsed: 'local-rule',
+      fallback: true,
+    };
+  }
+
+  private parseJsonObject(raw: string): Record<string, any> {
+    const trimmed = raw.trim();
+    if (!trimmed) return {};
+
+    try {
+      return JSON.parse(trimmed);
+    } catch {
+      const start = trimmed.indexOf('{');
+      const end = trimmed.lastIndexOf('}');
+      if (start === -1 || end === -1 || end <= start) return {};
+      try {
+        return JSON.parse(trimmed.slice(start, end + 1));
+      } catch {
+        return {};
+      }
+    }
   }
 
   private async callOpenAI(
@@ -213,6 +417,7 @@ export class AIChatService {
 
     const response = await fetch('https://api.openai.com/v1/responses', {
       method: 'POST',
+      signal: AbortSignal.timeout(55000),
       headers: {
         Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
         'Content-Type': 'application/json',
@@ -233,7 +438,7 @@ export class AIChatService {
 
     const json = await response.json();
     const text = this.extractOutputText(json);
-    if (!text) {
+    if (json?.status !== 'completed' || !text) {
       throw new Error(
         `OpenAI response did not include output text (status=${json?.status || 'unknown'}, reason=${json?.incomplete_details?.reason || 'none'})`,
       );
@@ -250,6 +455,7 @@ export class AIChatService {
 
     const response = await fetch('https://api.openai.com/v1/responses', {
       method: 'POST',
+      signal: AbortSignal.timeout(55000),
       headers: {
         Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
         'Content-Type': 'application/json',
@@ -266,36 +472,50 @@ export class AIChatService {
 
     if (!response.ok || !response.body) {
       const body = await response.text().catch(() => '');
-      throw new Error(`OpenAI stream ${response.status}: ${body.slice(0, 300)}`);
+      throw new Error(
+        `OpenAI stream ${response.status}: ${body.slice(0, 300)}`,
+      );
     }
 
     const decoder = new TextDecoder();
     let buffer = '';
+    let completed = false;
+
+    const parseLine = (line: string): string | undefined => {
+      if (!line.startsWith('data:')) return;
+      const data = line.slice(5).trim();
+      if (!data || data === '[DONE]') return;
+      const event = JSON.parse(data);
+      if (
+        ['response.failed', 'response.incomplete', 'error'].includes(event.type)
+      ) {
+        throw new Error(`OpenAI stream did not complete: ${event.type}`);
+      }
+      if (event.type === 'response.completed') {
+        completed = event.response?.status === 'completed';
+      }
+      if (
+        event.type === 'response.output_text.delta' &&
+        typeof event.delta === 'string'
+      )
+        return event.delta;
+    };
 
     for await (const chunk of response.body as any) {
       buffer += decoder.decode(chunk, { stream: true });
       const lines = buffer.split('\n');
       buffer = lines.pop() || '';
-
       for (const line of lines) {
-        const trimmed = line.trim();
-        if (!trimmed.startsWith('data: ')) continue;
-        const data = trimmed.slice(6);
-        if (data === '[DONE]') return;
-
-        let event: any;
-        try {
-          event = JSON.parse(data);
-        } catch {
-          continue;
-        }
-        const delta =
-          event?.type === 'response.output_text.delta'
-            ? event.delta
-            : '';
-        if (typeof delta === 'string' && delta) yield delta;
+        const delta = parseLine(line.trim());
+        if (delta) yield delta;
       }
     }
+    buffer += decoder.decode();
+    if (buffer.trim()) {
+      const delta = parseLine(buffer.trim());
+      if (delta) yield delta;
+    }
+    if (!completed) throw new Error('OpenAI stream ended before completion');
   }
 
   private buildInput(request: AIChatRequest, complexity: AIChatComplexity) {
@@ -303,109 +523,60 @@ export class AIChatService {
     const vehicleLine = vehicle?.make
       ? `${vehicle.make} ${vehicle.model || ''} ${vehicle.year || ''}`.trim()
       : 'მანქანა არ არის არჩეული';
-    const vehicleMileage = vehicle?.mileage ? `${vehicle.mileage} კმ` : 'უცნობია';
+    const vehicleMileage = vehicle?.mileage
+      ? `${vehicle.mileage} კმ`
+      : 'უცნობია';
 
     const history = (request.history || [])
-      .slice(-4)
-      .map((m) => `${m.role === 'user' ? 'მომხმარებელი' : 'MARTE AI'}: ${m.text}`)
-      .join('\n');
+      .filter(
+        (message) =>
+          ['user', 'assistant'].includes(message.role) &&
+          typeof message.text === 'string' &&
+          message.text.trim(),
+      )
+      .slice(-12)
+      .map((message) => ({
+        role: message.role,
+        content: message.text.slice(0, 8000),
+      }));
 
     const system = [
-      'შენ ხარ MARTE AI — ქართული ავტო აპის ტექნიკური ასისტენტი. შენი მიზანია მომხმარებელს მისცე პრაქტიკული, უსაფრთხო და მოქმედებაზე ორიენტირებული პასუხი.',
-      'ენა: უპასუხე ქართულად, ბუნებრივი მოკლე ფრაზებით. ინგლისური გამოიყენე მხოლოდ აუცილებელი ავტო ტერმინებისთვის: Check Engine, ABS, OBD, VIN და მსგავსი.',
-      'სიზუსტე: არ გამოიგონო დიაგნოზი, რეალური ფასი, ხელმისაწვდომობა, პარტნიორის პასუხი, სამართლებრივი/სადაზღვევო გარანტია ან კონკრეტული სერვისის დაპირება.',
-      'თუ მონაცემი არ გაქვს, არ შეავსო ფანტაზიით. დაწერე “არ მაქვს საკმარისი მონაცემი” და დაასახელე რა აკლია.',
-      'ფასებზე არასდროს დაწერო ერთი ზუსტი რიცხვი. გამოიყენე მხოლოდ ფართო დიაპაზონი და confidence: დაბალი/საშუალო/მაღალი.',
-      'ტონი: იყავი მშვიდი, საქმიანი და მეგობრული. ნუ გადააჭარბებ შიშს, მაგრამ რისკიან სიმპტომებზე იყავი მკაფიო.',
-      'ფორმატი: უპასუხე ზუსტად 3-4 მოკლე ნომრიანი ნაბიჯით. თითო ნაბიჯი დაიწყე ასე: "1) სათაური — ტექსტი". არ დაწერო გრძელი აბზაცი.',
-      'კონტექსტი: გამოიყენე მანქანის make/model/year/mileage, ისტორია და ფოტო მხოლოდ მაშინ, როცა მოცემულია. თუ ფოტო არ არის, არასდროს თქვა რომ ხედავ ფოტოს.',
-      'დასკვნები: დიაგნოსტიკაში არ თქვა “ზუსტად ეს არის”. გამოიყენე “შეიძლება იყოს”, “ხშირი მიზეზია”, “გადასამოწმებელია”.',
-      'უსაფრთხოება: მუხრუჭი, საჭე, საბურავი, კვამლი, წვის სუნი, გადახურება, ძლიერი კაკუნი, ზეთის წნევა ან დატენვის პრობლემა — დაიწყე უსაფრთხო ქმედებით: გაჩერება, აღარ გააგრძელოს მოძრაობა, სერვისი/ევაკუატორი.',
-      'ფასი: ნაწილები/სერვისი თქვი ლარში (₾), მაგრამ ავტომობილის საბაზრო შეფასება თქვი დოლარში ($). ყოველთვის მიუთითე რომ საბოლოო ფასი მდგომარეობაზე, კომპლექტაციაზე, განბაჟებაზე და ბაზარზეა დამოკიდებული.',
-      'კითხვები: თუ მნიშვნელოვანი მონაცემი აკლია, დასვი მაქსიმუმ 1 კონკრეტული კითხვა და მაინც მიეცი უსაფრთხო შემდეგი ნაბიჯი.',
-      'მოქმედება: ბოლო ნაბიჯი იყოს კონკრეტული next step: ფოტოს ატვირთვა, OBD კოდის მიწერა, მოთხოვნის ტექსტის მომზადება, ხელოსანთან/მაღაზიასთან გადამოწმება.',
-      'აკრძალულია: ზედმეტი disclaimer, “როგორც AI”, ცხრილი, ძალიან დიდი ესე, არარეალური დარწმუნებულობა, სერვისის სახელების გამოგონება.',
-      'აკრძალულია: “ზუსტად ღირს”, “გარანტირებულად”, “ბაზარზე ასეა” ან ისეთი ტექსტი, თითქოს live განცხადებები შეამოწმე.',
-      this.complexityInstruction(complexity, !!request.imageUrl),
+      'შენ ხარ MARTE AI, ქართული ავტოაპის ასისტენტი. ამ ეტაპზე ეხმარები მომხმარებელს ავტონაწილის მოთხოვნის მომზადებასა და მანქანაზე კითხვების გარკვევაში.',
+      'უპასუხე გამართული, ბუნებრივი ქართულით, მეგობრულად და კონკრეტულად. გამოიყენე დამკვიდრებული ავტოტერმინები; ნუ მოიგონებ სიტყვებს და ნუ აურევ ქართულს უცხოენოვან ფრაზებში. ბრენდები, VIN, OEM და OBD კოდები დატოვე უცვლელად.',
+      'ჯერ უპასუხე უშუალოდ დასმულ კითხვას. მარტივ კითხვას 2–4 წინადადება ჰყოფნის; სია გამოიყენე მხოლოდ რამდენიმე მოქმედების ან ვარიანტის ასახსნელად. არ არის საჭირო ყველა პასუხის ოთხ ნაბიჯად გაწერა.',
+      'გაითვალისწინე საუბრის ისტორია და უკვე მოცემული მანქანის მონაცემები. ავტოფარეხის ავტომატური კონტექსტი მხოლოდ საწყისი ვარაუდია: თუ მომხმარებელმა საუბრის ნებისმიერ წინა ან მიმდინარე შეტყობინებაში სხვა მანქანა დაასახელა, გამოიყენე ბოლოს მის მიერ დასახელებული მანქანა და აღარ დაუბრუნდე ავტოფარეხის მანქანას. მოკლე დაზუსტება (მაგალითად „მარცხენა“) აგრძელებს იმავე მოთხოვნას. განმეორებით ნუ მოითხოვ ცნობილ ინფორმაციას.',
+      'თუ ნაწილი სჭირდება, დააზუსტე მხოლოდ აუცილებელი უცნობი დეტალი: მანქანა, ნაწილი, საჭიროებისას მხარე ან კომპლექტაცია. ერთ ჯერზე დასვი მხოლოდ ერთი კონკრეტული კითხვა. ზოგად კითხვაზე მანქანის დამატებას ნუ მოითხოვ, თუ პასუხისთვის საჭირო არ არის.',
+      'მონაცემების შეგროვების შემდეგ მოკლედ ჩამოაყალიბე მოთხოვნის ტექსტი და მიუთითე ჩატში ღილაკი „ნაწილი გჭირდება?“, საიდანაც მომხმარებელი ამოწმებს და აგზავნის მოთხოვნას. შენ თვითონ ვერ აქვეყნებ მოთხოვნას, ვერ უკავშირდები მაღაზიას და ვერ ქმნი ჯავშანს.',
+      'არ გაქვს წვდომა ცოცხალ ფასებზე, მარაგზე, განცხადებებზე ან მაღაზიების პასუხებზე. არ მოიგონო ფასები, დიაპაზონები, ნაწილის კოდები, შეთავაზებები ან ზუსტი თავსებადობა. ფასზე ილაპარაკე მხოლოდ მაშინ, როცა გკითხავენ; უთხარი, რომ რეალურ ფასს მაღაზიის შეთავაზება სჭირდება.',
+      'მოდელის წელი მარტო თავსებადობის გარანტია არ არის. საჭიროებისას მიუთითე VIN-ით ან ნაწილის არსებული კოდით გადამოწმება. ზეთის ზუსტი სპეციფიკაცია, მოცულობა და სერვისის ინტერვალი არ გამოიცნო არასრული მონაცემებით.',
+      'დიაგნოსტიკაში განასხვავე სავარაუდო მიზეზი და დადასტურებული ფაქტი. თუ რეალური სიმპტომი საშიშია (მუხრუჭი არ მუშაობს, კვამლი, გადახურება), დაიწყე უსაფრთხო გაჩერების რჩევით. მხოლოდ ნაწილის ყიდვა ან ზოგადი კითხვა ავარიულ მდგომარეობას არ ნიშნავს.',
+      'თუ ფოტო არ არის მოცემული, ნუ იტყვი რომ ხედავ ფოტოს. ფოტოდანაც არ დაადასტურო უხილავი დაზიანება ან ზუსტი თავსებადობა.',
+      'არ მისცე პასუხს გამოგონილი სიზუსტის პროცენტები, ფასის გარანტია ან ტექსტი თითქოს ბაზა გადაამოწმე. თუ რამე არ იცი, მოკლედ თქვი რა არის გადასამოწმებელი და როგორ.',
     ].join('\n');
 
-    const userText = [
-      `კონტექსტი: ${complexity}`,
-      `სიზუსტის ჩარჩო: ${this.confidenceFrame(request, complexity)}`,
-      `სერვისი: ${request.service || 'general'}`,
-      `მანქანა: ${vehicleLine}`,
-      `გარბენი: ${vehicleMileage}`,
-      history ? `ბოლო ჩეთი:\n${history}` : '',
-      `შეკითხვა: ${request.message}`,
-    ]
-      .filter(Boolean)
-      .join('\n\n');
-
-    const userContent: any[] = [{ type: 'input_text', text: userText }];
+    // Put automatic garage data before the conversation. Repeating it inside the
+    // newest user turn made it overwrite a different car named earlier in chat.
+    const garageContext = {
+      role: 'user' as const,
+      content: `აპლიკაციის ავტომატური საწყისი კონტექსტი (არ არის მომხმარებლის ახალი მითითება): ${JSON.stringify(
+        {
+          garageVehicle: vehicleLine,
+          garageMileage: vehicleMileage,
+          service: request.service || 'general',
+        },
+      )}`,
+    };
+    const userContent: any[] = [{ type: 'input_text', text: request.message }];
     if (request.imageUrl) {
       userContent.push({ type: 'input_image', image_url: request.imageUrl });
     }
 
     return [
       { role: 'system', content: system },
+      garageContext,
+      ...history,
       { role: 'user', content: userContent },
     ];
-  }
-
-  private complexityInstruction(
-    complexity: AIChatComplexity,
-    hasImage: boolean,
-  ): string {
-    if (complexity === 'image') {
-      return hasImage
-        ? 'ფოტოს პასუხი იყოს 4 ნაბიჯი: 1) რა ჩანს — მხოლოდ რაც ფოტოზე ჩანს, 2) რისკი — სავარაუდო და არა ზუსტი დიაგნოზი, 3) ფასი — თუ არ ჩანს დაზიანების მასშტაბი, ფასი არ თქვა ან თქვი ძალიან ფართო დიაპაზონი ₾-ში + დაბალი confidence, 4) შემდეგი ნაბიჯი — რა კუთხით/რა დეტალით გადაიღოს.'
-        : 'ფოტოს გარეშე არ შეაფასო დაზიანება. სთხოვე ფოტოს ატვირთვა.';
-    }
-
-    if (complexity === 'pricing' || complexity === 'parts') {
-      return 'ფასის/ნაწილის პასუხი იყოს 4 ნაბიჯი: 1) იდენტიფიკაცია — თუ ნაწილი ზუსტად არ არის ცნობილი, თქვი რომ აკლია, 2) ვარიანტები — ახალი/მეორადი/ანალოგი, 3) ფასი — მხოლოდ ფართო დიაპაზონი ₾-ში + confidence, 4) შემდეგი ნაბიჯი — რა მონაცემი/ფოტო/კოდი სჭირდება.';
-    }
-
-    if (complexity === 'valuation') {
-      return 'ავტომობილის შეფასება იყოს 4 ნაბიჯი: 1) საშუალო ფასი — თუ make/model/year/mileage აკლია, ფასი არ თქვა; თუ არის, თქვი მხოლოდ ფართო დიაპაზონი დოლარში ($) + confidence, 2) ფასზე გავლენა — წელი/გარბენი/ძრავი/მდგომარეობა/განბაჟება/კომპლექტაცია, 3) სიზუსტისთვის — მაქსიმუმ 2 ყველაზე მნიშვნელოვანი აკლია, 4) გაყიდვამდე — რა გადაამოწმოს. აუცილებლად დაამატე რომ ეს არ არის live market quote.';
-    }
-
-    if (complexity === 'diagnostic') {
-      return 'დიაგნოსტიკის პასუხი იყოს 4 ნაბიჯი: 1) უსაფრთხოება — შეიძლება თუ არა მოძრაობა, 2) სავარაუდო მიზეზები — 2-3 მიზეზი, 3) ახლავე შეამოწმე — ..., 4) სერვისში უთხარი — ....';
-    }
-
-    if (complexity === 'risky') {
-      return 'რისკიან თემაზე პასუხი დაიწყე უსაფრთხოებით: თუ პრობლემა მუხრუჭს, კვამლს, გადახურებას ან წვის სუნს ეხება, ურჩიე მანქანის გაჩერება და პროფესიონალთან დაკავშირება.';
-    }
-
-    return 'მარტივ კითხვაზე უპასუხე 2-3 წინადადებით და ერთი შემდეგი მოქმედებით.';
-  }
-
-  private confidenceFrame(
-    request: AIChatRequest,
-    complexity: AIChatComplexity,
-  ): string {
-    if (complexity !== 'valuation') {
-      return 'თუ ზუსტი მონაცემი არ არის, არ თქვა ზუსტი ფასი/დიაგნოზი; გამოიყენე სავარაუდო ენა.';
-    }
-
-    const text = `${request.message || ''}\n${request.vehicle?.make || ''} ${request.vehicle?.model || ''} ${request.vehicle?.year || ''} ${request.vehicle?.mileage || ''}`;
-    const hasMakeModel =
-      Boolean(request.vehicle?.make && request.vehicle?.model) ||
-      /მარკა:\s*\S+[\s\S]*მოდელი:\s*\S+/i.test(text);
-    const hasYear = Boolean(request.vehicle?.year) || /წელი:\s*\d{4}/i.test(text);
-    const hasMileage = Boolean(request.vehicle?.mileage) || /გარბენი:\s*[\d\s,.]+/i.test(text);
-    const hasCondition = /მდგომარეობა:\s*\S+/i.test(text);
-    const hasEngine = /ძრავი|საწვავი|engine|hybrid|diesel|ბენზინი|დიზელი/i.test(text);
-
-    const score = [hasMakeModel, hasYear, hasMileage, hasCondition, hasEngine].filter(Boolean).length;
-    if (score < 3) {
-      return 'დაბალი confidence: ფასი არ თქვა. სთხოვე მარკა, მოდელი, წელი და გარბენი.';
-    }
-    if (score < 5) {
-      return 'დაბალი-საშუალო confidence: შეიძლება მხოლოდ ფართო $ დიაპაზონი, მინიმუმ 25-35% სიგანით. არ თქვა ერთი რიცხვი.';
-    }
-    return 'საშუალო confidence: შეიძლება $ დიაპაზონი, მაგრამ მაინც არა live market quote და არა გარანტირებული ფასი.';
   }
 
   private extractOutputText(json: any): string {
@@ -429,27 +600,9 @@ export class AIChatService {
   }
 
   private fallbackAnswer(
-    request: AIChatRequest,
-    complexity: AIChatComplexity,
+    _request: AIChatRequest,
+    _complexity: AIChatComplexity,
   ): string {
-    const car = request.vehicle?.make
-      ? `${request.vehicle.make} ${request.vehicle.model || ''} ${
-          request.vehicle.year || ''
-        }`.trim()
-      : 'შენი მანქანისთვის';
-
-    if (complexity === 'pricing' || complexity === 'parts') {
-      return `1) სიზუსტე — ${car} ნაწილზე ზუსტ ფასს რეალური შეთავაზება სჭირდება.\n2) ფასი — ახლა მხოლოდ ფართო დიაპაზონის თქმა შეიძლება, confidence დაბალია.\n3) აკლია — მომწერე ნაწილის ზუსტი სახელი, ახალი/მეორადი გინდა და ქალაქი.\n4) შემდეგი ნაბიჯი — ამ მონაცემებით მოთხოვნის ტექსტს გაგიმზადებ მაღაზიებთან/დისმანტლერებთან.`;
-    }
-
-    if (complexity === 'valuation') {
-      return `1) საშუალო ფასი — ზუსტი $ დიაპაზონისთვის საკმარისი მონაცემი არ მაქვს.\n2) აკლია — მომწერე მარკა, მოდელი, წელი, გარბენი, ძრავი/საწვავი და მდგომარეობა.\n3) სიზუსტე — შეფასება იქნება სავარაუდო, არა live market quote.\n4) შემდეგი ნაბიჯი — მონაცემებს რომ მომწერ, ფართო $ დიაპაზონს და ფასზე მოქმედ ფაქტორებს დაგიბრუნებ.`;
-    }
-
-    if (complexity === 'diagnostic' || complexity === 'risky') {
-      return `1) უსაფრთხოება — ${car} პრობლემის ზუსტი დიაგნოზი დათვალიერებას მოითხოვს.\n2) რისკი — თუ არის კვამლი, გადახურება, მუხრუჭი ან ძლიერი კაკუნი, მოძრაობა არ გააგრძელო.\n3) აკლია — მომწერე როდის ჩნდება სიმპტომი და გარბენი.\n4) შემდეგი ნაბიჯი — ამით გეტყვი რა გადაამოწმო სერვისში.`;
-    }
-
-    return '1) გისმენ — მომწერე რა გჭირდება მანქანასთან დაკავშირებით.\n2) დეტალი — მარკა/მოდელი/წელი თუ დაამატებ, პასუხი ზუსტი იქნება.\n3) შემდეგი ნაბიჯი — შემიძლია დიაგნოსტიკა, ფასის შეფასება ან მოთხოვნის ტექსტი მოგიმზადო.';
+    return 'AI-სთან დაკავშირება ამ მომენტში ვერ მოხერხდა. გთხოვ, სცადე ხელახლა. ნაწილის მოთხოვნა შეგიძლია ცალკე ფორმით გაგზავნო.';
   }
 }

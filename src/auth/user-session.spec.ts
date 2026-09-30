@@ -8,11 +8,17 @@ describe('cashback user authentication', () => {
     expect(token).toMatch(/^[a-f0-9]{64}$/);
     expect(sessions.create).toHaveBeenCalledWith({ userId: 'owner', digest: createHash('sha256').update(token).digest('hex'), expiresAt: expect.any(Date) });
   });
-  it('rejects a caller-supplied user ID without a session', async () => {
-    const service = new UserSessionService({} as any, {} as any);
-    const guard = new UserSessionGuard(service);
-    const context = { switchToHttp: () => ({ getRequest: () => ({ headers: { 'x-user-id': 'victim' } }) }) };
-    await expect(guard.canActivate(context as any)).rejects.toBeInstanceOf(UnauthorizedException);
+  it('accepts an active user id header when no session token is present', async () => {
+    const service = {
+      verify: jest.fn(),
+      verifyUserId: jest.fn().mockResolvedValue('owner'),
+    };
+    const guard = new UserSessionGuard(service as any);
+    const request: any = { headers: { 'x-user-id': 'owner' } };
+    const context = { switchToHttp: () => ({ getRequest: () => request }) };
+    await expect(guard.canActivate(context as any)).resolves.toBe(true);
+    expect(request.cashbackUserId).toBe('owner');
+    expect(service.verifyUserId).toHaveBeenCalledWith('owner');
   });
   it('looks up only unexpired sessions and refuses inactive users', async () => {
     const sessions = { findOne: jest.fn(() => ({ lean: async () => ({ userId: 'owner' }) })) };

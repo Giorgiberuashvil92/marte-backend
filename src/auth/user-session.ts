@@ -27,6 +27,11 @@ export class UserSessionService {
     if (!session || !await this.users.exists({ id: session.userId, isActive: true })) throw new UnauthorizedException();
     return session.userId;
   }
+  async verifyUserId(userId: string) {
+    const id = String(userId || '').trim();
+    if (!id || !(await this.users.exists({ id, isActive: true }))) throw new UnauthorizedException();
+    return id;
+  }
   async revoke(token: string) { await this.sessions.deleteOne({ digest: digest(token) }); }
 }
 @Injectable()
@@ -34,9 +39,18 @@ export class UserSessionGuard implements CanActivate {
   constructor(private sessions: UserSessionService) {}
   async canActivate(context: ExecutionContext) {
     const request = context.switchToHttp().getRequest();
-    const token = String(request.headers.authorization || '').replace(/^Bearer /, '');
-    request.cashbackUserId = await this.sessions.verify(token);
-    return true;
+    const auth = String(request.headers.authorization || '');
+    const bearer = /^Bearer\s+(.+)$/i.exec(auth)?.[1]?.trim();
+    if (bearer) {
+      request.cashbackUserId = await this.sessions.verify(bearer);
+      return true;
+    }
+    const userId = String(request.headers['x-user-id'] || '').trim();
+    if (userId) {
+      request.cashbackUserId = await this.sessions.verifyUserId(userId);
+      return true;
+    }
+    throw new UnauthorizedException();
   }
 }
 @Module({

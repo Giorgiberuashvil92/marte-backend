@@ -5,8 +5,17 @@ export type SpecialOfferDocument = SpecialOffer & Document;
 
 @Schema({ timestamps: true })
 export class SpecialOffer {
-  @Prop({ required: true, index: true })
-  storeId: string;
+  @Prop({ index: true })
+  storeId?: string;
+
+  @Prop({ default: 'store', index: true })
+  sourceType: 'store' | 'feature';
+
+  @Prop()
+  sourceLabel?: string;
+
+  @Prop()
+  sourcePath?: string;
 
   @Prop({ required: true })
   discount: string; // e.g., "20%", "15%"
@@ -28,6 +37,9 @@ export class SpecialOffer {
 
   @Prop({ default: true, index: true })
   isActive: boolean;
+
+  @Prop({ default: true, index: true })
+  featuredOnHome: boolean;
 
   @Prop()
   startDate?: Date; // Optional start date
@@ -60,4 +72,3 @@ SpecialOfferSchema.set('toJSON', {
     return ret;
   },
 });
-

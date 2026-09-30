@@ -547,7 +547,14 @@ export class NotificationsService {
       title: payload.title,
       body: payload.body,
     };
-    const data = payload.data || {};
+    // FCM data payload-ში ყველა მნიშვნელობა string უნდა იყოს. Nested params-ს
+    // JSON string-ად ვაგზავნით, ხოლო აპი normalizePushNavData-ში გაშლის.
+    const data = Object.fromEntries(
+      Object.entries(payload.data || {}).map(([key, value]) => [
+        key,
+        typeof value === 'string' ? value : JSON.stringify(value),
+      ]),
+    );
     const android = {
       notification: {
         sound: payload.sound || 'default',
@@ -555,8 +562,16 @@ export class NotificationsService {
       },
     };
     const apns = {
+      headers: {
+        'apns-push-type': 'alert',
+        'apns-priority': '10',
+      },
       payload: {
         aps: {
+          alert: {
+            title: payload.title,
+            body: payload.body,
+          },
           sound: payload.sound || 'default',
           badge: payload.badge || 1,
         },

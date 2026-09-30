@@ -27,40 +27,57 @@ export class AnalyticsController {
   }
 
   @Get('screen-views')
-  async getScreenViews(@Query('period') period: 'today' | 'week' | 'month' = 'week') {
+  async getScreenViews(
+    @Query('period') period: 'today' | 'week' | 'month' = 'week',
+  ) {
     return this.analyticsService.getScreenViews(period);
   }
 
   @Get('button-clicks')
-  async getButtonClicks(@Query('period') period: 'today' | 'week' | 'month' = 'week') {
+  async getButtonClicks(
+    @Query('period') period: 'today' | 'week' | 'month' = 'week',
+  ) {
     return this.analyticsService.getButtonClicks(period);
   }
 
   @Get('user-engagement')
-  async getUserEngagement(@Query('period') period: 'today' | 'week' | 'month' = 'week') {
+  async getUserEngagement(
+    @Query('period') period: 'today' | 'week' | 'month' = 'week',
+  ) {
     return this.analyticsService.getUserEngagement(period);
   }
 
   @Get('navigation-flows')
-  async getNavigationFlows(@Query('period') period: 'today' | 'week' | 'month' = 'week') {
+  async getNavigationFlows(
+    @Query('period') period: 'today' | 'week' | 'month' = 'week',
+  ) {
     return this.analyticsService.getNavigationFlows(period);
   }
 
   @Get('popular-features')
-  async getPopularFeatures(@Query('period') period: 'today' | 'week' | 'month' = 'week') {
+  async getPopularFeatures(
+    @Query('period') period: 'today' | 'week' | 'month' = 'week',
+  ) {
     return this.analyticsService.getPopularFeatures(period);
   }
 
   @Get('dashboard')
-  async getDashboard(@Query('period') period: 'today' | 'week' | 'month' = 'week') {
-    const [screenViews, buttonClicks, userEngagement, navigationFlows, popularFeatures] =
-      await Promise.all([
-        this.analyticsService.getScreenViews(period),
-        this.analyticsService.getButtonClicks(period),
-        this.analyticsService.getUserEngagement(period),
-        this.analyticsService.getNavigationFlows(period),
-        this.analyticsService.getPopularFeatures(period),
-      ]);
+  async getDashboard(
+    @Query('period') period: 'today' | 'week' | 'month' = 'week',
+  ) {
+    const [
+      screenViews,
+      buttonClicks,
+      userEngagement,
+      navigationFlows,
+      popularFeatures,
+    ] = await Promise.all([
+      this.analyticsService.getScreenViews(period),
+      this.analyticsService.getButtonClicks(period),
+      this.analyticsService.getUserEngagement(period),
+      this.analyticsService.getNavigationFlows(period),
+      this.analyticsService.getPopularFeatures(period),
+    ]);
 
     return {
       screenViews,
