@@ -62,7 +62,7 @@ export class SubscriptionsService {
 
       const subscription = await this.subscriptionModel
         .findOne(this.activeAppSubscriptionFilter(userId))
-        .sort({ createdAt: -1 })
+        .sort({ updatedAt: -1, createdAt: -1 })
         .exec();
 
       if (subscription) {
@@ -886,6 +886,7 @@ export class SubscriptionsService {
       // შევამოწმოთ არსებობს თუ არა active subscription
       const existingSubscription = await this.subscriptionModel
         .findOne({ userId: user.id, status: 'active' })
+        .sort({ updatedAt: -1, createdAt: -1 })
         .exec();
 
       if (existingSubscription) {
@@ -915,6 +916,26 @@ export class SubscriptionsService {
         existingSubscription.updatedAt = new Date();
 
         const updated = await existingSubscription.save();
+
+        // თუ ძველი მონაცემებიდან დუბლირებული active ჩანაწერები არსებობს,
+        // ისინი აღარ უნდა გადაფარავდეს ამ Premium-ს შემდეგ refresh-ზე.
+        await this.subscriptionModel.updateMany(
+          {
+            userId: user.id,
+            status: 'active',
+            _id: { $ne: updated._id },
+          },
+          {
+            $set: {
+              status: 'cancelled',
+              endDate: new Date(),
+              updatedAt: new Date(),
+            },
+            $unset: {
+              nextBillingDate: 1,
+            },
+          },
+        );
 
         // გავაგზავნოთ notification
         try {
