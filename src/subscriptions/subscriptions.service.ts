@@ -896,6 +896,18 @@ export class SubscriptionsService {
           return existingSubscription;
         }
 
+        // syncUser() იძახება ყოველ login/session restore-ზე. Euroins-ის მიერ
+        // უკვე მინიჭებული Premium ასეთ შემთხვევაში უცვლელი უნდა დარჩეს:
+        // ხელახალი save იწვევდა startDate/nextBillingDate-ის გადაწერას და
+        // ყოველ შესვლაზე განმეორებით push notification-ს.
+        if (
+          source === 'euroins' &&
+          existingSubscription.source === 'euroins' &&
+          existingSubscription.planId === 'premium'
+        ) {
+          return existingSubscription;
+        }
+
         // თუ არსებობს, განვაახლოთ premium-ად
         this.logger.log(
           `🔄 არსებული subscription-ის განახლება premium-ად`,

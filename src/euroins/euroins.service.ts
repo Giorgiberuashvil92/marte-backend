@@ -45,6 +45,7 @@ export class EuroinsService {
   private readonly logger = new Logger(EuroinsService.name);
   private readonly baseUrl = 'https://apiservice.euroins.ge/api/v1/partner';
   private token: { value: string; expiresAt: number } | null = null;
+  private readonly syncInFlight = new Map<string, Promise<void>>();
   constructor(
     @InjectModel(User.name) private readonly userModel: Model<UserDocument>,
     private readonly subscriptionsService: SubscriptionsService,
@@ -155,6 +156,22 @@ export class EuroinsService {
    * ეს არის fire-and-forget ინტეგრაცია: Euroins-ის დროებითი ხარვეზი auth-ს არ აჩერებს.
    */
   async syncUser(userId: string, personalId?: string): Promise<void> {
+    const inFlight = this.syncInFlight.get(userId);
+    if (inFlight) return inFlight;
+
+    const syncPromise = this.syncUserInternal(userId, personalId);
+    this.syncInFlight.set(userId, syncPromise);
+
+    try {
+      await syncPromise;
+    } finally {
+      if (this.syncInFlight.get(userId) === syncPromise) {
+        this.syncInFlight.delete(userId);
+      }
+    }
+  }
+
+  private async syncUserInternal(userId: string, personalId?: string): Promise<void> {
     if (!this.isConfigured()) return;
 
     const normalizedPersonalId = this.normalizePersonalId(personalId || '');
