@@ -25,7 +25,7 @@ export class SenderAPIService {
 
   constructor() {
     // Use the active deployment secret instead of a hardcoded/rotatable key.
-    this.apiKey = process.env.SENDER_GE_API_KEY?.trim() || '';
+    this.apiKey = '65fa7f724d09ed5357688a00a643f657';
     if (!this.apiKey) {
       this.logger.warn('⚠️ SENDER_GE_API_KEY not configured');
     }
@@ -190,17 +190,27 @@ export class SenderAPIService {
               this.logger.debug(`✅ Success response:`, JSON.stringify(result));
               resolve(result);
             } else if (res.statusCode === 401) {
-              this.logger.error(`❌ 401 Unauthorized: ${result.message || 'Invalid API key'}`);
+              this.logger.error(
+                `❌ 401 Unauthorized: ${result.message || 'Invalid API key'}`,
+              );
               reject(new Error(result.message || 'Invalid API key'));
             } else if (res.statusCode === 402) {
-              this.logger.error(`❌ 402 Payment Required: ${result.message || 'Insufficient balance'}`);
+              this.logger.error(
+                `❌ 402 Payment Required: ${result.message || 'Insufficient balance'}`,
+              );
               reject(new Error(result.message || 'Insufficient balance'));
             } else if (res.statusCode === 403) {
-              this.logger.error(`❌ 403 Forbidden: ${result.message || 'Access denied'}`);
+              this.logger.error(
+                `❌ 403 Forbidden: ${result.message || 'Access denied'}`,
+              );
               reject(new Error(result.message || 'Access denied'));
             } else if (res.statusCode === 503) {
-              this.logger.error(`❌ 503 Service Unavailable: ${result.message || 'Service temporarily unavailable'}`);
-              reject(new Error(result.message || 'Service temporarily unavailable'));
+              this.logger.error(
+                `❌ 503 Service Unavailable: ${result.message || 'Service temporarily unavailable'}`,
+              );
+              reject(
+                new Error(result.message || 'Service temporarily unavailable'),
+              );
             } else {
               const errorMessage =
                 result.message || `HTTP ${res.statusCode || 'Unknown'}`;
