@@ -70,7 +70,7 @@ export class AuthService {
     // Enable explicitly with AUTH_SMS_MODE=mock when Sender.ge is unavailable.
     if (
       process.env.NODE_ENV === 'development' ||
-      process.env.AUTH_SMS_MODE?.trim().toLowerCase() === 'mock'
+      process.env.AUTH_SMS_MODE?.trim().toLowerCase() === 'sms'
     ) {
       console.log(`📱 [MOCK] SMS კოდი ${phone}-ზე: ${code}`);
       return { id: otpId, intent, mockCode: code };
