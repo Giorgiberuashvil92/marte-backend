@@ -24,7 +24,8 @@ export class SenderAPIService {
   private readonly baseUrl = 'sender.ge';
 
   constructor() {
-    this.apiKey = '65fa7f724d09ed5357688a00a643f657';
+    // Use the active deployment secret instead of a hardcoded/rotatable key.
+    this.apiKey = process.env.SENDER_GE_API_KEY?.trim() || '';
     if (!this.apiKey) {
       this.logger.warn('⚠️ SENDER_GE_API_KEY not configured');
     }
