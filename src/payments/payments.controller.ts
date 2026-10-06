@@ -348,38 +348,45 @@ export class PaymentsController {
         };
       }
 
-      // შევამოწმოთ აქვს თუ არა unpaid rejected payment
-      const userPayments = await this.paymentsService.getUserPayments(userId);
-      const subscriptionPayments = userPayments.filter(
-        (p) =>
-          (p.context === 'subscription' ||
-            p.context === 'test_subscription' ||
-            p.metadata?.planId === subscription.planId) &&
-          p.isRecurring === true,
-      );
-
-      // ვნახოთ აქვს თუ არა rejected payment რომელსაც არ მოსდევს completed payment
-      const rejectedPayments = subscriptionPayments.filter(
-        (p) => p.status === 'rejected',
-      );
-
+      // Manual/Admin და Euroins-ის Premium-ს recurring payment არ სჭირდება.
+      // ძველი rejected payment-ის გამო ასეთი subscription არ უნდა გახდეს
+      // pending, თორემ აპი აქტიურ Premium-ს FREE-ად აჩვენებს.
+      const requiresPaymentCheck =
+        subscription.paymentMethod !== 'manual' &&
+        Number(subscription.planPrice || 0) > 0;
       let hasUnpaidRejectedPayment = false;
 
-      for (const rejectedPayment of rejectedPayments) {
-        const rejectedDate = new Date(rejectedPayment.paymentDate).getTime();
-        const hasCompletedAfter = subscriptionPayments.some((other) => {
-          if (other.status !== 'completed' && other.status !== 'success')
-            return false;
-          const otherDate = new Date(other.paymentDate).getTime();
-          return otherDate > rejectedDate;
-        });
+      if (requiresPaymentCheck) {
+        const userPayments = await this.paymentsService.getUserPayments(userId);
+        const subscriptionPayments = userPayments.filter(
+          (p) =>
+            (p.context === 'subscription' ||
+              p.context === 'test_subscription' ||
+              p.metadata?.planId === subscription.planId) &&
+            p.isRecurring === true,
+        );
 
-        if (!hasCompletedAfter) {
-          hasUnpaidRejectedPayment = true;
-          this.logger.log(
-            `⚠️ User ${userId} has unpaid rejected payment: ${rejectedPayment.orderId}`,
-          );
-          break;
+        // ვნახოთ აქვს თუ არა rejected payment რომელსაც არ მოსდევს completed payment
+        const rejectedPayments = subscriptionPayments.filter(
+          (p) => p.status === 'rejected',
+        );
+
+        for (const rejectedPayment of rejectedPayments) {
+          const rejectedDate = new Date(rejectedPayment.paymentDate).getTime();
+          const hasCompletedAfter = subscriptionPayments.some((other) => {
+            if (other.status !== 'completed' && other.status !== 'success')
+              return false;
+            const otherDate = new Date(other.paymentDate).getTime();
+            return otherDate > rejectedDate;
+          });
+
+          if (!hasCompletedAfter) {
+            hasUnpaidRejectedPayment = true;
+            this.logger.log(
+              `⚠️ User ${userId} has unpaid rejected payment: ${rejectedPayment.orderId}`,
+            );
+            break;
+          }
         }
       }
 
