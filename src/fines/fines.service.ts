@@ -983,7 +983,12 @@ export class FinesService implements OnModuleInit {
   }
 
   /**
-   * ადმინის გვერდისთვის ყველა მონაცემი ერთი request-ით
+   * ადმინის გვერდისთვის ყველა მონაცემი ერთი request-ით.
+   *
+   * მნიშვნელოვანია: ადმინის ცხრილი უნდა ასახავდეს ჩვენს ბაზაში აქტიურ
+   * რეგისტრაციებს და არა SA.gov.ge-ს სრულ აქტივს. სახელმწიფო API-ის active
+   * endpoint-ში შეიძლება მოხვდეს მანქანა, რომელიც ჩვენს ბაზაში აღარ არის
+   * მიბმული მომხმარებელზე.
    */
   async getFinesAdminDashboardData(): Promise<{
     active: VehicleRegistration[];
@@ -1005,11 +1010,21 @@ export class FinesService implements OnModuleInit {
       owner?: { firstName?: string; lastName?: string } | null;
     }[];
   }> {
-    const [active, vehicles, saRegistrations] = await Promise.all([
-      this.getActiveVehicles(),
+    const [vehicles, saRegistrations] = await Promise.all([
       this.getRegisteredVehiclesWithOwners(),
       this.getSaRegistrationsWithOwners(),
     ]);
+
+    // `active` ვინარჩუნებთ response-ის backward-compatible ფორმისთვის,
+    // მაგრამ მონაცემი ახლა ჩვენი DB-ს აქტიური FinesVehicle ჩანაწერებიდან მოდის.
+    const active: VehicleRegistration[] = vehicles.map((vehicle) => ({
+      id: Number(vehicle.saVehicleId),
+      vehicleNumber: vehicle.vehicleNumber,
+      techPassportNumber: vehicle.techPassportNumber,
+      addDate: vehicle.addDate,
+      cancelDate: vehicle.cancelDate,
+    }));
+
     return { active, vehicles, saRegistrations };
   }
 
